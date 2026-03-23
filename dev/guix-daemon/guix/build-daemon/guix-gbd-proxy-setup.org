@@ -1,0 +1,49 @@
+* Running dev fallback guix-daemon as root
+This setup requires to define:
+1. new build users group  -> guix-gbd
+2. new daemon directories -> /tmp/guix-gbd-root
+
+First, create a new group from new build users so the dev daemon does not interfere with running system daemon.
+
+#+BEGIN_SRC shell
+  # guix-gbd -- guix guile build daemon
+  sudo groupadd --system guix-gbd
+  for i in $(seq -w 1 10); do
+    sudo useradd -g guix-gbd -G guix-gbd \
+      -d /var/empty -s $(which nologin) \
+      -c "Guix guile build daemon user $i" --system \
+      guix-gbd-$i
+  done
+#+END_SRC
+
+Second, set up new isolated directories for dev daemon's store, state, etc.
+
+#+BEGIN_SRC shell
+  GUIX-GBD-ROOT="/tmp/guix-gbd-root"
+  mkdir -p "$GUIX-GBD-ROOT/gnu/store"
+  mkdir -p "$GUIX-GBD-ROOT/var/guix/daemon-socket"
+  mkdir -p "$GUIX-GBD-ROOT/etc"
+#+END_SRC
+
+Since daemon's store, state, etc directories are hard coded into guix-daemon we need to rebuild the daemon pointing at new locations. The daemon recipe with new store, state, etc is in [[file:guix-gbd-fallback.pkg.scm]].
+
+With this we can start a fallback guix-daemon (see [[info:guix#Invoking guix-daemon][guix#Invoking guix-daemon]]) that should not interfier with system daemon.
+
+#+BEGIN_SRC shell
+  sudo $(guix time-machine -C ./env/guix/build-daemon/channels.scm -- build --file=./dev/guix-daemon/guix/build-daemon/guix-gbd-fallback.pkg.scm)/bin/guix-gbd-fallback
+#+END_SRC
+
+To talk to fallback daemon client commands should be wrapped into new env. E.g.:
+
+#+BEGIN_SRC shell
+GUIX_STATE_DIRECTORY="/tmp/guix-gbd-root/var" GUIX_STORE_DIRECTORY="/tmp/guix-gbd-root/gnu/store" NIX_STORE_DIR="/tmp/guix-gbd-root/gnu/store" GUIX_DAEMON_SOCKET="/tmp/guix-gbd-root/var/guix/daemon-socket/socket" guix build --no-substitutes ed
+#+END_SRC
+
+Note: Substitutes will not work as they are as well hard coded to /gnu/store path, but as an option one can patch binaries with [[https://gitlab.com/pjotrp/guix-relocate][guix-relocate]].
+
+* Proxy guix-daemon 
+
+Drafts for proxy daemon [[file:guix-gbd-proxy.cmd.scm]] and [[file:guix-gbd-proxy.pkg.scm]].. not working.
+
+* References
+Mostly taken from [[https://systemreboot.net/post/using-guix-despite-uncooperative-hpc-admins-the-ultimate-solution][Using Guix despite uncooperative HPC admins—the ultimate solution]]
