@@ -12,7 +12,6 @@
   #:use-module (guix git-download)                ; provides `git-fetch`, `git-reference`
   #:use-module (guix gexp))
 
-
 (define-public guix-gd-fallback
   (let* ((name "guix-gd-fallback")
          (guix-channel (find guix-channel? guix-gd-channels))
@@ -63,17 +62,27 @@
        ((#:phases phases)
         #~(modify-phases
            #$phases
-           (add-after 'install 'wrap-guix-daemon
+           (add-after 'install 'wrap-commands
                       (lambda* (#:key outputs #:allow-other-keys)
                         (let* ((bin (string-append #$output "/bin"))
                                ;; bash-minimal is already input for guix
                                (sh #$(file-append (this-package-input "bash-minimal") "/bin/sh"))
                                (socket #$(string-append guix-gd-root "/var/guix/daemon-socket/socket"))
+                               (store #$(string-append guix-gd-root "/gnu/store"))
+                               (state #$(string-append guix-gd-root "/let"))
                                (daemon (string-append bin "/guix-daemon"))
                                (wrapper (string-append bin "/" #$name "-daemon")))
+                          ;; wrap guix-daemon command
                           (with-output-to-file wrapper
                             (lambda ()
                               (format #t
                                       "#!~a\nexec ~a --listen=~a --build-users-group=~a \"$@\"\n"
                                       sh daemon socket #$guix-gd-group)))
-                          (chmod wrapper #o755)))))))))))
+                          (chmod wrapper #o755)
+                          ;; wrap guix command
+                          (wrap-program (string-append #$output "bin/guix")
+                                        `("GUIX_STATE_DIRECTORY" = (,state))
+                                        `("GUIX_STORE_DIRECTORY" = (,store))
+                                        `("NIX_STORE_DIR" = (,store))
+                                        `("GUIX_DAEMON_SOCKET" = (,socket)))))))))))))
+

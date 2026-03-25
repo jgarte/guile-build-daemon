@@ -25,3 +25,7 @@ GUIXSHELL=$(GUIXTM) -- shell --load-path="./env/dev" --load-path="./env/guix"
 start-daemon:
 	 ${GUIXSHELL} --expression='(@ (guix-gd packages) guix-gd-fallback)' -- sudo guix-gd-fallback-daemon
 
+
+dev-shell:
+	${GUIXSHELL} --expression='(@ (guix-gd packages) guix-gd-fallback)'
+
