@@ -1,6 +1,7 @@
 ;; SPDX-License-Identifier: GPL-3.0-or-later
 ;; SPDX-FileCopyrightText: 2026 Andrew Tropin
-(define-module (guix guix-gd channels))
+(define-module (guix-gd channels)
+  #:use-module (guix channels))
 
 (define-public guix-gd-channels
   (list (channel

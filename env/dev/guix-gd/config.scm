@@ -1,4 +1,4 @@
-(define-module (dev guix-gd config))
+(define-module (guix-gd config))
 
 ;; root directory for development and testing guile guix daemon
 ;; separates disk IO of dev daemon from current system daemon
