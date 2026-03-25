@@ -8,3 +8,7 @@ GUILE_DEV=${GUILE} -L ./src/guix-daemon -L ./tests/guix-daemon -L ./dev/guix-dae
 ares:
 	${GUILE_DEV} -c \
 	"((@ (ares server) run-nrepl-server))"
+GUIXBUILD=$(GUIXTM) -- build --load-path="./env/dev" --load-path="./env/guix"
+
+build-guix:
+	${GUIXBUILD} --expression='(@ (guix-gd packages) guix-gd-fallback)'
