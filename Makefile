@@ -12,3 +12,5 @@ GUIXBUILD=$(GUIXTM) -- build --load-path="./env/dev" --load-path="./env/guix"
 
 build-guix:
 	${GUIXBUILD} --expression='(@ (guix-gd packages) guix-gd-fallback)'
+dev-init:
+	sh ./env/dev/guix-gd/init-guix-root-and-users.sh
