@@ -51,10 +51,13 @@
                  #$(string-append "--with-channel-commit=" commit)
                  ;; remove default flags
                  (filter (lambda (flag)
-                           (not (any (lambda (p) (string-prefix? p flag))
-                                     '("--with-channel-commit="
-                                       "--sysconfdir="
-                                       "--localstatedir="))))
+                           (not (let loop ((prefixes '("--with-channel-commit="
+                                                       "--sysconfdir="
+                                                       "--localstatedir=")))
+                                  (cond
+                                   ((null? prefixes) #f)
+                                   ((string-prefix? (car prefixes) flag) #t)
+                                   (else (loop (cdr prefixes)))))))
                          #$flags)))
        ;; wrapper script for starting fallback guix daemon with new socket and build users
        ((#:phases phases)
