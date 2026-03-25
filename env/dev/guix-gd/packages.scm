@@ -1,6 +1,7 @@
 (define-module (guix-gd packages)
   #:use-module (guix-gd config)                   ; provides `guix-gd-root` and `guix-gd-group`
   #:use-module (guix-gd channels)                 ; provides `guix-gd-channels`
+  #:use-module (guix-gd build-utils)
   #:use-module (guix packages)                    ; provides `package`
   #:use-module (gnu packages package-management)  ; provides `guix` & `guix-daemon`
   #:use-module (gnu packages bash)                ; provides `bash-minimal`
@@ -37,9 +38,16 @@
        ((#:channels channels) #~(remove guix-channel? #$channels))
        ;; Skip tests to save time.
        ((#:tests? tests? #f) #f)
+       ;; ((#:imported-modules modules '()) `((guix-gd build-utils) ,@modules))
+       ;; ((#:modules modules '()) `((guix-gd build-utils) ,@modules))
        ;; Set store and state directories inside `guix-gd-root`
        ((#:configure-flags flags '())
         ;; TODO: put this logic into `modify-flags` function
+        ;; #~(modify-flags #$flags
+        ;;                 '(("--with-store-dir" . #$(string-append guix-gd-root "/gnu/store"))
+        ;;                   ("--localstatedir" . #$(string-append guix-gd-root "/var"))
+        ;;                   ("--sysconfdir" . #$(string-append guix-gd-root "/etc"))
+        ;;                   ("--with-channel-commit" . #$commit)))
         #~(cons* #$(string-append "--with-store-dir=" guix-gd-root "/gnu/store")
                  #$(string-append "--localstatedir=" guix-gd-root "/var")
                  #$(string-append "--sysconfdir=" guix-gd-root "/etc")
