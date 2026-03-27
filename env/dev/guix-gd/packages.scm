@@ -88,7 +88,7 @@
                                       sh daemon socket #$guix-gd-group)))
                           (chmod wrapper #o755)
                           ;; wrap guix command
-                          (wrap-program (string-append #$output "bin/guix")
+                          (wrap-program (string-append #$output "/bin/guix")
                                         `("GUIX_STATE_DIRECTORY" = (,state))
                                         `("GUIX_STORE_DIRECTORY" = (,store))
                                         `("NIX_STORE_DIR" = (,store))
