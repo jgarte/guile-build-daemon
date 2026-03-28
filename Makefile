@@ -1,31 +1,32 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 # SPDX-FileCopyrightText: 2026 Andrew Tropin
 
-GUIXTM=guix time-machine -C ./env/guix/guix-gd/channels.scm
-GUILE=$(GUIXTM) -- shell guile guile-ares-rs --pure --preserve=.*LANG.* -- guile
-GUILE_DEV=${GUILE} -L ./src/guix-daemon -L ./tests/guix-daemon -L ./dev/guix-daemon
+CHANNELS       := './env/guix/guix-gd/channels.scm'
+
+LOAD_PATH_CODE := --load-path='./src/guix-daemon' \
+                  --load-path='./tests/guix-daemon' \
+                  --load-path='./dev/guix-daemon'
+
+LOAD_PATH_ENV  := --load-path='./env/dev' \
+                  --load-path='./env/guix'
+
+GUIX_TM        := guix time-machine --channels=$(CHANNELS)
+
+GUILE          := $(GUIX_TM) -- shell guile guile-ares-rs --pure --preserve=.*LANG.* -- guile
+GUILE_DEV      := $(GUILE) $(LOAD_PATH_CODE)
+
+GUIX_DEV_PKG   := '(@ (guix-gd packages) guix-gd-fallback)'
+GUIX_DEV_SHELL := $(GUIX_TM) -- shell $(LOAD_PATH_ENV) --expression=$(GUIX_DEV_PKG)
+
 
 ares:
-	${GUILE_DEV} -c \
-	"((@ (ares server) run-nrepl-server))"
+	$(GUILE_DEV) -c "((@ (ares server) run-nrepl-server))"
 
+build-dev-guix:
+	$(GUIX_TM) -- build $(LOAD_PATH_ENV) --expression=$(GUIX_DEV_PKG)
 
-GUIXBUILD=$(GUIXTM) -- build --load-path="./env/dev" --load-path="./env/guix"
-
-build-guix:
-	${GUIXBUILD} --expression='(@ (guix-gd packages) guix-gd-fallback)'
-
-
-dev-init:
+init-dev-guix:
 	sh ./env/dev/guix-gd/init-guix-root-and-users.sh
 
-
-GUIXSHELL=$(GUIXTM) -- shell --load-path="./env/dev" --load-path="./env/guix"
-
 start-daemon:
-	 ${GUIXSHELL} --expression='(@ (guix-gd packages) guix-gd-fallback)' -- sudo guix-gd-fallback-daemon
-
-
-dev-shell:
-	${GUIXSHELL} --expression='(@ (guix-gd packages) guix-gd-fallback)'
-
+	 $(GUIX_DEV_SHELL) -- sudo guix-gd-fallback-daemon
