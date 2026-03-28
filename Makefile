@@ -16,6 +16,7 @@ GUILE          := $(GUIX_TM) -- shell guile guile-ares-rs --pure --preserve=.*LA
 GUILE_DEV      := $(GUILE) $(LOAD_PATH_CODE)
 
 GUIX_DEV_PKG   := '(@ (guix-gd packages) guix-gd-fallback)'
+GUIX_DEV_OUT   := '/gnu/store/0vb03nxks58byg2wi1vcbfkm6z346yn6-guix-gd-fallback-1.5.0-c8985dd'
 GUIX_DEV_SHELL := $(GUIX_TM) -- shell $(LOAD_PATH_ENV) --expression=$(GUIX_DEV_PKG)
 
 
@@ -30,3 +31,10 @@ init-dev-guix:
 
 start-daemon:
 	 $(GUIX_DEV_SHELL) -- sudo guix-gd-fallback-daemon
+
+# This target prints the path and checks if it matches a "known good" hash
+check-dev-guix:
+	@echo "Checking Dev Guix reproducibility..."
+	@STORE_PATH=$$($(GUIX_TM) -- build $(LOAD_PATH_ENV) --expression=$(GUIX_DEV_PKG)); \
+	echo "Result: $$STORE_PATH"; \
+	diff <(echo $(GUIX_DEV_OUT)) <(echo $$STORE_PATH) || (echo "FAILED: Path mismatch!" && exit 1);
