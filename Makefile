@@ -32,6 +32,8 @@ build-dev-guix:
 init-dev-guix-as-root:
 	sudo GUILE_LOAD_PATH=$(GUILE_LOAD_PATH_DEV) sh ./env/dev/guix-gd/init-guix-as-root.sh
 
+init-dev-guix-unprivileged:
+	sudo GUILE_LOAD_PATH=$(GUILE_LOAD_PATH_DEV) sh ./env/dev/guix-gd/init-guix-unprivileged.sh
 
 start-daemon:
 	 $(GUIX_DEV_SHELL) -- sudo guix-gd-fallback-daemon

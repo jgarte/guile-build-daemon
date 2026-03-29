@@ -11,3 +11,6 @@
 ;; group for build users for dev guix guile daemon
 ;; also a prefix name for these build users names
 (define-public guix-gd-group "guix-gd-build")
+
+;; group name and user name for unprivileged daemon
+(define-public guix-gd-user "guix-gd-daemon")
