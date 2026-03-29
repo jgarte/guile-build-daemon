@@ -79,14 +79,23 @@
                                (store #$(string-append guix-gd-root "/gnu/store"))
                                (state #$(string-append guix-gd-root "/let"))
                                (daemon (string-append bin "/guix-daemon"))
-                               (wrapper (string-append bin "/" #$name "-daemon")))
+                               (wrapper-as-root (string-append bin "/" #$name "-daemon-as-root"))
+                               (wrapper-unprivileged (string-append bin "/" #$name "-daemon-unprivileged")))
                           ;; wrap guix-daemon command
-                          (with-output-to-file wrapper
+                          (with-output-to-file wrapper-as-root
                             (lambda ()
                               (format #t
                                       "#!~a\nexec ~a --listen=~a --build-users-group=~a \"$@\"\n"
                                       sh daemon socket #$guix-gd-group)))
-                          (chmod wrapper #o755)
+                          (chmod wrapper-as-root #o755)
+                          ;; when running as unprivileged with `--build-users-group` flag
+                          ;; it attempts to do root stuff
+                          (with-output-to-file wrapper-unprivileged
+                            (lambda ()
+                              (format #t
+                                      "#!~a\nexec ~a --listen=~a \"$@\"\n"
+                                      sh daemon socket)))
+                          (chmod wrapper-unprivileged #o755)
                           ;; wrap guix command
                           (wrap-program (string-append #$output "/bin/guix")
                                         `("GUIX_STATE_DIRECTORY" = (,state))
