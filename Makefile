@@ -37,7 +37,7 @@ ares:
 	$(GUILE_DEV) -c "((@ (ares server) run-nrepl-server))"
 
 build-dev-guix:
-	$(GUIX_TM) -- build $(LOAD_PATH_ENV) --expression=$(GUIX_DEV_PKG)
+	$(GUIX_TM) -- build $(LOAD_PATH_ENV) --no-grafts --expression=$(GUIX_DEV_PKG)
 
 init-dev-guix-as-root:
 	sudo GUILE_LOAD_PATH=$(GUILE_LOAD_PATH_DEV) sh ./env/dev/guix-gd/init-guix-as-root.sh

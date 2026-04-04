@@ -70,7 +70,10 @@
        ((#:phases phases)
         #~(modify-phases
            #$phases
-           (add-after 'install 'wrap-commands
+           ;; if we use (add-after 'install 'wrap-commands) it will be applied before
+           ;; original (add-after 'install 'wrap-program) which effects will silently do nothing
+           ;; TODO: maybe add some warnings if (add-after 'install 'wrap-program) fails to upstream guix
+           (add-after 'wrap-program 'wrap-commands
                       (lambda* (#:key outputs #:allow-other-keys)
                         (let* ((bin (string-append #$output "/bin"))
                                ;; bash-minimal is already input for guix
