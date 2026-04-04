@@ -3,9 +3,9 @@
 
 CHANNELS            := './env/guix/guix-gd/channels.scm'
 
-LOAD_PATH_CODE      := --load-path='./src/guix-daemon' \
-                       --load-path='./tests/guix-daemon' \
-                       --load-path='./dev/guix-daemon'
+LOAD_PATH_CODE      := -L './src/guix-daemon' \
+                       -L './tests/guix-daemon' \
+                       -L './dev/guix-daemon'
 
 LOAD_PATH_ENV       := --load-path='./env/dev' \
                        --load-path='./env/guix'
