@@ -3,19 +3,18 @@
 
 CHANNELS            := './env/guix/guix-gd/channels.scm'
 
-LOAD_PATH_CODE      := -L './src/guix-daemon' \
-                       -L './tests/guix-daemon' \
-                       -L './dev/guix-daemon'
+GUIX_TM             := guix time-machine --channels=$(CHANNELS)
 
-LOAD_PATH_ENV       := --load-path='./env/dev' \
+GUILE_DEV           := $(GUIX_TM) \
+                       -- shell guile guile-ares-rs --pure --preserve=.*LANG.* \
+                       -- guile -L './src/guix-daemon' \
+                                -L './tests/guix-daemon' \
+                                -L './dev/guix-daemon'
+
+GUIX_LOAD_PATH_ENV  := --load-path='./env/dev' \
                        --load-path='./env/guix'
 
 GUILE_LOAD_PATH_DEV := "$$(cd ./env/dev && pwd):$$GUILE_LOAD_PATH"
-
-GUIX_TM             := guix time-machine --channels=$(CHANNELS)
-
-GUILE               := $(GUIX_TM) -- shell guile guile-ares-rs --pure --preserve=.*LANG.* -- guile
-GUILE_DEV           := $(GUILE) $(LOAD_PATH_CODE)
 
 GUIX_DEV_USER       := GUILE_LOAD_PATH=$(GUILE_LOAD_PATH_DEV) \
                        guile -c "(display (@ (guix-gd config) guix-gd-user))"
@@ -26,7 +25,7 @@ GUIX_DEV_OUT        := '/gnu/store/dp204ijisfl4mm2vl7dxq866hx3v8fmh-guix-gd-fall
 
 
 # shell with dev guix daemon available
-GUIX_DEV_SHELL      := $(GUIX_TM) -- shell $(LOAD_PATH_ENV) --expression=$(GUIX_DEV_PKG)
+GUIX_DEV_SHELL      := $(GUIX_TM) -- shell $(GUIX_LOAD_PATH_ENV) --expression=$(GUIX_DEV_PKG)
 
 # for tests
 STAGE0_POSIX_PKG    := "(@@ (gnu packages commencement) stage0-posix)"
@@ -37,7 +36,7 @@ ares:
 	$(GUILE_DEV) -c "((@ (ares server) run-nrepl-server))"
 
 build-dev-guix:
-	$(GUIX_TM) -- build $(LOAD_PATH_ENV) --no-grafts --expression=$(GUIX_DEV_PKG)
+	$(GUIX_TM) -- build $(GUIX_LOAD_PATH_ENV) --no-grafts --expression=$(GUIX_DEV_PKG)
 
 init-dev-guix-as-root:
 	sudo GUILE_LOAD_PATH=$(GUILE_LOAD_PATH_DEV) sh ./env/dev/guix-gd/init-guix-as-root.sh
@@ -60,7 +59,7 @@ dev-shell:
 # This target prints the path and checks if it matches a "known good" hash
 check-dev-guix-build:
 	@echo "Checking Dev Guix reproducibility..."
-	@STORE_PATH=$$($(GUIX_TM) -- build $(LOAD_PATH_ENV) --expression=$(GUIX_DEV_PKG)); \
+	@STORE_PATH=$$($(GUIX_TM) -- build $(GUIX_LOAD_PATH_ENV) --expression=$(GUIX_DEV_PKG)); \
 	echo "Result: $$STORE_PATH"; \
 	diff <(echo $(GUIX_DEV_OUT)) <(echo $$STORE_PATH) || (echo "FAILED: Path mismatch!" && exit 1);
 
