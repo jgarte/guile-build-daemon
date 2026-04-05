@@ -16,8 +16,13 @@ GUIX_LOAD_PATH_ENV  := --load-path='./env/dev' \
 
 GUILE_LOAD_PATH_DEV := "$$(cd ./env/dev && pwd):$$GUILE_LOAD_PATH"
 
-GUIX_DEV_USER       := GUILE_LOAD_PATH=$(GUILE_LOAD_PATH_DEV) \
+GUIX_GD_USER        := GUILE_LOAD_PATH=$(GUILE_LOAD_PATH_DEV) \
                        guile -c "(display (@ (guix-gd config) guix-gd-user))"
+GUIX_GD_GROUP       := GUILE_LOAD_PATH=$(GUILE_LOAD_PATH_DEV) \
+                       guile -c "(display (@ (guix-gd config) guix-gd-group))"
+GUIX_GD_ROOT        := GUILE_LOAD_PATH=$(GUILE_LOAD_PATH_DEV) \
+                       guile -c "(display (@ (guix-gd config) guix-gd-root))"
+
 GUIX_DEV_PKG        := "(@ (guix-gd packages) guix-gd-fallback)"
 # this should be reproducible with the same the channels.scm and config.scm
 # commit: c8985dd911c4c8e2948c888df8b54c9bc317625e
@@ -39,17 +44,21 @@ build-dev-guix:
 	$(GUIX_TM) -- build $(GUIX_LOAD_PATH_ENV) --no-grafts --expression=$(GUIX_DEV_PKG)
 
 init-dev-guix-as-root:
-	sudo GUILE_LOAD_PATH=$(GUILE_LOAD_PATH_DEV) sh ./env/dev/guix-gd/init-guix-as-root.sh
+	sudo GUIX_GD_ROOT=$$($(GUIX_GD_ROOT)) \
+	     GUIX_GD_GROUP=$$($(GUIX_GD_GROUP)) \
+	sh ./env/dev/guix-gd/init-guix-as-root.sh
 
 init-dev-guix-unprivileged:
-	sudo GUILE_LOAD_PATH=$(GUILE_LOAD_PATH_DEV) sh ./env/dev/guix-gd/init-guix-unprivileged.sh
+	sudo GUIX_GD_ROOT=$$($(GUIX_GD_ROOT)) \
+	     GUIX_GD_USER=$$($(GUIX_GD_USER)) \
+	sh ./env/dev/guix-gd/init-guix-unprivileged.sh
 
 start-daemon-as-root:
 	$(GUIX_DEV_SHELL) -- sudo guix-gd-fallback-daemon-as-root
 
 # when running as unprivileged with `--build-users-group` flag it attempts to do root stuff
 start-daemon-unprivileged:
-	$(GUIX_DEV_SHELL) -- sudo -u $$($(GUIX_DEV_USER)) guix-gd-fallback-daemon-unprivileged
+	$(GUIX_DEV_SHELL) -- sudo -u $$($(GUIX_GD_USER)) guix-gd-fallback-daemon-unprivileged
 
 # shell with dev guix daemon available (isolated socket, store, var, etc..)
 dev-shell:

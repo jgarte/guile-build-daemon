@@ -1,11 +1,7 @@
-# Load variables from 'config.scm' module
-GUIX_GD_ROOT=$(guile -c "(display (@ (guix-gd config) guix-gd-root))")
-GUIX_GD_GROUP=$(guile -c "(display (@ (guix-gd config) guix-gd-group))")
-
 echo "------------------------------------------"
 echo "Configuration for dev guixdaemon as root:"
 echo "  GUIX_GD_ROOT: $GUIX_GD_ROOT"
-echo "  GUIX_GD_USER: $GUIX_GD_USER"
+echo "  GUIX_GD_GROUP: $GUIX_GD_GROUP "
 echo "------------------------------------------"
 
 printf "Init directories, group/user(s) for dev guixdaemon as root? [y/N]: "

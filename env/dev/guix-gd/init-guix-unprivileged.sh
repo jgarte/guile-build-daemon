@@ -1,7 +1,3 @@
-# Load variables from 'config.scm' module
-GUIX_GD_ROOT=$(guile -c "(display (@ (guix-gd config) guix-gd-root))")
-GUIX_GD_USER=$(guile -c "(display (@ (guix-gd config) guix-gd-user))")
-
 echo "------------------------------------------"
 echo "Configuration for unprivileged dev guixdaemon:"
 echo "  GUIX_GD_ROOT: $GUIX_GD_ROOT"
