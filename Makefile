@@ -22,6 +22,9 @@ GUIX_GD_GROUP       := GUILE_LOAD_PATH=$(GUILE_LOAD_PATH_DEV) \
                        guile -c "(display (@ (guix-gd config) guix-gd-group))"
 GUIX_GD_ROOT        := GUILE_LOAD_PATH=$(GUILE_LOAD_PATH_DEV) \
                        guile -c "(display (@ (guix-gd config) guix-gd-root))"
+GUIX_GD_SOCKET      := GUILE_LOAD_PATH=$(GUILE_LOAD_PATH_DEV) \
+                       guile -c "(display (@ (guix-gd config) guix-gd-socket))"
+
 
 GUIX_DEV_PKG        := "(@ (guix-gd packages) guix-gd-fallback)"
 # this should be reproducible with the same the channels.scm and config.scm

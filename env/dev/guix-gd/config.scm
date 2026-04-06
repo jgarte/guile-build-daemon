@@ -14,3 +14,5 @@
 
 ;; group name and user name for unprivileged daemon
 (define-public guix-gd-user "guix-gd-daemon")
+
+(define-public guix-gd-socket "/tmp/guix-gd-daemon.sock")
