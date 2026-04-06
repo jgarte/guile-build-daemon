@@ -25,15 +25,18 @@ GUIX_GD_ROOT        := GUILE_LOAD_PATH=$(GUILE_LOAD_PATH_DEV) \
 GUIX_GD_SOCKET      := GUILE_LOAD_PATH=$(GUILE_LOAD_PATH_DEV) \
                        guile -c "(display (@ (guix-gd config) guix-gd-socket))"
 
+GUIX_DAEMON_DEV_PKG := "(@ (guix-gd packages) guix-gd-daemon)"
+# /gnu/store/41v5i2lan6h4dgbjxql26i6jk3yyfzs6-guix-gd-daemon-0.1.0
 
 GUIX_DEV_PKG        := "(@ (guix-gd packages) guix-gd-fallback)"
 # this should be reproducible with the same the channels.scm and config.scm
 # commit: c8985dd911c4c8e2948c888df8b54c9bc317625e
 GUIX_DEV_OUT        := '/gnu/store/dp204ijisfl4mm2vl7dxq866hx3v8fmh-guix-gd-fallback-1.5.0-c8985dd'
 
-
 # shell with dev guix daemon available
-GUIX_DEV_SHELL      := $(GUIX_TM) -- shell $(GUIX_LOAD_PATH_ENV) --expression=$(GUIX_DEV_PKG)
+GUIX_DEV_SHELL      := $(GUIX_TM) -- shell $(GUIX_LOAD_PATH_ENV) \
+                                           --expression=$(GUIX_DEV_PKG) \
+                                           --expression=$(GUIX_DAEMON_DEV_PKG)
 
 # for tests
 STAGE0_POSIX_PKG    := "(@@ (gnu packages commencement) stage0-posix)"
@@ -46,6 +49,9 @@ ares:
 build-dev-guix:
 	$(GUIX_TM) -- build $(GUIX_LOAD_PATH_ENV) --no-grafts --expression=$(GUIX_DEV_PKG)
 
+build-dev-guix-gd-daemon:
+	$(GUIX_TM) -- build $(GUIX_LOAD_PATH_ENV) --no-grafts --expression=$(GUIX_DAEMON_DEV_PKG)
+
 init-dev-guix-as-root:
 	sudo GUIX_GD_ROOT=$$($(GUIX_GD_ROOT)) \
 	     GUIX_GD_GROUP=$$($(GUIX_GD_GROUP)) \
@@ -55,6 +61,9 @@ init-dev-guix-unprivileged:
 	sudo GUIX_GD_ROOT=$$($(GUIX_GD_ROOT)) \
 	     GUIX_GD_USER=$$($(GUIX_GD_USER)) \
 	sh ./env/dev/guix-gd/init-guix-unprivileged.sh
+
+start-guix-gd-daemon:
+	$(GUIX_DEV_SHELL) -- guix-gd-daemon $$($(GUIX_GD_SOCKET))
 
 start-daemon-as-root:
 	$(GUIX_DEV_SHELL) -- sudo guix-gd-fallback-daemon-as-root
