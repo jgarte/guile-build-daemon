@@ -16,14 +16,8 @@ GUIX_LOAD_PATH_ENV  := --load-path='./env/dev' \
 
 GUILE_LOAD_PATH_DEV := "$$(cd ./env/dev && pwd):$$GUILE_LOAD_PATH"
 
-GUIX_GD_USER        := GUILE_LOAD_PATH=$(GUILE_LOAD_PATH_DEV) \
-                       guile -c "(display (@ (guix-gd config) guix-gd-user))"
-GUIX_GD_GROUP       := GUILE_LOAD_PATH=$(GUILE_LOAD_PATH_DEV) \
-                       guile -c "(display (@ (guix-gd config) guix-gd-group))"
-GUIX_GD_ROOT        := GUILE_LOAD_PATH=$(GUILE_LOAD_PATH_DEV) \
-                       guile -c "(display (@ (guix-gd config) guix-gd-root))"
-GUIX_GD_SOCKET      := GUILE_LOAD_PATH=$(GUILE_LOAD_PATH_DEV) \
-                       guile -c "(display (@ (guix-gd config) guix-gd-socket))"
+CONFIG_DEV_ENV      := GUILE_LOAD_PATH=$(GUILE_LOAD_PATH_DEV) \
+                        guile -c "(display ((@ (guix-gd config) config-dev-env)))"
 
 GUIX_DAEMON_DEV_PKG := "(@ (guix-gd packages) guix-gd-daemon)"
 # /gnu/store/41v5i2lan6h4dgbjxql26i6jk3yyfzs6-guix-gd-daemon-0.1.0
@@ -53,14 +47,12 @@ build-dev-guix-gd-daemon:
 	$(GUIX_TM) -- build $(GUIX_LOAD_PATH_ENV) --no-grafts --expression=$(GUIX_DAEMON_DEV_PKG)
 
 init-dev-guix-as-root:
-	sudo GUIX_GD_ROOT=$$($(GUIX_GD_ROOT)) \
-	     GUIX_GD_GROUP=$$($(GUIX_GD_GROUP)) \
-	sh ./env/dev/guix-gd/init-guix-as-root.sh
+	sudo $$($(CONFIG_DEV_ENV)) \
+	     sh ./env/dev/guix-gd/init-guix-as-root.sh
 
 init-dev-guix-unprivileged:
-	sudo GUIX_GD_ROOT=$$($(GUIX_GD_ROOT)) \
-	     GUIX_GD_USER=$$($(GUIX_GD_USER)) \
-	sh ./env/dev/guix-gd/init-guix-unprivileged.sh
+	sudo $$($(CONFIG_DEV_ENV)) \
+	     sh ./env/dev/guix-gd/init-guix-unprivileged.sh
 
 start-guix-gd-daemon:
 	$(GUIX_DEV_SHELL) -- guix-gd-daemon $$($(GUIX_GD_SOCKET))
