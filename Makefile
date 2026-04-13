@@ -64,6 +64,14 @@ start-daemon-as-root:
 start-daemon-unprivileged:
 	$(GUIX_DEV_SHELL) -- sudo -u $$($(GUIX_GD_USER)) guix-gd-fallback-daemon-unprivileged
 
+start-daemon-overlayfs:
+	sudo $$($(CONFIG_DEV_ENV)) \
+	./env/dev/guix-gd/start-daemon-overlay.sh \
+	      --disable-deduplication
+
+dev-shell-overlayfs:
+	sudo $$($(CONFIG_DEV_ENV)) \
+	./env/dev/guix-gd/shell-overlay.sh
 # shell with dev guix daemon available (isolated socket, store, var, etc..)
 dev-shell:
 	$(GUIX_DEV_SHELL)
