@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
-set -euo pipefail
-# -e: Exit immediately if any command exits with a non-zero status (i.e., an error occurs).
-# -u: Treat unset variables as an error and exit immediately. This helps catch typos or missing variables.
-# -o pipefail: Ensures that the script fails if any command in a pipeline fails (not just the last one).
+# turn Bash into a "fail-fast" environment to prevent silent failures:
+set -o errexit     # -e: Exit immediately if a command exits with a non-zero status
+set -o nounset     # -u: Treat unset variables as an error and exit immediately
+set -o pipefail    #      Return status of the last command in the pipe that failed
 
+# Set some defaults to script will run regardless current env:
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 GUIX_GD_DEV_ROOT="${GUIX_GD_DEV_ROOT:-${SCRIPT_DIR}/.dev-root}"
 GUIX_GD_STORE_UPPER_DIR="${GUIX_GD_STORE_UPPER_DIR:-${GUIX_GD_DEV_ROOT}/gnu/store-upper}"
