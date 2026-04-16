@@ -59,29 +59,7 @@ case "$CONFIRM" in
              GUIX_GD_DAEMON_GROUP="${GUIX_GD_DAEMON_GROUP}" \
              GUIX_GD_DAEMON_BIN="${GUIX_GD_DAEMON_BIN}" \
              GUIX_GD_GROUP="${GUIX_GD_DAEMON_GROUP}" \
-             bash -c '
-  set -euo pipefail
-
-  # Prevent mount propagation back to host namespace.
-  mount --make-rprivate /
-
-  mount --bind "$GUIX_GD_VAR_GUIX_DIR" /var/guix
-  mount --bind "$GUIX_GD_ETC_GUIX_DIR" /etc/guix
-
-  # Keep host store available as overlay lowerdir, then replace /gnu/store with a writable overlay whose upper/work dirs are local.
-  # Overlayfs requires that the ~lowerdir~ and the overlay mount point (~/gnu/store~) are *not* the same directory.
-  mkdir -p /run/guix-gd-host-store
-  mount --bind /gnu/store /run/guix-gd-host-store
-  mount -t overlay overlay \
-    -o "lowerdir=/run/guix-gd-host-store,upperdir=$GUIX_GD_STORE_UPPER_DIR,workdir=$GUIX_GD_STORE_WORK_DIR" \
-    /gnu/store
-
-  # Make merged store writable for daemon user (metadata copy-up only).
-  chown "$GUIX_GD_DAEMON_USER:$GUIX_GD_DAEMON_GROUP" /gnu/store || true
-  chmod 1775 /gnu/store || true
-
-  exec sudo -u "$GUIX_GD_DAEMON_USER" -- "$GUIX_GD_DAEMON_BIN" --build-users-group="$GUIX_GD_GROUP" "$@"
-' bash "$@"
+             bash ${SCRIPT_DIR}/init-overlayfs.sh "$@"
         ;;
     *)
         echo "Aborting."
