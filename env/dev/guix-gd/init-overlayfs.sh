@@ -23,7 +23,7 @@ mount --make-rprivate /
 # Bind the per-dev-root guix dirs into the namespace's expected locations.
 # --bind: perform a bind mount (make the same directory appear at a different location).
 mount --bind "$GUIX_GD_VAR_GUIX_DIR" /var/guix
-mount --bind "$GUIX_GD_ETC_GUIX_DIR" /etc/guix
+# mount --bind "$GUIX_GD_ETC_GUIX_DIR" /etc/guix
 
 # Keep host store available as overlay lowerdir, then replace /gnu/store with a writable overlay whose upper/work dirs are local.
 # Overlayfs requires that the lowerdir and the overlay mount point (/gnu/store) are NOT the same directory.
@@ -37,6 +37,10 @@ mount --types overlay overlay \
 # Make merged store writable for daemon user (metadata copy-up only).
 chown "$GUIX_GD_DAEMON_USER:$GUIX_GD_DAEMON_GROUP" /gnu/store || true
 chmod 1775 /gnu/store || true
+
+
+
+
 
 # Start a background session leader to hold the mount namespace alive.
 # Explanation:
