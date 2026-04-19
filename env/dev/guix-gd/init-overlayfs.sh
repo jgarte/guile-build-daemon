@@ -14,7 +14,7 @@ if [ "$CURRENT_NS" == "$INIT_NS" ]; then
     exit 1
 fi
 
-echo "Initializing overlayfs in mount namespace $CURRENT_NS..."
+echo "Initializing /gnu/guix overlayfs in mount namespace $CURRENT_NS..."
 
 # Prevent mount propagation back to host namespace.
 mount --make-rprivate /
@@ -34,6 +34,6 @@ mount -t overlay overlay \
 chown "$GUIX_GD_DAEMON_USER:$GUIX_GD_DAEMON_GROUP" /gnu/store || true
 chmod 1775 /gnu/store || true
 
-# setsid sh -c 'exec tail -f /dev/null' >/dev/null 2>&1 &
+setsid sh -c 'exec tail -f /dev/null' >/dev/null 2>&1 &
 
-exec sudo -u "$GUIX_GD_DAEMON_USER" -- "$GUIX_GD_DAEMON_BIN" --build-users-group="$GUIX_GD_GROUP" "$@"
+

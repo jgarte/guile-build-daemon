@@ -59,7 +59,7 @@ case "$CONFIRM" in
              GUIX_GD_DAEMON_GROUP="${GUIX_GD_DAEMON_GROUP}" \
              GUIX_GD_DAEMON_BIN="${GUIX_GD_DAEMON_BIN}" \
              GUIX_GD_GROUP="${GUIX_GD_DAEMON_GROUP}" \
-             bash ${SCRIPT_DIR}/init-overlayfs.sh "$@"
+             bash ${SCRIPT_DIR}/init-overlayfs.sh
         ;;
     *)
         echo "Aborting."
