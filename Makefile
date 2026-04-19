@@ -46,32 +46,7 @@ build-dev-guix:
 build-dev-guix-gd-daemon:
 	$(GUIX_TM) -- build $(GUIX_LOAD_PATH_ENV) --no-grafts --expression=$(GUIX_DAEMON_DEV_PKG)
 
-init-dev-guix-as-root:
-	sudo $$($(CONFIG_DEV_ENV)) \
-	     sh ./env/dev/guix-gd/init-guix-as-root.sh
 
-init-dev-guix-unprivileged:
-	sudo $$($(CONFIG_DEV_ENV)) \
-	     sh ./env/dev/guix-gd/init-guix-unprivileged.sh
-
-start-guix-gd-daemon:
-	$(GUIX_DEV_SHELL) -- guix-gd-daemon $$($(GUIX_GD_SOCKET))
-
-start-daemon-as-root:
-	$(GUIX_DEV_SHELL) -- sudo guix-gd-fallback-daemon-as-root
-
-# when running as unprivileged with `--build-users-group` flag it attempts to do root stuff
-start-daemon-unprivileged:
-	$(GUIX_DEV_SHELL) -- sudo -u $$($(GUIX_GD_USER)) guix-gd-fallback-daemon-unprivileged
-
-start-daemon-overlayfs:
-	sudo $$($(CONFIG_DEV_ENV)) \
-	./env/dev/guix-gd/start-daemon-overlay.sh \
-	      --disable-deduplication
-
-dev-shell-overlayfs:
-	sudo $$($(CONFIG_DEV_ENV)) \
-	./env/dev/guix-gd/shell-overlay.sh
 # shell with dev guix daemon available (isolated socket, store, var, etc..)
 dev-shell:
 	$(GUIX_DEV_SHELL)
