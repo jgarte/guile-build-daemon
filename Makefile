@@ -50,6 +50,10 @@ build-dev-guix-gd-daemon:
 start-container-overlayfs:
 	sudo $$($(CONFIG_DEV_ENV)) \
 	./env/dev/guix-gd/contain-overlayfs.sh
+init-dev-build-users:
+	sudo $$($(CONFIG_DEV_ENV)) \
+	sh ./env/dev/guix-gd/init-dev-build-users.sh
+
 
 
 # shell with dev guix daemon available (isolated socket, store, var, etc..)
