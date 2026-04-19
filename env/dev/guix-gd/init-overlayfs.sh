@@ -46,5 +46,13 @@ chmod 1775 /gnu/store || true
 # - We deliberately do NOT use `setsid --fork` (or `-f`) because that causes `setsid` to fork and return; then `$!` would not reliably refer to the final daemon PID.
 # - Redirect stdout/stderr to /dev/null to avoid creating `nohup.out` and to keep the process silent.
 setsid sh -c 'exec nohup tail -f /dev/null >/dev/null 2>&1' >/dev/null 2>&1 &
+PID=$!
+
+# Save PID to a known location so external tools can nsenter into this mount namespace later.
+# Prefer the provided GUIX_GD_VAR_GUIX_DIR; fall back to /run if not set.
+PID_FILE="${GUIX_GD_VAR_GUIX_DIR:-/run}/guix-gd-overlayfs.pid"
+printf '%s\n' "$PID" > "$PID_FILE"
+chmod 0644 "$PID_FILE"
+echo "OverlayFS init session PID: $PID (saved to $PID_FILE)"
 
 
