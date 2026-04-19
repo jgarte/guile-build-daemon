@@ -47,12 +47,13 @@ build-dev-guix-gd-daemon:
 	$(GUIX_TM) -- build $(GUIX_LOAD_PATH_ENV) --no-grafts --expression=$(GUIX_DAEMON_DEV_PKG)
 
 
-start-container-overlayfs:
-	sudo $$($(CONFIG_DEV_ENV)) \
-	./env/dev/guix-gd/contain-overlayfs.sh
 init-dev-build-users:
 	sudo $$($(CONFIG_DEV_ENV)) \
 	sh ./env/dev/guix-gd/init-dev-build-users.sh
+
+start-container:
+	sudo $$($(CONFIG_DEV_ENV)) \
+	sh ./env/dev/guix-gd/contain-overlayfs.sh
 
 start-daemon:
 	sudo $$($(CONFIG_DEV_ENV)) \
