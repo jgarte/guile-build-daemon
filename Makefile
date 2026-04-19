@@ -54,6 +54,10 @@ init-dev-build-users:
 	sudo $$($(CONFIG_DEV_ENV)) \
 	sh ./env/dev/guix-gd/init-dev-build-users.sh
 
+start-daemon:
+	sudo $$($(CONFIG_DEV_ENV)) \
+	sh ./env/dev/guix-gd/start-daemon.sh
+
 
 kill-container:
 	sudo $$($(CONFIG_DEV_ENV)) \
