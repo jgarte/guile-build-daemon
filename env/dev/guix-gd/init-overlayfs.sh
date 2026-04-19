@@ -50,7 +50,7 @@ PID=$!
 
 # Save PID to a known location so external tools can nsenter into this mount namespace later.
 # Prefer the provided GUIX_GD_VAR_GUIX_DIR; fall back to /run if not set.
-PID_FILE="${GUIX_GD_VAR_GUIX_DIR:-/run}/guix-gd-overlayfs.pid"
+PID_FILE="${GUIX_GD_DEV_ROOT:-/run}/overlayfs-container.pid"
 printf '%s\n' "$PID" > "$PID_FILE"
 chmod 0644 "$PID_FILE"
 echo "OverlayFS init session PID: $PID (saved to $PID_FILE)"

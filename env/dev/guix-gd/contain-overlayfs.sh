@@ -51,6 +51,7 @@ case "$CONFIRM" in
         # Run in a private mount namespace so remaps disappear automatically when
         # daemon exits.
         exec unshare --mount --fork -- env \
+             GUIX_GD_DEV_ROOT="${GUIX_GD_DEV_ROOT}"
              GUIX_GD_STORE_UPPER_DIR="${GUIX_GD_STORE_UPPER_DIR}" \
              GUIX_GD_STORE_WORK_DIR="${GUIX_GD_STORE_WORK_DIR}" \
              GUIX_GD_VAR_GUIX_DIR="${GUIX_GD_VAR_GUIX_DIR}" \
