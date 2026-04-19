@@ -55,6 +55,10 @@ init-dev-build-users:
 	sh ./env/dev/guix-gd/init-dev-build-users.sh
 
 
+kill-container:
+	sudo $$($(CONFIG_DEV_ENV)) \
+	sh ./env/dev/guix-gd/kill-overlayfs.sh
+
 
 # shell with dev guix daemon available (isolated socket, store, var, etc..)
 dev-shell:
