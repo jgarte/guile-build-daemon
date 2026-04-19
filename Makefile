@@ -47,6 +47,11 @@ build-dev-guix-gd-daemon:
 	$(GUIX_TM) -- build $(GUIX_LOAD_PATH_ENV) --no-grafts --expression=$(GUIX_DAEMON_DEV_PKG)
 
 
+start-container-overlayfs:
+	sudo $$($(CONFIG_DEV_ENV)) \
+	./env/dev/guix-gd/contain-overlayfs.sh
+
+
 # shell with dev guix daemon available (isolated socket, store, var, etc..)
 dev-shell:
 	$(GUIX_DEV_SHELL)
