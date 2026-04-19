@@ -13,7 +13,7 @@ GUIX_GD_VAR_GUIX_DIR="${GUIX_GD_VAR_GUIX_DIR:-${GUIX_GD_DEV_ROOT}/var/guix}"
 GUIX_GD_ETC_GUIX_DIR="${GUIX_GD_ETC_GUIX_DIR:-${GUIX_GD_DEV_ROOT}/etc/guix}"
 GUIX_GD_DAEMON_USER="${GUIX_GD_DAEMON_USER:-root}"
 GUIX_GD_DAEMON_GROUP="${GUIX_GD_DAEMON_GROUP:-root}"
-GUIX_GD_GROUP="${GUIX_GD_DAEMON_GROUP:-guix-gd-build}"
+GUIX_GD_GROUP="${GUIX_GD_GROUP:-guix-gd-build}"
 GUIX_GD_DAEMON_BIN="${GUIX_GD_DAEMON_BIN:-guix-daemon}"
 
 # Ensure directories exist.
@@ -51,7 +51,7 @@ case "$CONFIRM" in
         # Run in a private mount namespace so remaps disappear automatically when
         # daemon exits.
         exec unshare --mount --fork -- env \
-             GUIX_GD_DEV_ROOT="${GUIX_GD_DEV_ROOT}"
+             GUIX_GD_DEV_ROOT="${GUIX_GD_DEV_ROOT}" \
              GUIX_GD_STORE_UPPER_DIR="${GUIX_GD_STORE_UPPER_DIR}" \
              GUIX_GD_STORE_WORK_DIR="${GUIX_GD_STORE_WORK_DIR}" \
              GUIX_GD_VAR_GUIX_DIR="${GUIX_GD_VAR_GUIX_DIR}" \
@@ -59,7 +59,7 @@ case "$CONFIRM" in
              GUIX_GD_DAEMON_USER="${GUIX_GD_DAEMON_USER}" \
              GUIX_GD_DAEMON_GROUP="${GUIX_GD_DAEMON_GROUP}" \
              GUIX_GD_DAEMON_BIN="${GUIX_GD_DAEMON_BIN}" \
-             GUIX_GD_GROUP="${GUIX_GD_DAEMON_GROUP}" \
+             GUIX_GD_GROUP="${GUIX_GD_GROUP}" \
              bash ${SCRIPT_DIR}/init-overlayfs.sh
         ;;
     *)
