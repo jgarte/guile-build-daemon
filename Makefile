@@ -58,6 +58,9 @@ start-daemon:
 	sudo $$($(CONFIG_DEV_ENV)) \
 	sh ./env/dev/guix-gd/start-daemon.sh
 
+start-shell:
+	sudo $$($(CONFIG_DEV_ENV)) \
+	sh ./env/dev/guix-gd/start-shell.sh
 
 kill-container:
 	sudo $$($(CONFIG_DEV_ENV)) \
