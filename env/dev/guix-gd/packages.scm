@@ -1,7 +1,6 @@
 (define-module (guix-gd packages)
   #:use-module (guix-gd config)                   ; provides `guix-gd-root` and `guix-gd-group`
   #:use-module (guix-gd channels)                 ; provides `guix-gd-channels`
-  #:use-module (guix-gd build-utils)
   #:use-module (guix packages)                    ; provides `package`
   #:use-module (gnu packages package-management)  ; provides `guix` & `guix-daemon`
   #:use-module (gnu packages bash)                ; provides `bash-minimal`
