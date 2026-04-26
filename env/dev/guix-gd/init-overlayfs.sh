@@ -24,7 +24,15 @@ mount --make-rprivate /
 
 # Bind the per-dev-root guix dirs into the namespace's expected locations.
 # --bind: perform a bind mount (make the same directory appear at a different location).
-# mount --bind "$GUIX_GD_VAR_GUIX_DIR" /var/guix
+mount --bind "$GUIX_GD_VAR_GUIX_DIR/gc.lock" /var/guix/gc.lock
+mount --bind "$GUIX_GD_VAR_GUIX_DIR/daemon-socket" /var/guix/daemon-socket
+mount --bind "$GUIX_GD_VAR_GUIX_DIR/db" /var/guix/db
+mount --bind "$GUIX_GD_VAR_GUIX_DIR/discover" /var/guix/discover
+mount --bind "$GUIX_GD_VAR_GUIX_DIR/gcroots" /var/guix/gcroots
+mount --bind "$GUIX_GD_VAR_GUIX_DIR/offload" /var/guix/offload
+mount --bind "$GUIX_GD_VAR_GUIX_DIR/substitute" /var/guix/substitute
+mount --bind "$GUIX_GD_VAR_GUIX_DIR/temproots" /var/guix/temproots
+
 # mount --bind "$GUIX_GD_ETC_GUIX_DIR" /etc/guix
 
 # Overlayfs requires that the lowerdir and the overlay mount point (/gnu/store) are NOT the same directory.
