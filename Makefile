@@ -20,6 +20,9 @@ CONFIG_DEV_ENV      := GUILE_LOAD_PATH=$(GUILE_LOAD_PATH_DEV) \
                         guile -c "(display ((@ (guix-gd config) config-dev-env)))"
 
 GUIX_DAEMON_DEV_PKG := "(@ (guix-gd packages) guix-gd-daemon)"
+GUIX_DAEMON_DEV     := $(GUIX_TM) -- build $(GUIX_LOAD_PATH_ENV) \
+                                     --no-grafts \
+                                     --expression=$(GUIX_DAEMON_DEV_PKG)
 # /gnu/store/41v5i2lan6h4dgbjxql26i6jk3yyfzs6-guix-gd-daemon-0.1.0
 
 GUIX_DEV_PKG        := "(@ (guix-gd packages) guix-gd-fallback)"
@@ -44,7 +47,7 @@ build-dev-guix:
 	$(GUIX_TM) -- build $(GUIX_LOAD_PATH_ENV) --no-grafts --expression=$(GUIX_DEV_PKG)
 
 build-dev-guix-gd-daemon:
-	$(GUIX_TM) -- build $(GUIX_LOAD_PATH_ENV) --no-grafts --expression=$(GUIX_DAEMON_DEV_PKG)
+	$(GUIX_DAEMON_DEV)
 
 
 init-dev-build-users:
@@ -55,9 +58,14 @@ start-container:
 	sudo $$($(CONFIG_DEV_ENV)) \
 	sh ./env/dev/guix-gd/contain-overlayfs.sh
 
-start-daemon:
+start-fallback-daemon:
 	sudo $$($(CONFIG_DEV_ENV)) \
 	sh ./env/dev/guix-gd/start-daemon.sh
+
+start-daemon:
+	$$($(GUIX_DAEMON_DEV))/bin/guix-gd-daemon \
+	      /guix-gd-overlayfs/var/guix/daemon-socket/socket \
+	      /tmp/guix-gd-fallback.sock
 
 start-shell:
 	sudo $$($(CONFIG_DEV_ENV)) \
