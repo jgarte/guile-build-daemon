@@ -20,14 +20,17 @@ echo "Initializing /gnu/guix overlayfs in mount namespace $CURRENT_NS..."
 # --make-rprivate: recursively mark `/` as private so mounts created here are not propagated back to the original (host) mount namespace.
 mount --make-rprivate /
 
+
+
 # Bind the per-dev-root guix dirs into the namespace's expected locations.
 # --bind: perform a bind mount (make the same directory appear at a different location).
-mount --bind "$GUIX_GD_VAR_GUIX_DIR" /var/guix
+# mount --bind "$GUIX_GD_VAR_GUIX_DIR" /var/guix
 # mount --bind "$GUIX_GD_ETC_GUIX_DIR" /etc/guix
 
-# Keep host store available as overlay lowerdir, then replace /gnu/store with a writable overlay whose upper/work dirs are local.
 # Overlayfs requires that the lowerdir and the overlay mount point (/gnu/store) are NOT the same directory.
 mkdir --parents /run/guix-gd-host-store
+# Keep host store available as overlay lowerdir, then replace /gnu/store with a writable overlay whose upper/work dirs are local.
+
 mount --bind /gnu/store /run/guix-gd-host-store
 # Use long-form options for clarity: --types and --options
 mount --types overlay overlay \

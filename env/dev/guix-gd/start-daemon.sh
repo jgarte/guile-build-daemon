@@ -13,7 +13,7 @@ PIDFILE="${GUIX_GD_DEV_ROOT}/overlayfs-container.pid"
 GUIX_GD_DAEMON_BIN="${GUIX_GD_DAEMON_BIN:-guix-daemon}"
 # extra args to guix-daemon
 # to avoid hard links...
-GUIX_GD_DAEMON_ARGS="${GUIX_GD_DAEMON_ARGS:---disable-deduplication}"
+GUIX_GD_DAEMON_ARGS="${GUIX_GD_DAEMON_ARGS:---disable-deduplication --listen=/tmp/guix-gd-fallback.sock}"
 GUIX_GD_GROUP="${GUIX_GD_GROUP:-guix-gd-build}"
 
 # Validate pidfile exists

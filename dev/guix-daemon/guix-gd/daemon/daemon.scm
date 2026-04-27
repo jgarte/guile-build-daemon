@@ -1,353 +1,950 @@
-;;; Minimal Guix guile daemon listener.
+;;; Guix daemon relay and protocol logger.
+;;;
+;;; This module no longer pretends to be a daemon.  Instead, it listens on one
+;;; UNIX socket, connects to a fallback `guix-daemon` on another socket, and
+;;; relays bytes in both directions.
+;;;
+;;; The relay has two layers:
+;;;
+;;;   1. a raw byte forwarder that keeps the connection correct;
+;;;   2. best-effort protocol decoders that log the handshake, client worker
+;;;      operations, and daemon control frames.
+;;;
+;;; The raw relay must stay simple and robust.  The structured logging is kept
+;;; separate so that an unsupported message only disables decoding, not the
+;;; relay itself.
 
 (define-module (guix-gd daemon)
+  #:use-module (ice-9 threads)      ; make-mutex, with-mutex, call-with-new-thread
   #:use-module (ice-9 format)       ; format
-  #:use-module (ice-9 binary-ports) ; get-bytevector-n, put-bytevector
-  #:use-module (rnrs bytevectors)   ; bytevector-{u32,u64}-{ref,set!}, utf8 helpers
+  #:use-module (ice-9 binary-ports) ; get-bytevector-some!, put-bytevector
+  #:use-module (rnrs bytevectors)   ; bytevector helpers, UTF-8 helpers
   #:use-module (rnrs io ports)      ; force-output
+  #:use-module (srfi srfi-1)        ; iota
+  #:use-module (srfi srfi-13)       ; string-join, string-take
   #:export (main))
 
-(define default-socket-path "/tmp/guix-gd-daemon.sock")
+;; By default the relay listens on the normal Guix daemon socket.  This matches
+;; the intended deployment: the relay becomes the daemon visible to clients,
+;; while the real daemon is moved to a non-default fallback socket.
+(define default-listen-socket-path "/var/guix/daemon-socket/socket")
+(define default-upstream-socket-path "/tmp/guix-gd-fallback.sock")
+(define relay-buffer-size 4096)
+(define preview-limit 32)
+(define string-preview-limit 120)
 
-;; worker-protocol.hh
+;; `worker-protocol.hh`
 (define WORKER_MAGIC_1 #x6e697863)
 (define WORKER_MAGIC_2 #x6478696f)
 (define PROTOCOL_VERSION #x0164)
 
-;; worker-protocol.hh: daemon control frames sent before normal op reply payload.
+;; `worker-protocol.hh`: daemon control frames sent before normal operation
+;; reply payloads.
+(define STDERR_NEXT  #x6f6c6d67)
+(define STDERR_READ  #x64617461)
+(define STDERR_WRITE #x64617416)
 (define STDERR_LAST  #x616c7473)
+(define STDERR_ERROR #x63787470)
 
-;; ---------- Binary protocol helpers (serialise.cc compatible) ----------
+;; ---------- Generic logging ----------
 
-(define (read-exactly port n)
-  (let ((bv (get-bytevector-n port n)))
-    (cond
-     ((eof-object? bv) bv)
-     ((< (bytevector-length bv) n)
-      (error "Unexpected EOF while reading bytes" n (bytevector-length bv)))
-     (else bv))))
+(define (log fmt . args)
+  "Write one flushed log message.
 
-;; serialise.cc readInt/writeInt: 8 bytes on wire, low 32 bits used.
-(define (read-int port)
-  (let ((bv (read-exactly port 8)))
-    (if (eof-object? bv)
-        bv
-        (let ((lo (bytevector-u32-ref bv 0 (endianness little)))
-              (hi (bytevector-u32-ref bv 4 (endianness little))))
-          (when (not (= hi 0))
-            (error "Protocol int > 32-bit not supported" hi))
-          lo))))
+Explicit flushing matters because two relay threads log concurrently and the
+messages are most useful while the connection is still live." 
+  (apply format #t fmt args)
+  (force-output))
 
-(define (write-int port n)
-  (let ((bv (make-bytevector 8 0)))
-    (bytevector-u32-set! bv 0 n (endianness little))
-    (put-bytevector port bv)))
+(define (byte->hex n)
+  "Render byte N as two lowercase hex digits."
+  (format #f "~2,'0x" n))
 
-(define (read-longlong port)
-  (let ((bv (read-exactly port 8)))
-    (if (eof-object? bv)
-        bv
-        (bytevector-u64-ref bv 0 (endianness little)))))
+(define (byte->ascii n)
+  "Render byte N as printable ASCII, or `.` for control bytes."
+  (if (and (>= n 32) (<= n 126))
+      (string (integer->char n))
+      "."))
 
-(define (write-longlong port n)
-  (let ((bv (make-bytevector 8 0)))
-    (bytevector-u64-set! bv 0 n (endianness little))
-    (put-bytevector port bv)))
+(define (string-preview s)
+  "Return a compact one-line preview of S for logs."
+  (let* ((normalised
+          (list->string
+           (map (lambda (ch)
+                  (if (or (char=? ch #\newline)
+                          (char=? ch #\return)
+                          (char=? ch #\tab))
+                      #\space
+                      ch))
+                (string->list s))))
+         (trimmed (if (> (string-length normalised) string-preview-limit)
+                      (string-append (string-take normalised string-preview-limit) "...")
+                      normalised)))
+    (format #f "~s" trimmed)))
 
-(define (read-padding port len)
-  (let ((pad (modulo (- 8 (modulo len 8)) 8)))
-    (when (> pad 0)
-      (let ((bv (read-exactly port pad)))
-        (when (eof-object? bv)
-          (error "Unexpected EOF in padding"))))))
+(define (summarise-bytevector bv n)
+  "Return a short hex plus ASCII preview of the first N bytes in BV."
+  (let* ((limit (min n preview-limit))
+         (hex (string-join
+               (map (lambda (i) (byte->hex (bytevector-u8-ref bv i)))
+                    (iota limit))
+               " "))
+         (ascii (string-join
+                 (map (lambda (i) (byte->ascii (bytevector-u8-ref bv i)))
+                      (iota limit))
+                 "")))
+    (if (> n limit)
+        (format #f "~a ... |~a|" hex ascii)
+        (format #f "~a |~a|" hex ascii))))
 
-;; serialise.cc readString/writeString
-(define (read-string port)
-  (let ((len (read-int port)))
-    (if (eof-object? len)
-        len
-        (let ((data (read-exactly port len)))
-          (read-padding port len)
-          (utf8->string data)))))
+(define (details->string details)
+  "Render DETAILS compactly for structured operation logs."
+  (if (null? details)
+      ""
+      (format #f " ~s" details)))
 
-(define (write-string port s)
-  (let* ((bv (string->utf8 s))
-         (len (bytevector-length bv))
-         (pad (modulo (- 8 (modulo len 8)) 8)))
-    (write-int port len)
-    (put-bytevector port bv)
-    (when (> pad 0)
-      (put-bytevector port (make-bytevector pad 0)))))
+;; ---------- Shared connection context ----------
 
-(define (read-string-list port)
-  (let ((count (read-int port)))
-    (if (eof-object? count)
-        count
-        (let loop ((n count) (acc '()))
-          (if (= n 0)
-              (reverse acc)
-              (loop (- n 1) (cons (read-string port) acc)))))))
+;; One connection has exactly two relay threads.  They need to share only a few
+;; facts: the client protocol version, the current operation, and whether the
+;; daemon-side decoder should treat the next bytes as control frames or as an
+;; opaque reply payload.
+;;
+;; Vector layout:
+;;   0: mutex
+;;   1: client version or #f
+;;   2: client minor version or #f
+;;   3: current operation code or #f
+;;   4: current operation name or #f
+;;   5: daemon decode mode: one of 'handshake, 'wait-op, 'frames, 'ignore-reply
 
-(define (write-string-list port strings)
-  (write-int port (length strings))
-  (for-each (lambda (s) (write-string port s)) strings))
+(define (make-connection-context)
+  "Return mutable shared state for one relayed client connection."
+  (vector (make-mutex) #f #f #f #f 'handshake))
 
-(define (read-bool port)
-  (not (= 0 (read-int port))))
+(define (with-context-lock ctx thunk)
+  "Call THUNK while holding the mutex stored in CTX."
+  (with-mutex (vector-ref ctx 0)
+    (thunk)))
 
-(define (send-success port)
-  ;; nix-daemon.cc stopWork(success=true)
-  (write-int port STDERR_LAST))
+(define (context-set-client-version! ctx version)
+  "Store client protocol VERSION in CTX."
+  (with-context-lock
+   ctx
+   (lambda ()
+     (vector-set! ctx 1 version)
+     (vector-set! ctx 2 (logand version #xff)))))
 
-;; ---------- Parsers used by specific operations ----------
+(define (context-client-minor ctx)
+  "Return the stored client protocol minor version, or `#f`."
+  (with-context-lock ctx (lambda () (vector-ref ctx 2))))
 
-(define (parse-set-options port client-minor)
-  ;; nix-daemon.cc: case wopSetOptions
-  (let ((keep-failed    (read-bool port))
-        (keep-going     (read-bool port))
-        (build-fallback (read-bool port))
-        (verbosity      (read-int port)))
+(define (context-daemon-mode ctx)
+  "Return the daemon decoder mode stored in CTX."
+  (with-context-lock ctx (lambda () (vector-ref ctx 5))))
 
-    (when (< client-minor #x61)
-      (read-int port) ; build-max-jobs
-      (read-int port)) ; build-max-silent-time
+(define (context-set-daemon-mode! ctx mode)
+  "Set the daemon decoder MODE in CTX."
+  (with-context-lock ctx (lambda () (vector-set! ctx 5 mode))))
 
-    (when (>= client-minor 2)  (read-bool port))
-    (when (>= client-minor 4)
-      (read-int port) ; build-verbosity
-      (read-int port) ; log-type
-      (read-bool port))
-    (when (and (>= client-minor 6) (< client-minor #x61))
-      (read-int port)) ; build-cores
-    (when (>= client-minor 10) (read-bool port))
+(define (context-begin-op! ctx code name)
+  "Record that operation CODE/NAME is now waiting for daemon frames."
+  (with-context-lock
+   ctx
+   (lambda ()
+     (vector-set! ctx 3 code)
+     (vector-set! ctx 4 name)
+     (vector-set! ctx 5 'frames))))
 
-    (let ((extra-count
-           (if (>= client-minor 12)
-               (let ((n (read-int port)))
-                 (let loop ((i n))
-                   (if (= i 0)
-                       n
-                       (begin
-                         (read-string port) ; name
-                         (read-string port) ; value
-                         (loop (- i 1))))))
-               0)))
-      `((keep-failed . ,keep-failed)
-        (keep-going . ,keep-going)
-        (build-fallback . ,build-fallback)
-        (verbosity . ,verbosity)
-        (extra-settings . ,extra-count)))))
+(define (context-finish-op! ctx)
+  "Record that the current operation is done sending daemon control frames."
+  (with-context-lock
+   ctx
+   (lambda ()
+     (vector-set! ctx 3 #f)
+     (vector-set! ctx 4 #f)
+     ;; After `STDERR_LAST` the daemon may still send the normal reply payload.
+     ;; We deliberately treat that payload as opaque until the next client
+     ;; request is fully parsed.
+     (vector-set! ctx 5 'ignore-reply))))
 
-(define (parse-collect-garbage port client-minor)
-  ;; nix-daemon.cc: case wopCollectGarbage
-  (let ((action (read-int port))
-        (paths-to-delete (read-string-list port))
-        (ignore-liveness (read-bool port))
-        (max-freed (read-longlong port)))
-    (read-int port) ; obsolete
-    (when (>= client-minor 5)
-      (read-int port) ; removed option
-      (read-int port)) ; removed option
-    `((action . ,action)
-      (paths-to-delete-count . ,(length paths-to-delete))
-      (ignore-liveness . ,ignore-liveness)
-      (max-freed . ,max-freed))))
+(define (context-current-op-name ctx)
+  "Return the current operation name stored in CTX, or `#f`."
+  (with-context-lock ctx (lambda () (vector-ref ctx 4))))
 
-;; ---------- Per-op handlers ----------
+;; ---------- Bytevector helpers used by the structured decoders ----------
 
-(define (h-bool-false-from-string port client-minor)
-  (let ((s (read-string port)))
-    (format #t "   arg: ~s~%" s)
-    (send-success port)
-    (write-int port 0)))
+(define (slice-bytevector bv start count)
+  "Return COUNT bytes copied from BV starting at START."
+  (let ((out (make-bytevector count)))
+    (bytevector-copy! bv start out 0 count)
+    out))
 
-(define (h-empty-string-from-string port client-minor)
-  (let ((s (read-string port)))
-    (format #t "   arg: ~s~%" s)
-    (send-success port)
-    (write-string port "")))
+(define (drop-bytevector-prefix bv count)
+  "Return BV without its first COUNT bytes."
+  (slice-bytevector bv count (- (bytevector-length bv) count)))
 
-(define (h-empty-list-from-string port client-minor)
-  (let ((s (read-string port)))
-    (format #t "   arg: ~s~%" s)
-    (send-success port)
-    (write-string-list port '())))
+(define (append-bytevector-slice base chunk count)
+  "Append the first COUNT bytes of CHUNK to BASE and return a fresh bytevector."
+  (let* ((base-len (bytevector-length base))
+         (out (make-bytevector (+ base-len count))))
+    (bytevector-copy! base 0 out 0 base-len)
+    (bytevector-copy! chunk 0 out base-len count)
+    out))
 
-(define (h-empty-list-from-list port client-minor)
-  (let ((paths (read-string-list port)))
-    (format #t "   paths-count: ~a~%" (length paths))
-    (send-success port)
-    (write-string-list port '())))
+(define (bytes-available? bv start count)
+  "Return true when COUNT bytes can be read from BV starting at START."
+  (>= (- (bytevector-length bv) start) count))
 
-(define (h-build-paths port client-minor)
-  (let ((drvs (read-string-list port)))
-    (when (>= client-minor 15)
-      (read-int port)) ; build mode
-    (format #t "   drv-count: ~a~%" (length drvs))
-    (send-success port)
-    (write-int port 1)))
+(define (parsed value next)
+  "Pack parser VALUE with the NEXT unread byte index."
+  (cons value next))
 
-(define (h-path-status1 port client-minor)
-  (let ((p (read-string port)))
-    (format #t "   path: ~s~%" p)
-    (send-success port)
-    (write-int port 1)))
+(define (parsed-value result)
+  "Return the value part of parser RESULT."
+  (car result))
 
-(define (h-noarg-status1 port client-minor)
-  (send-success port)
-  (write-int port 1))
+(define (parsed-next result)
+  "Return the next unread index from parser RESULT."
+  (cdr result))
 
-(define (h-noarg-empty-list port client-minor)
-  (send-success port)
-  (write-string-list port '()))
+(define (parse-int-at bv start)
+  "Parse one worker-protocol integer from BV at START.
 
-(define (h-set-options port client-minor)
-  (let ((args (parse-set-options port client-minor)))
-    (format #t "   set-options: ~s~%" args)
-    ;; Real daemon sends only STDERR_LAST for this op.
-    (send-success port)))
+Worker integers use eight bytes on the wire even though the low 32 bits carry
+all the useful information for the cases handled here." 
+  (and (bytes-available? bv start 8)
+       (let ((lo (bytevector-u32-ref bv start (endianness little)))
+             (hi (bytevector-u32-ref bv (+ start 4) (endianness little))))
+         (if (= hi 0)
+             (parsed lo (+ start 8))
+             (parsed (+ lo (ash hi 32)) (+ start 8))))))
 
-(define (h-collect-garbage port client-minor)
-  (let ((args (parse-collect-garbage port client-minor)))
-    (format #t "   collect-garbage: ~s~%" args)
-    (send-success port)
-    (write-string-list port '())
-    (write-longlong port 0)
-    (write-longlong port 0)))
+(define (parse-longlong-at bv start)
+  "Parse one little-endian 64-bit integer from BV at START."
+  (and (bytes-available? bv start 8)
+       (parsed (bytevector-u64-ref bv start (endianness little))
+               (+ start 8))))
 
-(define (h-clear-failed port client-minor)
-  (let ((paths (read-string-list port)))
-    (format #t "   clear-failed paths-count: ~a~%" (length paths))
-    (send-success port)
-    (write-int port 1)))
+(define (parse-bool-at bv start)
+  "Parse one worker-protocol boolean from BV at START."
+  (let ((result (parse-int-at bv start)))
+    (and result
+         (parsed (not (= 0 (parsed-value result)))
+                 (parsed-next result)))))
 
-(define (h-verify-store port client-minor)
-  (let ((check-contents (read-bool port))
-        (repair (read-bool port)))
-    (format #t "   verify-store: check-contents=~a repair=~a~%" check-contents repair)
-    (send-success port)
-    (write-int port 0)))
+(define (padding-size len)
+  "Return the wire padding used after a LEN-byte string payload."
+  (modulo (- 8 (modulo len 8)) 8))
 
-;; ---------- Dispatch table (replaces case + separate wop alist) ----------
-;; Entry format: (opcode name handler)
-;; opcode values from worker-protocol.hh; payload shapes from nix-daemon.cc.
+(define (safe-utf8->string bv)
+  "Decode BV as UTF-8, falling back to a readable placeholder on failure."
+  (catch #t
+    (lambda () (utf8->string bv))
+    (lambda _
+      (format #f "<non-utf8: ~a>"
+              (summarise-bytevector bv (bytevector-length bv))))))
+
+(define (parse-string-at bv start)
+  "Parse one padded worker-protocol string from BV at START."
+  (let ((len-result (parse-int-at bv start)))
+    (and len-result
+         (let* ((len (parsed-value len-result))
+                (data-start (parsed-next len-result))
+                (pad (padding-size len))
+                (need (+ len pad)))
+           (and (bytes-available? bv data-start need)
+                (parsed (safe-utf8->string (slice-bytevector bv data-start len))
+                        (+ data-start need)))))))
+
+(define (parse-string-list-at bv start)
+  "Parse one worker-protocol list of strings from BV at START."
+  (let ((count-result (parse-int-at bv start)))
+    (and count-result
+         (let loop ((remaining (parsed-value count-result))
+                    (index (parsed-next count-result))
+                    (items '()))
+           (if (= remaining 0)
+               (parsed (reverse items) index)
+               (let ((item-result (parse-string-at bv index)))
+                 (and item-result
+                      (loop (- remaining 1)
+                            (parsed-next item-result)
+                            (cons (parsed-value item-result) items)))))))))
+
+;; ---------- Client operation decoders ----------
+
+(define (parse-noarg-request bv start client-minor)
+  "Parse a request with no payload.
+
+CLIENT-MINOR is accepted for a uniform parser signature." 
+  (parsed '() start))
+
+(define (parse-string-request bv start client-minor)
+  "Parse a request whose payload is a single string." 
+  (let ((result (parse-string-at bv start)))
+    (and result
+         (parsed `((arg . ,(parsed-value result)))
+                 (parsed-next result)))))
+
+(define (parse-string-list-request bv start client-minor)
+  "Parse a request whose payload is a list of strings." 
+  (let ((result (parse-string-list-at bv start)))
+    (and result
+         (parsed `((paths-count . ,(length (parsed-value result))))
+                 (parsed-next result)))))
+
+(define (parse-build-paths-request bv start client-minor)
+  "Parse a `wopBuildPaths` request." 
+  (let ((drvs-result (parse-string-list-at bv start)))
+    (and drvs-result
+         (let ((index (parsed-next drvs-result))
+               (details `((drv-count . ,(length (parsed-value drvs-result))))))
+           (if (>= client-minor 15)
+               (let ((mode-result (parse-int-at bv index)))
+                 (and mode-result
+                      (parsed (append details
+                                      `((build-mode . ,(parsed-value mode-result))))
+                              (parsed-next mode-result))))
+               (parsed details index))))))
+
+(define (parse-path-status-request bv start client-minor)
+  "Parse a request whose payload is one store path string." 
+  (let ((result (parse-string-at bv start)))
+    (and result
+         (parsed `((path . ,(parsed-value result)))
+                 (parsed-next result)))))
+
+(define (parse-set-options-request bv start client-minor)
+  "Parse a `wopSetOptions` request.
+
+The parser follows `nix-daemon.cc` closely so the decoder stays aligned even
+when some fields are no longer interesting to the log output." 
+  (let ((keep-failed-result    (parse-bool-at bv start)))
+    (and keep-failed-result
+         (let ((keep-going-result     (parse-bool-at bv (parsed-next keep-failed-result))))
+           (and keep-going-result
+                (let ((build-fallback-result (parse-bool-at bv (parsed-next keep-going-result))))
+                  (and build-fallback-result
+                       (let ((verbosity-result (parse-int-at bv (parsed-next build-fallback-result))))
+                         (and verbosity-result
+                              (let ((index (parsed-next verbosity-result)))
+                                (let ((index (if (< client-minor #x61)
+                                                 (let ((r1 (parse-int-at bv index)))
+                                                   (and r1
+                                                        (let ((r2 (parse-int-at bv (parsed-next r1))))
+                                                          (and r2 (parsed-next r2)))))
+                                                 index)))
+                                  (and index
+                                       (let ((index (if (>= client-minor 2)
+                                                        (let ((r (parse-bool-at bv index)))
+                                                          (and r (parsed-next r)))
+                                                        index)))
+                                         (and index
+                                              (let ((index (if (>= client-minor 4)
+                                                               (let ((r1 (parse-int-at bv index)))
+                                                                 (and r1
+                                                                      (let ((r2 (parse-int-at bv (parsed-next r1))))
+                                                                        (and r2
+                                                                             (let ((r3 (parse-bool-at bv (parsed-next r2))))
+                                                                               (and r3 (parsed-next r3)))))))
+                                                               index)))
+                                                (and index
+                                                     (let ((index (if (and (>= client-minor 6)
+                                                                           (< client-minor #x61))
+                                                                      (let ((r (parse-int-at bv index)))
+                                                                        (and r (parsed-next r)))
+                                                                      index)))
+                                                       (and index
+                                                            (let ((index (if (>= client-minor 10)
+                                                                             (let ((r (parse-bool-at bv index)))
+                                                                               (and r (parsed-next r)))
+                                                                             index)))
+                                                              (and index
+                                                                   (if (>= client-minor 12)
+                                                                       (let ((count-result (parse-int-at bv index)))
+                                                                         (and count-result
+                                                                              (let loop ((remaining (parsed-value count-result))
+                                                                                         (index (parsed-next count-result)))
+                                                                                (if (= remaining 0)
+                                                                                    (parsed `((keep-failed . ,(parsed-value keep-failed-result))
+                                                                                              (keep-going . ,(parsed-value keep-going-result))
+                                                                                              (build-fallback . ,(parsed-value build-fallback-result))
+                                                                                              (verbosity . ,(parsed-value verbosity-result))
+                                                                                              (extra-settings . ,(parsed-value count-result)))
+                                                                                            index)
+                                                                                    (let ((name-result (parse-string-at bv index)))
+                                                                                      (and name-result
+                                                                                           (let ((value-result (parse-string-at bv (parsed-next name-result))))
+                                                                                             (and value-result
+                                                                                                  (loop (- remaining 1)
+                                                                                                        (parsed-next value-result))))))))))
+                                                                       (parsed `((keep-failed . ,(parsed-value keep-failed-result))
+                                                                                 (keep-going . ,(parsed-value keep-going-result))
+                                                                                 (build-fallback . ,(parsed-value build-fallback-result))
+                                                                                 (verbosity . ,(parsed-value verbosity-result))
+                                                                                 (extra-settings . 0))
+                                                                               index))))))))))))))))))))))
+
+(define (parse-collect-garbage-request bv start client-minor)
+  "Parse a `wopCollectGarbage` request." 
+  (let ((action-result (parse-int-at bv start)))
+    (and action-result
+         (let ((paths-result (parse-string-list-at bv (parsed-next action-result))))
+           (and paths-result
+                (let ((ignore-result (parse-bool-at bv (parsed-next paths-result))))
+                  (and ignore-result
+                       (let ((max-freed-result (parse-longlong-at bv (parsed-next ignore-result))))
+                         (and max-freed-result
+                              (let ((obsolete-result (parse-int-at bv (parsed-next max-freed-result))))
+                                (and obsolete-result
+                                     (let ((index (if (>= client-minor 5)
+                                                      (let ((r1 (parse-int-at bv (parsed-next obsolete-result))))
+                                                        (and r1
+                                                             (let ((r2 (parse-int-at bv (parsed-next r1))))
+                                                               (and r2 (parsed-next r2)))))
+                                                      (parsed-next obsolete-result))))
+                                       (and index
+                                            (parsed `((action . ,(parsed-value action-result))
+                                                      (paths-to-delete-count . ,(length (parsed-value paths-result)))
+                                                      (ignore-liveness . ,(parsed-value ignore-result))
+                                                      (max-freed . ,(parsed-value max-freed-result)))
+                                                    index))))))))))))))
+
+(define (parse-clear-failed-request bv start client-minor)
+  "Parse a `wopClearFailedPaths` request." 
+  (let ((paths-result (parse-string-list-at bv start)))
+    (and paths-result
+         (parsed `((paths-count . ,(length (parsed-value paths-result))))
+                 (parsed-next paths-result)))))
+
+(define (parse-verify-store-request bv start client-minor)
+  "Parse a `wopVerifyStore` request." 
+  (let ((check-result (parse-bool-at bv start)))
+    (and check-result
+         (let ((repair-result (parse-bool-at bv (parsed-next check-result))))
+           (and repair-result
+                (parsed `((check-contents . ,(parsed-value check-result))
+                          (repair . ,(parsed-value repair-result)))
+                        (parsed-next repair-result)))))))
+
+;; Entry format: (opcode name parser)
 (define op-table
   (list
-   (list 1  "wopIsValidPath"               h-bool-false-from-string)
-   (list 3  "wopHasSubstitutes"            h-bool-false-from-string)
-   (list 4  "wopQueryPathHash"             h-empty-string-from-string)
-   (list 5  "wopQueryReferences"           h-empty-list-from-string)
-   (list 6  "wopQueryReferrers"            h-empty-list-from-string)
-   (list 9  "wopBuildPaths"                h-build-paths)
-   (list 10 "wopEnsurePath"                h-path-status1)
-   (list 11 "wopAddTempRoot"               h-path-status1)
-   (list 12 "wopAddIndirectRoot"           h-path-status1)
-   (list 13 "wopSyncWithGC"                h-noarg-status1)
-   (list 18 "wopQueryDeriver"              h-empty-string-from-string)
-   (list 19 "wopSetOptions"                h-set-options)
-   (list 20 "wopCollectGarbage"            h-collect-garbage)
-   (list 21 "wopQuerySubstitutablePathInfo" h-empty-list-from-string)
-   (list 22 "wopQueryDerivationOutputs"    h-empty-list-from-string)
-   (list 23 "wopQueryAllValidPaths"        h-noarg-empty-list)
-   (list 24 "wopQueryFailedPaths"          h-noarg-empty-list)
-   (list 25 "wopClearFailedPaths"          h-clear-failed)
-   (list 26 "wopQueryPathInfo"             h-empty-list-from-string)
-   (list 28 "wopQueryDerivationOutputNames" h-empty-list-from-string)
-   (list 29 "wopQueryPathFromHashPart"     h-empty-string-from-string)
-   (list 30 "wopQuerySubstitutablePathInfos" h-empty-list-from-list)
-   (list 31 "wopQueryValidPaths"           h-empty-list-from-list)
-   (list 32 "wopQuerySubstitutablePaths"   h-empty-list-from-list)
-   (list 33 "wopQueryValidDerivers"        h-empty-list-from-string)
-   (list 34 "wopOptimiseStore"             h-noarg-status1)
-   (list 35 "wopVerifyStore"               h-verify-store)
-   (list 80 "wopBuiltinBuilders"           h-noarg-empty-list)
-   (list 81 "wopSubstituteURLs"            h-noarg-empty-list)))
+   (list 1  "wopIsValidPath"                parse-string-request)
+   (list 3  "wopHasSubstitutes"             parse-string-request)
+   (list 4  "wopQueryPathHash"              parse-string-request)
+   (list 5  "wopQueryReferences"            parse-string-request)
+   (list 6  "wopQueryReferrers"             parse-string-request)
+   (list 9  "wopBuildPaths"                 parse-build-paths-request)
+   (list 10 "wopEnsurePath"                 parse-path-status-request)
+   (list 11 "wopAddTempRoot"                parse-path-status-request)
+   (list 12 "wopAddIndirectRoot"            parse-path-status-request)
+   (list 13 "wopSyncWithGC"                 parse-noarg-request)
+   (list 18 "wopQueryDeriver"               parse-string-request)
+   (list 19 "wopSetOptions"                 parse-set-options-request)
+   (list 20 "wopCollectGarbage"             parse-collect-garbage-request)
+   (list 21 "wopQuerySubstitutablePathInfo" parse-string-request)
+   (list 22 "wopQueryDerivationOutputs"     parse-string-request)
+   (list 23 "wopQueryAllValidPaths"         parse-noarg-request)
+   (list 24 "wopQueryFailedPaths"           parse-noarg-request)
+   (list 25 "wopClearFailedPaths"           parse-clear-failed-request)
+   (list 26 "wopQueryPathInfo"              parse-string-request)
+   (list 28 "wopQueryDerivationOutputNames" parse-string-request)
+   (list 29 "wopQueryPathFromHashPart"      parse-string-request)
+   (list 30 "wopQuerySubstitutablePathInfos" parse-string-list-request)
+   (list 31 "wopQueryValidPaths"            parse-string-list-request)
+   (list 32 "wopQuerySubstitutablePaths"    parse-string-list-request)
+   (list 33 "wopQueryValidDerivers"         parse-string-request)
+   (list 34 "wopOptimiseStore"              parse-noarg-request)
+   (list 35 "wopVerifyStore"                parse-verify-store-request)
+   (list 80 "wopBuiltinBuilders"            parse-noarg-request)
+   (list 81 "wopSubstituteURLs"             parse-noarg-request)))
 
 (define (find-op-entry code)
-  (let loop ((xs op-table))
+  "Return the operation table entry for CODE, or `#f`."
+  (let loop ((entries op-table))
     (cond
-     ((null? xs) #f)
-     ((= code (car (car xs))) (car xs))
-     (else (loop (cdr xs))))))
+     ((null? entries) #f)
+     ((= code (car (car entries))) (car entries))
+     (else (loop (cdr entries))))))
 
 (define (op-name code)
+  "Return the known worker operation name for CODE."
   (let ((entry (find-op-entry code)))
     (if entry (cadr entry) "unknown-wop")))
 
-(define (dispatch-op port op client-minor)
-  (let ((entry (find-op-entry op)))
-    (if (not entry)
-        (error "Unsupported opcode (no parser in table)" op)
-        ((caddr entry) port client-minor))))
+(define (parse-client-operation-at bv start client-minor)
+  "Parse one complete client worker operation from BV at START.
 
-;; ---------- Connection handling ----------
+The parser returns either:
 
-(define (handle-connection client-port)
-  (format #t "Client connected. Waiting for handshake...~%")
-  (let ((magic (read-int client-port)))
-    (cond
-     ((eof-object? magic)
-      (format #t "Client disconnected before handshake.~%"))
+  (known CODE NAME DETAILS NEXT)
+  (unknown CODE NAME NEXT)
 
-     ((not (= magic WORKER_MAGIC_1))
-      (format #t "Error: invalid client magic: 0x~x~%" magic))
+or `#f` when more bytes are needed." 
+  (let ((op-result (parse-int-at bv start)))
+    (and op-result
+         (let* ((code (parsed-value op-result))
+                (index (parsed-next op-result))
+                (entry (find-op-entry code)))
+           (if entry
+               (let* ((name (cadr entry))
+                      (parser (caddr entry))
+                      (payload-result (parser bv index client-minor)))
+                 (and payload-result
+                      (list 'known
+                            code
+                            name
+                            (parsed-value payload-result)
+                            (parsed-next payload-result))))
+               (list 'unknown code (op-name code) index))))))
 
-     (else
-      ;; nix-daemon.cc processConnection()
-      (write-int client-port WORKER_MAGIC_2)
-      (write-int client-port PROTOCOL_VERSION)
-      (force-output client-port)
+;; ---------- Daemon control-frame decoders ----------
 
-      (let* ((client-version (read-int client-port))
-             (client-minor (logand client-version #xff)))
-        (format #t "<- client version: 0x~x (minor=~a)~%" client-version client-minor)
+(define (parse-daemon-frame-at bv start client-minor)
+  "Parse one daemon control frame from BV at START.
 
-        ;; protocol >= 1.14: bool + optional cpu index
-        (when (>= client-minor 14)
-          (when (read-bool client-port)
-            (format #t "<- client cpu affinity: ~a~%" (read-int client-port))))
+Only the control-frame layer is decoded here.  The ordinary operation reply
+payload that follows `STDERR_LAST` remains opaque on purpose." 
+  (let ((code-result (parse-int-at bv start)))
+    (and code-result
+         (let ((code (parsed-value code-result))
+               (index (parsed-next code-result)))
+           (cond
+            ((= code STDERR_NEXT)
+             (let ((msg-result (parse-string-at bv index)))
+               (and msg-result
+                    (list 'next (parsed-value msg-result) (parsed-next msg-result)))))
+            ((= code STDERR_READ)
+             (let ((len-result (parse-int-at bv index)))
+               (and len-result
+                    (list 'read (parsed-value len-result) (parsed-next len-result)))))
+            ((= code STDERR_WRITE)
+             (let ((len-result (parse-int-at bv index)))
+               (and len-result
+                    (let* ((len (parsed-value len-result))
+                           (payload-start (parsed-next len-result))
+                           (need (+ len (padding-size len))))
+                      (and (bytes-available? bv payload-start need)
+                           (list 'write len (+ payload-start need)))))))
+            ((= code STDERR_ERROR)
+             (let ((msg-result (parse-string-at bv index)))
+               (and msg-result
+                    (if (and client-minor (>= client-minor 8))
+                        (let ((status-result (parse-int-at bv (parsed-next msg-result))))
+                          (and status-result
+                               (list 'error
+                                     (parsed-value msg-result)
+                                     (parsed-value status-result)
+                                     (parsed-next status-result))))
+                        (list 'error (parsed-value msg-result) #f (parsed-next msg-result))))))
+            ((= code STDERR_LAST)
+             (list 'last #f index))
+            (else
+             (list 'unknown code index)))))))
 
-        ;; protocol >= 1.11: reserve-space bool
-        (when (>= client-minor 11)
-          (format #t "<- reserve-space: ~a~%" (read-bool client-port)))
+;; ---------- Incremental observers for structured logging ----------
 
-        ;; initial startup completion frame (stopWork success)
-        (send-success client-port)
-        (force-output client-port)
+;; Client decoder state vector layout:
+;;   0: phase symbol
+;;   1: buffered unread bytes
 
-        (format #t "Handshake complete. Waiting for operations...~%")
+(define (make-client-decoder-state)
+  "Return fresh client-side decoder state for one connection."
+  (vector 'client-magic (make-bytevector 0)))
 
+(define (make-daemon-decoder-state)
+  "Return fresh daemon-side decoder state for one connection."
+  (vector 'daemon-greeting (make-bytevector 0)))
+
+(define (disable-client-decoder! state reason)
+  "Disable structured client decoding in STATE and log REASON."
+  (vector-set! state 0 'client-opaque)
+  (vector-set! state 1 (make-bytevector 0))
+  (log "client -> daemon [decode disabled] ~a~%" reason))
+
+(define (disable-daemon-decoder! ctx state reason)
+  "Disable structured daemon decoding in STATE and log REASON."
+  (vector-set! state 0 'daemon-opaque)
+  (vector-set! state 1 (make-bytevector 0))
+  (context-set-daemon-mode! ctx 'ignore-reply)
+  (log "daemon -> client [decode disabled] ~a~%" reason))
+
+(define (drain-client-buffer! ctx state)
+  "Consume complete client handshake fields and requests buffered in STATE." 
+  (let loop ()
+    (let ((phase (vector-ref state 0))
+          (buffer (vector-ref state 1)))
+      (case phase
+        ((client-magic)
+         (let ((result (parse-int-at buffer 0)))
+           (when result
+             (let ((magic (parsed-value result)))
+               (log "client -> daemon [handshake] magic=0x~x~%" magic)
+               (vector-set! state 1 (drop-bytevector-prefix buffer (parsed-next result)))
+               (if (= magic WORKER_MAGIC_1)
+                   (begin
+                     (vector-set! state 0 'client-version)
+                     (loop))
+                   (disable-client-decoder! state "unexpected client magic"))))))
+        ((client-version)
+         (let ((result (parse-int-at buffer 0)))
+           (when result
+             (let ((version (parsed-value result))
+                   (next (parsed-next result)))
+               (context-set-client-version! ctx version)
+               (log "client -> daemon [handshake] version=0x~x minor=~a~%"
+                    version
+                    (logand version #xff))
+               (vector-set! state 1 (drop-bytevector-prefix buffer next))
+               (if (>= (logand version #xff) 14)
+                   (vector-set! state 0 'client-affinity-flag)
+                   (if (>= (logand version #xff) 11)
+                       (vector-set! state 0 'client-reserve-space)
+                       (vector-set! state 0 'client-ops)))
+               (loop)))))
+        ((client-affinity-flag)
+         (let ((result (parse-bool-at buffer 0)))
+           (when result
+             (let ((enabled? (parsed-value result)))
+               (log "client -> daemon [handshake] cpu-affinity? ~a~%" enabled?)
+               (vector-set! state 1 (drop-bytevector-prefix buffer (parsed-next result)))
+               (vector-set! state 0 (if enabled?
+                                        'client-affinity-value
+                                        'client-reserve-space))
+               (loop)))))
+        ((client-affinity-value)
+         (let ((result (parse-int-at buffer 0)))
+           (when result
+             (log "client -> daemon [handshake] cpu-affinity=~a~%"
+                  (parsed-value result))
+             (vector-set! state 1 (drop-bytevector-prefix buffer (parsed-next result)))
+             (vector-set! state 0 'client-reserve-space)
+             (loop))))
+        ((client-reserve-space)
+         (let ((result (parse-bool-at buffer 0)))
+           (when result
+             (log "client -> daemon [handshake] reserve-space=~a~%"
+                  (parsed-value result))
+             (vector-set! state 1 (drop-bytevector-prefix buffer (parsed-next result)))
+             (vector-set! state 0 'client-ops)
+             (loop))))
+        ((client-ops)
+         (let ((event (parse-client-operation-at buffer 0
+                                                 (or (context-client-minor ctx) 0))))
+           (when event
+             (if (eq? (car event) 'known)
+                 (let ((code (list-ref event 1))
+                       (name (list-ref event 2))
+                       (details (list-ref event 3))
+                       (next (list-ref event 4)))
+                   (log "client -> daemon [op] ~a (~a)~a~%"
+                        code name (details->string details))
+                   (context-begin-op! ctx code name)
+                   (vector-set! state 1 (drop-bytevector-prefix buffer next))
+                   (loop))
+                 (let ((code (list-ref event 1))
+                       (name (list-ref event 2)))
+                   ;; Unknown payload layouts do not break the relay.  They only
+                   ;; mean we can no longer stay synchronised enough to decode
+                   ;; later client requests safely.
+                   (log "client -> daemon [op] ~a (~a) [unknown payload; raw relay continues]~%"
+                        code name)
+                   (context-begin-op! ctx code name)
+                   (disable-client-decoder! state "unsupported client request payload"))))))
+        ((client-opaque)
+         #t)
+        (else
+         (disable-client-decoder! state "unknown client decoder state"))))))
+
+(define (observe-client-bytevector! ctx state chunk count)
+  "Feed COUNT bytes from CHUNK into the client-side structured decoder." 
+  (catch #t
+    (lambda ()
+      (unless (eq? (vector-ref state 0) 'client-opaque)
+        (vector-set! state 1
+                     (append-bytevector-slice (vector-ref state 1) chunk count))
+        (drain-client-buffer! ctx state)))
+    (lambda args
+      (disable-client-decoder! state (format #f "exception: ~s" args)))))
+
+(define (drain-daemon-handshake! ctx state)
+  "Consume complete daemon handshake fields already buffered in STATE." 
+  (let loop ()
+    (let ((buffer (vector-ref state 1)))
+      (cond
+       ((eq? (vector-ref state 0) 'daemon-greeting)
+        (let ((magic-result (parse-int-at buffer 0)))
+          (when magic-result
+            (let ((version-result (parse-int-at buffer (parsed-next magic-result))))
+              (when version-result
+                (log "daemon -> client [handshake] magic=0x~x version=0x~x~%"
+                     (parsed-value magic-result)
+                     (parsed-value version-result))
+                (vector-set! state 1
+                             (drop-bytevector-prefix buffer
+                                                     (parsed-next version-result)))
+                (vector-set! state 0 'daemon-startup)
+                (loop))))))
+       ((eq? (vector-ref state 0) 'daemon-startup)
+        (let ((result (parse-int-at buffer 0)))
+          (when result
+            (log "daemon -> client [handshake] startup-frame=0x~x~%"
+                 (parsed-value result))
+            (vector-set! state 1
+                         (drop-bytevector-prefix buffer
+                                                 (parsed-next result)))
+            (vector-set! state 0 'daemon-stream)
+            (context-set-daemon-mode! ctx 'wait-op)
+            (loop))))
+       (else
+        #t)))))
+
+(define (drain-daemon-frames! ctx state)
+  "Consume complete daemon control frames already buffered in STATE." 
+  (let loop ()
+    (let ((buffer (vector-ref state 1))
+          (client-minor (context-client-minor ctx))
+          (op-name-now (context-current-op-name ctx)))
+      (let ((event (parse-daemon-frame-at buffer 0 client-minor)))
+        (when event
+          (case (car event)
+            ((next)
+             (log "daemon -> client [frame ~a] STDERR_NEXT ~a~%"
+                  (or op-name-now "unknown-op")
+                  (string-preview (cadr event)))
+             (vector-set! state 1 (drop-bytevector-prefix buffer (caddr event)))
+             (loop))
+            ((read)
+             (log "daemon -> client [frame ~a] STDERR_READ max-len=~a~%"
+                  (or op-name-now "unknown-op")
+                  (cadr event))
+             (vector-set! state 1 (drop-bytevector-prefix buffer (caddr event)))
+             (loop))
+            ((write)
+             (log "daemon -> client [frame ~a] STDERR_WRITE len=~a~%"
+                  (or op-name-now "unknown-op")
+                  (cadr event))
+             (vector-set! state 1 (drop-bytevector-prefix buffer (caddr event)))
+             (loop))
+            ((error)
+             (log "daemon -> client [frame ~a] STDERR_ERROR message=~a~@[ status=~a~]~%"
+                  (or op-name-now "unknown-op")
+                  (string-preview (cadr event))
+                  (caddr event))
+             (vector-set! state 1 (make-bytevector 0))
+             (context-finish-op! ctx))
+            ((last)
+             (log "daemon -> client [frame ~a] STDERR_LAST~%"
+                  (or op-name-now "unknown-op"))
+             ;; Anything after `STDERR_LAST` belongs to the normal operation
+             ;; reply payload.  The decoder drops it because the raw relay has
+             ;; already forwarded it and because its shape depends on the current
+             ;; operation.
+             (vector-set! state 1 (make-bytevector 0))
+             (context-finish-op! ctx))
+            ((unknown)
+             (log "daemon -> client [frame ~a] unknown-control=0x~x; raw relay continues~%"
+                  (or op-name-now "unknown-op")
+                  (cadr event))
+             (vector-set! state 1 (make-bytevector 0))
+             (context-set-daemon-mode! ctx 'ignore-reply))))))))
+
+(define (observe-daemon-bytevector! ctx state chunk count)
+  "Feed COUNT bytes from CHUNK into the daemon-side structured decoder." 
+  (catch #t
+    (lambda ()
+      (let ((phase (vector-ref state 0)))
+        (cond
+         ((eq? phase 'daemon-opaque)
+          #t)
+         ((or (eq? phase 'daemon-greeting)
+              (eq? phase 'daemon-startup))
+          (vector-set! state 1
+                       (append-bytevector-slice (vector-ref state 1) chunk count))
+          (drain-daemon-handshake! ctx state))
+         (else
+          (case (context-daemon-mode ctx)
+            ((wait-op ignore-reply)
+             ;; Bytes in these phases are intentionally opaque to the structured
+             ;; decoder.  They are still fully relayed by the raw forwarder.
+             #t)
+            ((frames)
+             (vector-set! state 1
+                          (append-bytevector-slice (vector-ref state 1) chunk count))
+             (drain-daemon-frames! ctx state))
+            (else
+             (disable-daemon-decoder! ctx state "unknown daemon decode mode")))))))
+    (lambda args
+      (disable-daemon-decoder! ctx state (format #f "exception: ~s" args)))))
+
+;; ---------- Raw full-duplex relay ----------
+
+(define (split-socket socket)
+  "Return dedicated read and write ports for SOCKET.
+
+The relay duplicates the underlying file descriptor and re-opens it with
+`fdopen` in explicit read-only and write-only modes.  This avoids subtle hangs
+seen when two threads share one bidirectional port object." 
+  (values (fdopen (dup (port->fdes socket)) "rb")
+          (fdopen (dup (port->fdes socket)) "wb")))
+
+(define (close-safely port)
+  "Close PORT and log failures instead of hiding them during cleanup."
+  (when port
+    (catch #t
+      (lambda () (close-port port))
+      (lambda args
+        (log "close failed: ~s~%" args)))))
+
+(define (forward label in out out-socket observer)
+  "Copy bytes from IN to OUT until EOF, logging each chunk.
+
+The relay uses `get-bytevector-some!` instead of `get-bytevector-n!`.  The
+former returns as soon as *some* bytes are available, which is what a proxy
+needs.  The latter tries to fill the requested range and caused stalls during
+experiments.
+
+On EOF the relay calls `shutdown` with mode `1` on OUT-SOCKET.  That is a
+half-close: it tells the peer that no more bytes will be written in this
+direction while still allowing the opposite direction to drain remaining data." 
+  (let ((buf (make-bytevector relay-buffer-size)))
+    (catch #t
+      (lambda ()
         (let loop ()
-          (let ((op (read-int client-port)))
-            (if (eof-object? op)
-                (format #t "Client disconnected.~%")
-                (begin
-                  (format #t "<- Op: ~a (~a)~%" op (op-name op))
-                  (dispatch-op client-port op client-minor)
-                  (force-output client-port)
-                  (loop))))))))))
+          (let ((n (get-bytevector-some! in buf 0 relay-buffer-size)))
+            (cond
+             ((eof-object? n)
+              (log "~a EOF~%" label)
+              (catch #t
+                (lambda () (shutdown out-socket 1))
+                (lambda args
+                  (log "~a shutdown(write) failed: ~s~%" label args))))
+             ((= n 0)
+              (log "~a read 0 bytes~%" label)
+              (catch #t
+                (lambda () (shutdown out-socket 1))
+                (lambda args
+                  (log "~a shutdown(write) failed: ~s~%" label args))))
+             (else
+              (log "~a ~a bytes: ~a~%" label n (summarise-bytevector buf n))
+              (put-bytevector out buf 0 n)
+              (force-output out)
+              (when observer
+                (observer buf n))
+              (loop))))))
+      (lambda args
+        (log "~a exception: ~s~%" label args)
+        (catch #t
+          (lambda () (shutdown out-socket 2))
+          (lambda _ #f))))))
+
+(define (relay-one client-socket upstream-path)
+  "Relay one client connection to the daemon at UPSTREAM-PATH."
+  (let ((ctx (make-connection-context))
+        (client-state (make-client-decoder-state))
+        (daemon-state (make-daemon-decoder-state))
+        (upstream-socket #f)
+        (client-in #f)
+        (client-out #f)
+        (upstream-in #f)
+        (upstream-out #f))
+    (dynamic-wind
+      (lambda () #t)
+      (lambda ()
+        (set! upstream-socket (socket AF_UNIX SOCK_STREAM 0))
+        (connect upstream-socket AF_UNIX upstream-path)
+        (log "connected upstream: ~a~%" upstream-path)
+
+        (call-with-values
+            (lambda () (split-socket client-socket))
+          (lambda (in out)
+            (set! client-in in)
+            (set! client-out out)))
+
+        (call-with-values
+            (lambda () (split-socket upstream-socket))
+          (lambda (in out)
+            (set! upstream-in in)
+            (set! upstream-out out)))
+
+        ;; Each direction gets its own thread because client requests and daemon
+        ;; frames are independent streams.  A single synchronous loop would block
+        ;; on one side and starve the other.
+        (let ((t1 (call-with-new-thread
+                   (lambda ()
+                     (forward "client -> daemon"
+                              client-in upstream-out upstream-socket
+                              (lambda (buf n)
+                                (observe-client-bytevector! ctx client-state buf n))))))
+              (t2 (call-with-new-thread
+                   (lambda ()
+                     (forward "daemon -> client"
+                              upstream-in client-out client-socket
+                              (lambda (buf n)
+                                (observe-daemon-bytevector! ctx daemon-state buf n)))))))
+          (join-thread t1)
+          (join-thread t2)
+          (log "relay finished~%")))
+      (lambda ()
+        (close-safely client-in)
+        (close-safely client-out)
+        (close-safely upstream-in)
+        (close-safely upstream-out)
+        (close-safely upstream-socket)
+        (close-safely client-socket)))))
+
+(define (ensure-listen-path-free path)
+  "Ensure PATH is safe to bind.
+
+The relay refuses to unlink an existing socket automatically because the path is
+usually the real daemon socket.  Accidentally deleting a live daemon's pathname
+would make the system harder to recover." 
+  (when (file-exists? path)
+    (error "Listen socket path already exists; choose another path or stop the daemon using it" path)))
+
+(define (serve-forever server upstream-path)
+  "Accept clients from SERVER one at a time and relay them to UPSTREAM-PATH."
+  (let loop ()
+    (let* ((accepted (accept server))
+           (client-socket (car accepted)))
+      (dynamic-wind
+        (lambda () #t)
+        (lambda ()
+          (log "accepted client~%")
+          (relay-one client-socket upstream-path))
+        (lambda ()
+          (close-safely client-socket)))
+      (loop))))
 
 (define (main args)
-  ;; CLI: optional socket path as first positional argument.
-  (let ((socket-path (if (and (list? args) (> (length args) 1))
-                         (list-ref args 1)
-                         default-socket-path)))
-    (when (file-exists? socket-path)
-      (delete-file socket-path))
+  "Listen on a socket and relay clients to a fallback daemon.
 
+CLI:
+  guix-gd-daemon [LISTEN-SOCKET [UPSTREAM-SOCKET]]
+
+Defaults:
+  LISTEN-SOCKET   => `/var/guix/daemon-socket/socket`
+  UPSTREAM-SOCKET => `/tmp/guix-gd-fallback.sock`" 
+  (let* ((listen-path (if (> (length args) 1)
+                          (list-ref args 1)
+                          default-listen-socket-path))
+         (upstream-path (if (> (length args) 2)
+                            (list-ref args 2)
+                            default-upstream-socket-path)))
+    (ensure-listen-path-free listen-path)
     (let ((server (socket AF_UNIX SOCK_STREAM 0)))
-      (bind server AF_UNIX socket-path)
-      (listen server 5)
-
-      (format #t "Listening on ~a~%" socket-path)
-      (format #t "Try: GUIX_DAEMON_SOCKET=~a guix gc --list-dead~%" socket-path)
-
-      (let* ((accepted (accept server))
-             (client-port (car accepted)))
-        (dynamic-wind
-          (lambda () #t)
-          (lambda () (handle-connection client-port))
-          (lambda ()
-            (format #t "Closing client connection.~%")
-            (close-port client-port)
-            (close-port server)))))))
+      (dynamic-wind
+        (lambda () #t)
+        (lambda ()
+          (bind server AF_UNIX listen-path)
+          (listen server 5)
+          (log "listening on: ~a~%" listen-path)
+          (log "upstream: ~a~%" upstream-path)
+          (log "example: guix gc --list-dead~%")
+          (serve-forever server upstream-path))
+        (lambda ()
+          (close-safely server)
+          (when (file-exists? listen-path)
+            (false-if-exception (delete-file listen-path))))))))
