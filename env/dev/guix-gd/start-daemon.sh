@@ -11,8 +11,9 @@ SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 GUIX_GD_DEV_ROOT="${GUIX_GD_DEV_ROOT:-${SCRIPT_DIR}/.dev-root}"
 PIDFILE="${GUIX_GD_DEV_ROOT}/overlayfs-container.pid"
 GUIX_GD_DAEMON_BIN="${GUIX_GD_DAEMON_BIN:-guix-daemon}"
+GUIX_GD_DEV_SOCK="${GUIX_GD_DEV_SOCK:-/tmp/guix-gd-fallback.sock}"
 # extra args to guix-daemon
-# to avoid hard links...
+# set --disable-deduplication to avoid hard links in overlayfs for /gnu/store
 GUIX_GD_DAEMON_ARGS="${GUIX_GD_DAEMON_ARGS:---disable-deduplication --listen=/tmp/guix-gd-fallback.sock}"
 GUIX_GD_GROUP="${GUIX_GD_GROUP:-guix-gd-build}"
 
@@ -56,4 +57,7 @@ printf 'Found overlayfs container PID: %s\n' "$PID"
 # You can override GUIX_GD_DAEMON_BIN and GUIX_GD_DAEMON_ARGS via the environment.
 printf 'Running: sudo nsenter --target %s --all -- sudo %s %s\n' "$PID" "$GUIX_GD_DAEMON_BIN" "$GUIX_GD_DAEMON_ARGS"
 
-exec sudo nsenter --target "$PID" --all -- sudo "$GUIX_GD_DAEMON_BIN" --build-users-group=$GUIX_GD_GROUP $GUIX_GD_DAEMON_ARGS
+exec sudo nsenter --target "$PID" --all -- sudo "$GUIX_GD_DAEMON_BIN" \
+     --build-users-group=$GUIX_GD_GROUP \
+     --listen=$GUIX_GD_DEV_SOCK \
+     $GUIX_GD_DAEMON_ARGS

@@ -18,7 +18,7 @@
 ;; group name and user name for unprivileged daemon
 (define-public guix-gd-user "guix-gd-daemon")
 
-(define-public guix-gd-socket "/tmp/guix-gd-daemon.sock")
+(define-public guix-gd-dev-sock "/tmp/guix-gd-fallback.sock")
 
 ;; configs for overlayfs daemon
 (define-public guix-gd-dev-root "/guix-gd-overlayfs")
@@ -26,12 +26,14 @@
 (define-public guix-gd-daemon-group "root")
 (define-public guix-gd-client-user "stas")
 
+
+
 (define config-dev-vars
   '(guix-gd-root
     guix-gd-container-root
     guix-gd-group
     guix-gd-user
-    guix-gd-socket
+    guix-gd-dev-sock
     ;; configs for overlayfs daemon
     guix-gd-dev-root
     guix-gd-daemon-user

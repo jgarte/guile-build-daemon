@@ -63,13 +63,20 @@ start-fallback-daemon:
 	sh ./env/dev/guix-gd/start-daemon.sh
 
 start-daemon:
-	$$($(GUIX_DAEMON_DEV))/bin/guix-gd-daemon \
-	      /guix-gd-overlayfs/var/guix/daemon-socket/socket \
-	      /tmp/guix-gd-fallback.sock
+	sudo env $$($(CONFIG_DEV_ENV)) \
+	sh -c '$$($(GUIX_DAEMON_DEV))/bin/guix-gd-daemon \
+	$$GUIX_GD_DEV_ROOT/var/guix/daemon-socket/socket \
+	$$GUIX_GD_DEV_SOCK'
+
+
+start-daemon-test:
+	sudo env $$($(CONFIG_DEV_ENV)) \
+	sh -c 'echo $$GUIX_GD_DEV_ROOT'
 
 start-shell:
 	sudo $$($(CONFIG_DEV_ENV)) \
 	sh ./env/dev/guix-gd/start-shell.sh
+
 
 kill-container:
 	sudo $$($(CONFIG_DEV_ENV)) \
