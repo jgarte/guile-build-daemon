@@ -9,7 +9,7 @@
          (url "https://git.guix.gnu.org/guix.git")
          (branch "master")
          (commit
-          "c8985dd911c4c8e2948c888df8b54c9bc317625e")
+          "15608d938d894e5535459405d21ab44f050abed4")
          (introduction
           (make-channel-introduction
            "9edb3f66fd807b096b48283debdcddccfea34bad"
