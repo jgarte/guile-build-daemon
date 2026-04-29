@@ -116,7 +116,7 @@ messages are most useful while the connection is still live."
 ;;   2: client minor version or #f
 ;;   3: current operation code or #f
 ;;   4: current operation name or #f
-;;   5: daemon decode mode: one of 'handshake, 'wait-op, 'frames, 'ignore-reply
+;;   5: daemon decode mode: one of 'handshake, 'wait-op, 'frames, 'reply, 'ignore-reply
 
 (define (make-connection-context)
   "Return mutable shared state for one relayed client connection."
@@ -156,17 +156,22 @@ messages are most useful while the connection is still live."
      (vector-set! ctx 4 name)
      (vector-set! ctx 5 'frames))))
 
+(define (context-await-reply! ctx)
+  "Record that daemon control frames ended and a normal reply is expected next."
+  (with-context-lock ctx (lambda () (vector-set! ctx 5 'reply))))
+
 (define (context-finish-op! ctx)
-  "Record that the current operation is done sending daemon control frames."
+  "Record that the current operation and its reply are fully consumed."
   (with-context-lock
    ctx
    (lambda ()
      (vector-set! ctx 3 #f)
      (vector-set! ctx 4 #f)
-     ;; After `STDERR_LAST` the daemon may still send the normal reply payload.
-     ;; We deliberately treat that payload as opaque until the next client
-     ;; request is fully parsed.
-     (vector-set! ctx 5 'ignore-reply))))
+     (vector-set! ctx 5 'wait-op))))
+
+(define (context-current-op-code ctx)
+  "Return the current operation code stored in CTX, or `#f`."
+  (with-context-lock ctx (lambda () (vector-ref ctx 3))))
 
 (define (context-current-op-name ctx)
   "Return the current operation name stored in CTX, or `#f`."
@@ -271,6 +276,26 @@ all the useful information for the cases handled here."
                       (loop (- remaining 1)
                             (parsed-next item-result)
                             (cons (parsed-value item-result) items)))))))))
+
+
+(define (parse-string-pairs-at bv start)
+  "Parse one worker-protocol list of string pairs from BV at START."
+  (let ((count-result (parse-int-at bv start)))
+    (and count-result
+         (let loop ((remaining (parsed-value count-result))
+                    (index (parsed-next count-result))
+                    (items '()))
+           (if (= remaining 0)
+               (parsed (reverse items) index)
+               (let ((first-result (parse-string-at bv index)))
+                 (and first-result
+                      (let ((second-result (parse-string-at bv (parsed-next first-result))))
+                        (and second-result
+                             (loop (- remaining 1)
+                                   (parsed-next second-result)
+                                   (cons (cons (parsed-value first-result)
+                                               (parsed-value second-result))
+                                         items)))))))))))
 
 ;; ---------- Client operation decoders ----------
 
@@ -544,6 +569,180 @@ payload that follows `STDERR_LAST` remains opaque on purpose."
             (else
              (list 'unknown code index)))))))
 
+
+;; ---------- Operation reply decoders ----------
+
+(define (parse-reply-no-payload bv start client-minor)
+  "Parse a reply that has no payload bytes."
+  (parsed '() start))
+
+(define (parse-reply-boolean bv start client-minor)
+  "Parse a boolean reply payload."
+  (let ((result (parse-bool-at bv start)))
+    (and result
+         (parsed `((result . ,(parsed-value result)))
+                 (parsed-next result)))))
+
+(define (parse-reply-string bv start client-minor)
+  "Parse a one-string reply payload."
+  (let ((result (parse-string-at bv start)))
+    (and result
+         (parsed `((result . ,(parsed-value result)))
+                 (parsed-next result)))))
+
+(define (parse-reply-string-list bv start client-minor)
+  "Parse a string-list reply payload."
+  (let ((result (parse-string-list-at bv start)))
+    (and result
+         (parsed `((count . ,(length (parsed-value result))))
+                 (parsed-next result)))))
+
+(define (parse-reply-find-roots bv start client-minor)
+  "Parse a `wopFindRoots` reply payload."
+  (let ((result (parse-string-pairs-at bv start)))
+    (and result
+         (parsed `((count . ,(length (parsed-value result))))
+                 (parsed-next result)))))
+
+(define (parse-reply-collect-garbage bv start client-minor)
+  "Parse a `wopCollectGarbage` reply payload."
+  (let ((paths-result (parse-string-list-at bv start)))
+    (and paths-result
+         (let ((freed-result (parse-longlong-at bv (parsed-next paths-result))))
+           (and freed-result
+                (let ((obsolete-result (parse-longlong-at bv (parsed-next freed-result))))
+                  (and obsolete-result
+                       (parsed `((paths-count . ,(length (parsed-value paths-result)))
+                                 (bytes-freed . ,(parsed-value freed-result))
+                                 (obsolete . ,(parsed-value obsolete-result)))
+                               (parsed-next obsolete-result)))))))))
+
+(define (parse-reply-query-substitutable-path-info bv start client-minor)
+  "Parse a `wopQuerySubstitutablePathInfo` reply payload."
+  (let ((present-result (parse-int-at bv start)))
+    (and present-result
+         (if (= 0 (parsed-value present-result))
+             (parsed '((present? . #f))
+                     (parsed-next present-result))
+             (let* ((deriver-result (parse-string-at bv (parsed-next present-result)))
+                    (refs-result (and deriver-result
+                                      (parse-string-list-at bv (parsed-next deriver-result))))
+                    (dl-result (and refs-result
+                                    (parse-longlong-at bv (parsed-next refs-result)))))
+               (and dl-result
+                    (if (and client-minor (>= client-minor 7))
+                        (let ((nar-result (parse-longlong-at bv (parsed-next dl-result))))
+                          (and nar-result
+                               (parsed `((present? . #t)
+                                         (references-count . ,(length (parsed-value refs-result)))
+                                         (download-size . ,(parsed-value dl-result))
+                                         (nar-size . ,(parsed-value nar-result)))
+                                       (parsed-next nar-result))))
+                        (parsed `((present? . #t)
+                                  (references-count . ,(length (parsed-value refs-result)))
+                                  (download-size . ,(parsed-value dl-result)))
+                                (parsed-next dl-result)))))))))
+
+(define (parse-reply-path-info bv start client-minor)
+  "Parse a `wopQueryPathInfo` reply payload."
+  (let* ((deriver-result (parse-string-at bv start))
+         (hash-result (and deriver-result
+                           (parse-string-at bv (parsed-next deriver-result))))
+         (refs-result (and hash-result
+                           (parse-string-list-at bv (parsed-next hash-result))))
+         (time-result (and refs-result
+                           (parse-int-at bv (parsed-next refs-result))))
+         (nar-result (and time-result
+                          (parse-longlong-at bv (parsed-next time-result)))))
+    (and nar-result
+         (parsed `((deriver . ,(parsed-value deriver-result))
+                   (hash . ,(parsed-value hash-result))
+                   (references-count . ,(length (parsed-value refs-result)))
+                   (registration-time . ,(parsed-value time-result))
+                   (nar-size . ,(parsed-value nar-result)))
+                 (parsed-next nar-result)))))
+
+(define (parse-reply-query-substitutable-path-infos bv start client-minor)
+  "Parse a `wopQuerySubstitutablePathInfos` reply payload."
+  (let ((count-result (parse-int-at bv start)))
+    (and count-result
+         (let loop ((remaining (parsed-value count-result))
+                    (index (parsed-next count-result)))
+           (if (= remaining 0)
+               (parsed `((count . ,(parsed-value count-result)))
+                       index)
+               (let* ((path-result (parse-string-at bv index))
+                      (deriver-result (and path-result
+                                           (parse-string-at bv (parsed-next path-result))))
+                      (refs-result (and deriver-result
+                                        (parse-string-list-at bv (parsed-next deriver-result))))
+                      (dl-result (and refs-result
+                                      (parse-longlong-at bv (parsed-next refs-result))))
+                      (nar-result (and dl-result
+                                       (parse-longlong-at bv (parsed-next dl-result)))))
+                 (and nar-result
+                      (loop (- remaining 1)
+                            (parsed-next nar-result)))))))))
+
+
+(define reply-parser-table
+  (list
+   (list 1  parse-reply-boolean)
+   (list 3  parse-reply-boolean)
+   (list 4  parse-reply-string)
+   (list 5  parse-reply-string-list)
+   (list 6  parse-reply-string-list)
+   (list 8  parse-reply-string)
+   (list 9  parse-reply-boolean)
+   (list 10 parse-reply-boolean)
+   (list 11 parse-reply-boolean)
+   (list 12 parse-reply-boolean)
+   (list 13 parse-reply-boolean)
+   (list 14 parse-reply-find-roots)
+   (list 18 parse-reply-string)
+   (list 19 parse-reply-no-payload)
+   (list 20 parse-reply-collect-garbage)
+   (list 21 parse-reply-query-substitutable-path-info)
+   (list 22 parse-reply-string-list)
+   (list 24 parse-reply-string-list)
+   (list 25 parse-reply-boolean)
+   (list 26 parse-reply-path-info)
+   (list 28 parse-reply-string-list)
+   (list 29 parse-reply-string)
+   (list 30 parse-reply-query-substitutable-path-infos)
+   (list 31 parse-reply-string-list)
+   (list 32 parse-reply-string-list)
+   (list 33 parse-reply-string-list)
+   (list 34 parse-reply-boolean)
+   (list 35 parse-reply-boolean)
+   (list 80 parse-reply-string-list)
+   (list 81 parse-reply-string-list)))
+
+(define (find-reply-parser code)
+  "Return the reply payload parser for operation CODE, or `#f`."
+  (let loop ((entries reply-parser-table))
+    (cond
+     ((null? entries) #f)
+     ((= code (car (car entries))) (cadr (car entries)))
+     (else (loop (cdr entries))))))
+
+(define (parse-current-op-reply-at ctx bv start client-minor)
+  "Parse one full daemon reply payload for the current operation in CTX."
+  (let* ((code (context-current-op-code ctx))
+         (name (context-current-op-name ctx)))
+    (if (not code)
+        (list 'no-op start)
+        (let ((parser (find-reply-parser code)))
+          (if (not parser)
+              (list 'unsupported code (or name (op-name code)) start)
+              (let ((result (parser bv start client-minor)))
+                (and result
+                     (list 'reply
+                           code
+                           (or name (op-name code))
+                           (parsed-value result)
+                           (parsed-next result)))))))))
+
 ;; ---------- Incremental observers for structured logging ----------
 
 ;; Client decoder state vector layout:
@@ -738,12 +937,9 @@ payload that follows `STDERR_LAST` remains opaque on purpose."
             ((last)
              (log "daemon -> client [frame ~a] STDERR_LAST~%"
                   (or op-name-now "unknown-op"))
-             ;; Anything after `STDERR_LAST` belongs to the normal operation
-             ;; reply payload.  The decoder drops it because the raw relay has
-             ;; already forwarded it and because its shape depends on the current
-             ;; operation.
-             (vector-set! state 1 (make-bytevector 0))
-             (context-finish-op! ctx))
+             (vector-set! state 1 (drop-bytevector-prefix buffer (caddr event)))
+             (context-await-reply! ctx)
+             (drain-daemon-replies! ctx state))
             ((unknown)
              (log "daemon -> client [frame ~a] unknown-control=0x~x; raw relay continues~%"
                   (or op-name-now "unknown-op")
@@ -751,8 +947,45 @@ payload that follows `STDERR_LAST` remains opaque on purpose."
              (vector-set! state 1 (make-bytevector 0))
              (context-set-daemon-mode! ctx 'ignore-reply))))))))
 
+
+
+(define (drain-daemon-replies! ctx state)
+  "Consume a complete daemon reply payload for the current operation."
+  (let* ((buffer (vector-ref state 1))
+         (client-minor (context-client-minor ctx))
+         (op-name-now (or (context-current-op-name ctx) "unknown-op"))
+         (event (parse-current-op-reply-at ctx buffer 0 client-minor)))
+    (cond
+     ((not event)
+      #f)
+     ((eq? (car event) 'reply)
+      (log "daemon -> client [reply ~a]~a~%"
+           (list-ref event 2)
+           (details->string (list-ref event 3)))
+      (vector-set! state 1
+                   (drop-bytevector-prefix buffer (list-ref event 4)))
+      (context-finish-op! ctx)
+      #t)
+     ((eq? (car event) 'unsupported)
+      (log "daemon -> client [reply ~a] unsupported reply parser; continuing raw relay~%"
+           (list-ref event 2))
+      (vector-set! state 1 (make-bytevector 0))
+      (context-set-daemon-mode! ctx 'ignore-reply)
+      #t)
+     ((eq? (car event) 'no-op)
+      (log "daemon -> client [reply] no current op in context; falling back to raw relay~%")
+      (vector-set! state 1 (make-bytevector 0))
+      (context-set-daemon-mode! ctx 'ignore-reply)
+      #t)
+     (else
+      (log "daemon -> client [reply ~a] unexpected decoder event=~s~%"
+           op-name-now event)
+      (vector-set! state 1 (make-bytevector 0))
+      (context-set-daemon-mode! ctx 'ignore-reply)
+      #t))))
+
 (define (observe-daemon-bytevector! ctx state chunk count)
-  "Feed COUNT bytes from CHUNK into the daemon-side structured decoder." 
+  "Feed COUNT bytes from CHUNK into the daemon-side structured decoder."
   (catch #t
     (lambda ()
       (let ((phase (vector-ref state 0)))
@@ -762,22 +995,33 @@ payload that follows `STDERR_LAST` remains opaque on purpose."
          ((or (eq? phase 'daemon-greeting)
               (eq? phase 'daemon-startup))
           (vector-set! state 1
-                       (append-bytevector-slice (vector-ref state 1) chunk count))
+                       (append-bytevector-slice (vector-ref state 1)
+                                                chunk count))
           (drain-daemon-handshake! ctx state))
          (else
           (case (context-daemon-mode ctx)
             ((wait-op ignore-reply)
-             ;; Bytes in these phases are intentionally opaque to the structured
-             ;; decoder.  They are still fully relayed by the raw forwarder.
+             ;; Bytes in these phases are intentionally opaque to the
+             ;; structured decoder.  They are still fully relayed by the
+             ;; raw forwarder.
              #t)
             ((frames)
              (vector-set! state 1
-                          (append-bytevector-slice (vector-ref state 1) chunk count))
+                          (append-bytevector-slice (vector-ref state 1)
+                                                   chunk count))
              (drain-daemon-frames! ctx state))
+            ((reply)
+             (vector-set! state 1
+                          (append-bytevector-slice (vector-ref state 1)
+                                                   chunk count))
+             (drain-daemon-replies! ctx state))
             (else
-             (disable-daemon-decoder! ctx state "unknown daemon decode mode")))))))
+             (disable-daemon-decoder! ctx state
+                                      "unknown daemon decode mode")))))))
     (lambda args
-      (disable-daemon-decoder! ctx state (format #f "exception: ~s" args)))))
+      (disable-daemon-decoder! ctx state
+                               (format #f "exception: ~s" args)))))
+
 
 ;; ---------- Raw full-duplex relay ----------
 
