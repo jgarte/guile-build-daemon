@@ -41,13 +41,13 @@ STAGE0_POSIX_OUT    := '/guix-gd-root/gnu/store/nhh1vznrvl1q3jyjz6cf3j8jyqd5fvhj
 
 
 ares:
-	$(GUILE_DEV) -c "((@ (ares server) run-nrepl-server))"
+	$(GUILE_DEV) -s './dev/guix-daemon/ares-safe.scm'
 
 arei:
 	$(GUIX_TM) \
 	-- shell emacs-pgtk emacs-arei git --pure \
 	-E '.*GTK.*|.*XDG.*|.*DISPLAY.*' \
-	-- emacs
+	-- emacs -q
 
 build-dev-guix:
 	$(GUIX_TM) -- build $(GUIX_LOAD_PATH_ENV) --no-grafts --expression=$(GUIX_DEV_PKG)
