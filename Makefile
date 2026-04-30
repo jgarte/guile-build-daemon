@@ -74,11 +74,6 @@ start-daemon:
 	$$GUIX_GD_DEV_ROOT/var/guix/daemon-socket/socket \
 	$$GUIX_GD_DEV_SOCK'
 
-
-start-daemon-test:
-	sudo env $$($(CONFIG_DEV_ENV)) \
-	sh -c 'echo $$GUIX_GD_DEV_ROOT'
-
 start-shell:
 	sudo $$($(CONFIG_DEV_ENV)) \
 	sh ./env/dev/guix-gd/start-shell.sh
