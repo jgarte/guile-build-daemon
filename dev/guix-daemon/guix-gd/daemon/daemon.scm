@@ -97,9 +97,11 @@ messages are most useful while the connection is still live."
                  (map (lambda (i) (byte->ascii (bytevector-u8-ref bv i)))
                       (iota limit))
                  "")))
-    (if (> n limit)
-        (format #f "~a ... |~a|" hex ascii)
-        (format #f "~a |~a|" hex ascii))))
+    ;; (if (> n limit)
+    ;;     (format #f "~a ... |~a|" hex ascii)
+    ;;     (format #f "~a |~a|" hex ascii))
+    (format #f "~a"ascii)
+    ))
 
 (define (details->string details)
   "Render DETAILS compactly for structured operation logs."
