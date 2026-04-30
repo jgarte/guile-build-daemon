@@ -47,6 +47,10 @@
 (define STDERR_ERROR #x63787470)
 
 ;; ---------- Generic logging ----------
+;; Logging stays line-oriented and explicitly flushed so interleaved thread output
+;; remains readable while a connection is still active. Helpers render small,
+;; stable previews (hex + ASCII, trimmed strings) to show enough context without
+;; flooding logs with full binary payloads.
 
 (define (log fmt . args)
   "Write one flushed log message.
@@ -104,6 +108,10 @@ messages are most useful while the connection is still live."
       (format #f " ~s" details)))
 
 ;; ---------- Shared connection context ----------
+;; Two relay threads share per-connection facts: negotiated version, current
+;; operation, and daemon decode mode. The state is stored in a tiny fixed-layout
+;; vector and guarded by one mutex. This keeps synchronization simple, cheap, and
+;; explicit, while avoiding race-prone global variables.
 
 ;; One connection has exactly two relay threads.  They need to share only a few
 ;; facts: the client protocol version, the current operation, and whether the
@@ -111,7 +119,7 @@ messages are most useful while the connection is still live."
 ;; opaque reply payload.
 ;;
 ;; Vector layout:
-;;   0: mutex
+;;   0: mutex (short for mutual exclusion)
 ;;   1: client version or #f
 ;;   2: client minor version or #f
 ;;   3: current operation code or #f
@@ -178,6 +186,10 @@ messages are most useful while the connection is still live."
   (with-context-lock ctx (lambda () (vector-ref ctx 4))))
 
 ;; ---------- Bytevector helpers used by the structured decoders ----------
+;; Parsers operate on bytevectors because socket reads arrive in arbitrary chunk
+;; boundaries. These helpers provide small, composable primitives (slice, append,
+;; bounds checks, typed reads) so each protocol parser can stop cleanly when data
+;; is incomplete and resume on the next chunk.
 
 (define (slice-bytevector bv start count)
   "Return COUNT bytes copied from BV starting at START."
@@ -298,6 +310,10 @@ all the useful information for the cases handled here."
                                          items)))))))))))
 
 ;; ---------- Client operation decoders ----------
+;; Client requests are decoded by opcode through a table of payload parsers.
+;; Each parser extracts only log-useful fields and advances the byte index to
+;; keep stream alignment. If an opcode or layout is unsupported, decoding is
+;; disabled for that side, but raw forwarding continues unchanged.
 
 (define (parse-noarg-request bv start client-minor)
   "Parse a request with no payload.
@@ -526,6 +542,10 @@ or `#f` when more bytes are needed."
                (list 'unknown code (op-name code) index))))))
 
 ;; ---------- Daemon control-frame decoders ----------
+;; Daemon traffic is split into control frames (STDERR_*) and the ordinary reply
+;; payload that follows. This section decodes only the control layer so progress,
+;; reads/writes, and errors are visible, while keeping payload parsing separate
+;; and optional.
 
 (define (parse-daemon-frame-at bv start client-minor)
   "Parse one daemon control frame from BV at START.
@@ -571,6 +591,10 @@ payload that follows `STDERR_LAST` remains opaque on purpose."
 
 
 ;; ---------- Operation reply decoders ----------
+;; Reply payload parsers are selected by the current operation code. They report
+;; compact summaries (counts, booleans, key sizes) rather than full data dumps.
+;; Unsupported reply layouts are treated as non-fatal: logging falls back to raw
+;; relay mode instead of risking protocol desynchronization.
 
 (define (parse-reply-no-payload bv start client-minor)
   "Parse a reply that has no payload bytes."
@@ -744,6 +768,10 @@ payload that follows `STDERR_LAST` remains opaque on purpose."
                            (parsed-next result)))))))))
 
 ;; ---------- Incremental observers for structured logging ----------
+;; Observers are incremental state machines fed by forwarded chunks. They buffer
+;; unread bytes, drain complete protocol units, and leave partial tails pending.
+;; Any parse exception disables only structured decoding for that direction, which
+;; protects relay correctness under unknown versions or malformed messages.
 
 ;; Client decoder state vector layout:
 ;;   0: phase symbol
@@ -1024,6 +1052,10 @@ payload that follows `STDERR_LAST` remains opaque on purpose."
 
 
 ;; ---------- Raw full-duplex relay ----------
+;; The relay is intentionally simple: copy bytes both ways, log chunk previews,
+;; and half-close on EOF so the opposite direction can drain. Each direction runs
+;; in its own thread, and sockets are split into dedicated read/write ports to
+;; avoid bidirectional port contention seen in practice.
 
 (define (split-socket socket)
   "Return dedicated read and write ports for SOCKET.
@@ -1138,6 +1170,12 @@ direction while still allowing the opposite direction to drain remaining data."
         (close-safely upstream-out)
         (close-safely upstream-socket)
         (close-safely client-socket)))))
+
+;; ---------- Listener and process lifecycle ----------
+;; Startup is conservative: refuse to unlink an existing socket path
+;; automatically, because that path is often the real daemon endpoint. The main
+;; loop binds once, accepts clients, relays each connection, and always cleans up
+;; ports and socket files with best-effort error handling.
 
 (define (ensure-listen-path-free path)
   "Ensure PATH is safe to bind.
