@@ -14,7 +14,7 @@
 ;;; separate so that an unsupported message only disables decoding, not the
 ;;; relay itself.
 
-(define-module (guix-gd daemon)
+(define-module (guix-gd daemon daemon)
   #:use-module (ice-9 threads)      ; make-mutex, with-mutex, call-with-new-thread
   #:use-module (ice-9 format)       ; format
   #:use-module (ice-9 binary-ports) ; get-bytevector-some!, put-bytevector
