@@ -1,7 +1,7 @@
 ;; SPDX-License-Identifier: GPL-3.0-or-later
 ;; Parsing primitive tests for (guix-gd daemon).
 
-(define-module (guix-gd daemon-parsing-tests)
+(define-module (guix-gd daemon-parsing-test)
   #:use-module (ares suitbl core)
   #:use-module ((ares suitbl runner) #:prefix runner:)
   #:use-module ((ares suitbl reporters) #:prefix reporter:)
