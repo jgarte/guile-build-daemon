@@ -20,10 +20,11 @@
     (name "guix-gd-daemon")
     (version "0.1.0")
     (source
-     ;; Local development module to package as an executable command.
+     ;; Local development modules to package as an executable command.
      ;; Path is relative to repository root (development use).
-     (local-file "dev/guix-daemon/guix-gd/daemon/daemon.scm"
-                 "daemon.scm"))
+     (local-file "dev/guix-daemon/guix-gd/daemon"
+                 "daemon"
+                 #:recursive? #t))
     (build-system trivial-build-system)
     (inputs (list guile-3.0 bash-minimal))
     (arguments
@@ -36,19 +37,19 @@
                  (bin (string-append out "/bin"))
                  (site-root (string-append out "/share/guile/site/3.0"))
                  (site (string-append site-root "/guix-gd"))
-                 (module-file (string-append site "/daemon.scm"))
+                 (daemon-module-dir (string-append site "/daemon"))
                  (wrapper (string-append bin "/guix-gd-daemon"))
                  (guile (string-append #$(this-package-input "guile") "/bin/guile"))
                  (sh (string-append #$(this-package-input "bash-minimal") "/bin/sh")))
             (mkdir-p bin)
             (mkdir-p site)
-            ;; Install module as (guix-gd daemon).
-            (copy-file #$source module-file)
+            ;; Install daemon modules under guix-gd/daemon/*.scm.
+            (copy-recursively #$source daemon-module-dir)
             ;; CLI wrapper: import module and run (main (command-line)).
             (with-output-to-file wrapper
               (lambda ()
                 (format #t
-                        "#!~a~%exec ~a -L ~a -c '(use-modules (guix-gd daemon)) (main (command-line))' \"$@\"~%"
+                        "#!~a~%exec ~a -L ~a -c '(use-modules (guix-gd daemon daemon)) (main (command-line))' \"$@\"~%"
                         sh guile site-root)))
             (chmod wrapper #o555)))))
     (home-page "https://codeberg.org/cons-town/guile-build-daemon")
