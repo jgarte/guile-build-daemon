@@ -6,6 +6,7 @@
   #:use-module (guix-gd daemon observer)
   #:use-module (ice-9 threads)      ; call-with-new-thread, join-thread
   #:use-module (ice-9 binary-ports) ; get-bytevector-some!, put-bytevector
+  #:use-module (ice-9 rdelim)       ; read-line
   #:use-module (rnrs bytevectors)   ; make-bytevector
   #:use-module (rnrs io ports)      ; force-output
   #:export (split-socket
@@ -138,15 +139,32 @@ direction while still allowing the opposite direction to drain remaining data."
         (close-safely upstream-socket)
         (close-safely client-socket)))))
 
+(define (confirm-delete-listen-path! path)
+  "Ask whether to delete PATH.  Exit with status 1 if user declines."
+  (display (string-append "Listen socket path already exists: " path "\n")
+           (current-error-port))
+  (display "Delete it and continue? [y/N]: " (current-error-port))
+  (force-output (current-error-port))
+  (let ((answer (read-line (current-input-port))))
+    (if (and (string? answer)
+             (or (string-ci=? answer "y")
+                 (string-ci=? answer "yes")))
+        (catch #t
+          (lambda ()
+            (delete-file path)
+            (log "deleted existing listen socket path: ~a~%" path))
+          (lambda args
+            (error "Failed to delete existing listen socket path" path args)))
+        (begin
+          (display "Aborted.\n" (current-error-port))
+          (exit 1)))))
+
 (define (ensure-listen-path-free path)
   "Ensure PATH is safe to bind.
 
-The relay refuses to unlink an existing socket automatically because the path is
-usually the real daemon socket.  Accidentally deleting a live daemon's pathname
-would make the system harder to recover."
+If PATH exists, ask the user whether to delete it and continue."
   (when (file-exists? path)
-    (error "Listen socket path already exists; choose another path or stop the daemon using it"
-           path)))
+    (confirm-delete-listen-path! path)))
 
 (define (serve-forever server upstream-path)
   "Accept clients from SERVER one at a time and relay them to UPSTREAM-PATH."
