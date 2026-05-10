@@ -41,6 +41,7 @@ container/start:
 	sh ./env/dev/guix-gd/contain-overlayfs.sh
 
 daemon-fallback/start:
+	$(GUIX_TM) -- shell -- \
 	sudo $$($(CONFIG_DEV_ENV)) \
 	sh ./env/dev/guix-gd/start-daemon.sh
 
@@ -52,6 +53,7 @@ daemon/start:
 	| tee daemon.log'
 
 container/shell:
+	$(GUIX_TM) -- shell -- \
 	sudo $$($(CONFIG_DEV_ENV)) \
 	sh ./env/dev/guix-gd/start-shell.sh
 
