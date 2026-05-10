@@ -1,7 +1,6 @@
 ;;; Raw full-duplex relay and connection lifecycle.
 
 (define-module (guix-gd daemon relay)
-  #:use-module (guix-gd daemon constants)
   #:use-module (guix-gd daemon context)
   #:use-module (guix-gd daemon logging)
   #:use-module (guix-gd daemon observer)
@@ -15,6 +14,9 @@
             relay-one
             ensure-listen-path-free
             serve-forever))
+
+;; Relay limits
+(define relay-buffer-size 4096)
 
 (define (split-socket socket)
   "Return dedicated read and write ports for SOCKET.

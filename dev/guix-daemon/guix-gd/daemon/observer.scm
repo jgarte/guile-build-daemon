@@ -1,7 +1,7 @@
 ;;; Incremental protocol observers used for structured relay logging.
 
 (define-module (guix-gd daemon observer)
-  #:use-module (guix-gd daemon constants)
+  #:use-module (guix-gd daemon protocol constants)
   #:use-module (guix-gd daemon context)
   #:use-module (guix-gd daemon logging)
   #:use-module (guix-gd daemon protocol)

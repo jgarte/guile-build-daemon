@@ -1,7 +1,6 @@
 ;;; Logging and byte-preview helpers for the Guix daemon relay.
 
 (define-module (guix-gd daemon logging)
-  #:use-module (guix-gd daemon constants)
   #:use-module (ice-9 format)       ; format
   #:use-module (rnrs bytevectors)   ; bytevector-u8-ref
   #:use-module (rnrs io ports)      ; force-output
@@ -13,6 +12,10 @@
             string-preview
             summarise-bytevector
             details->string))
+
+;; Logging limits.
+(define preview-limit 32)
+(define string-preview-limit 120)
 
 (define (log fmt . args)
   "Write one flushed log message.

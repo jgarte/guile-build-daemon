@@ -10,7 +10,7 @@
 ;;; decoded separately in (guix-gd daemon protocol reply).
 
 (define-module (guix-gd daemon protocol daemon)
-  #:use-module (guix-gd daemon constants)
+  #:use-module (guix-gd daemon protocol constants)
   #:use-module (guix-gd daemon protocol primitives)
   #:export (parse-daemon-frame-at))
 
