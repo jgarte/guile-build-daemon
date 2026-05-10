@@ -5,6 +5,7 @@
   #:use-module (ares suitbl core)
   #:use-module ((ares suitbl runner) #:prefix runner:)
   #:use-module ((ares suitbl reporters) #:prefix reporter:)
+  #:use-module ((ares suitbl state) #:prefix state:)
   #:use-module (rnrs bytevectors)
   #:use-module (ice-9 match)
   #:export (run-daemon-parser-tests
@@ -118,9 +119,21 @@
                     (parsed-value r)))))))
 
 (define (run-daemon-parser-tests)
-  (with-test-runner
-   (runner:make-suitbl
-    #:config `((test-reporter . ,reporter:silent)
-               (auto-run? . #t)))
-   (daemon-parser-tests)
-   ((test-runner*) `((type . runner/get-run-summary)))))
+  (let ((runner-instance
+         (runner:make-suitbl
+          #:config `((test-reporter . ,reporter:silent)
+                     (auto-run? . #t)
+                     (re-raise? . #t)))))
+    (with-test-runner
+     runner-instance
+     (daemon-parser-tests)
+     (let* ((state (runner:get-state runner-instance))
+            (summary (or (state:get-run-summary state)
+                         '((tests . 0)
+                           (failures . 0)
+                           (errors . 0)
+                           (skipped . 0)
+                           (assertions . 0)))))
+       (when (> (or (assoc-ref summary 'failures) 0) 0)
+         (error "daemon parser tests failed" summary))
+       summary))))

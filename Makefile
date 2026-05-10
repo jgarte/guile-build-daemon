@@ -28,6 +28,9 @@ ares:
 	$(GUILE_DEV) -s './dev/guix-daemon/ares-safe.scm'
 
 
+test/differential:
+	$(GUILE_DEV) -c "(use-modules (guix-gd daemon differential-test)) (display (run-daemon-differential-tests)) (newline)"
+
 daemon/build:
 	$(GUIX_DAEMON_DEV)
 
