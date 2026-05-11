@@ -10,10 +10,10 @@ Start the nREPL server:
 
 ## Differential daemon test
 
-This test runs one Guix command twice inside the same overlayfs container:
+This test runs the same Guix command in two separate overlayfs containers:
 
-1. Directly against fallback `guix-daemon` socket.
-2. Through `guix-gd-daemon` relay socket.
+1. **regular** container → talks directly to fallback `guix-daemon`.
+2. **relay** container → talks to `guix-gd-daemon` relay.
 
 Then it compares:
 
@@ -22,11 +22,16 @@ Then it compares:
 - stderr
 - filesystem delta (`gnu/store-upper`, `var/guix`, `etc/guix`)
 
-Prerequisite (in separate terminals):
+Two containers remove the need for any "reset state" command between runs.
 
-  make container/start
-  make daemon-fallback/start
-  make daemon/start
+Prerequisites (start each in its own terminal):
+
+  make container/regular/start
+  make daemon-fallback/regular/start
+
+  make container/relay/start
+  make daemon-fallback/relay/start
+  make daemon/relay/start
 
 Before running the test, authenticate once for `sudo`:
 
@@ -39,17 +44,29 @@ Run test:
 Main environment variables:
 
 - `GUIX_GD_TEST_COMMAND` (default: `guix gc --list-roots`)
-- `GUIX_GD_TEST_FALLBACK_SOCKET` (default: `/tmp/guix-gd-fallback.sock`)
-- `GUIX_GD_TEST_RELAY_SOCKET` (default: `/var/guix/daemon-socket/socket`)
 - `GUIX_GD_TEST_ARTIFACTS_DIR` (default: `tmp/daemon-differential`)
 - `GUIX_GD_TEST_EXPECT_EXIT` (default: `0`)
-- `GUIX_GD_TEST_RESET_COMMAND` (optional command run between the two scenarios)
+
+Regular scenario:
+
+- `GUIX_GD_TEST_REGULAR_ROOT` (default: `/guix-gd-overlayfs-regular`)
+- `GUIX_GD_TEST_REGULAR_CONTAINER_PID` (optional)
+- `GUIX_GD_TEST_REGULAR_SOCKET` (default: `/tmp/guix-gd-fallback-regular.sock`)
+
+Relay scenario:
+
+- `GUIX_GD_TEST_RELAY_ROOT` (default: `/guix-gd-overlayfs-relay`)
+- `GUIX_GD_TEST_RELAY_CONTAINER_PID` (optional)
+- `GUIX_GD_TEST_RELAY_SOCKET` (default: `/var/guix/daemon-socket/socket`)
+- `GUIX_GD_TEST_RELAY_SOCKET_HOST` (default: `<relay-root>/var/guix/daemon-socket/socket`)
+- `GUIX_GD_TEST_RELAY_FALLBACK_SOCKET` (default: `/tmp/guix-gd-fallback-relay.sock`)
 
 Artifacts and summary report are written to `tmp/daemon-differential/`.
 
-Stop container namespace when done:
+Stop containers when done:
 
-  make container/stop
+  make container/regular/stop
+  make container/relay/stop
 
 ## Contributing
 

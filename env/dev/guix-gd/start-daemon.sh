@@ -12,9 +12,11 @@ GUIX_GD_DEV_ROOT="${GUIX_GD_DEV_ROOT:-${SCRIPT_DIR}/.dev-root}"
 PIDFILE="${GUIX_GD_DEV_ROOT}/overlayfs-container.pid"
 GUIX_GD_DAEMON_BIN="${GUIX_GD_DAEMON_BIN:-guix-daemon}"
 GUIX_GD_DEV_SOCK="${GUIX_GD_DEV_SOCK:-/tmp/guix-gd-fallback.sock}"
-# extra args to guix-daemon
-# set --disable-deduplication to avoid hard links in overlayfs for /gnu/store
-GUIX_GD_DAEMON_ARGS="${GUIX_GD_DAEMON_ARGS:---disable-deduplication --listen=/tmp/guix-gd-fallback.sock}"
+# Extra args passed verbatim to guix-daemon.
+# We keep --listen outside this variable so callers can set GUIX_GD_DEV_SOCK
+# without having to override GUIX_GD_DAEMON_ARGS too.
+# --disable-deduplication avoids hard-link issues in overlayfs upperdir.
+GUIX_GD_DAEMON_ARGS="${GUIX_GD_DAEMON_ARGS:---disable-deduplication}"
 GUIX_GD_GROUP="${GUIX_GD_GROUP:-guix-gd-build}"
 
 # Validate pidfile exists
