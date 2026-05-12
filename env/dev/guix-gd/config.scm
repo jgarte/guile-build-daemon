@@ -7,9 +7,11 @@
 ;; - ./gnu/store/
 ;; - ./var/guix/daemon-socket/
 ;; - ./etc/
-(define-public guix-gd-root "/guix-gd-root")
+(define user-name (or (getenv "USER") "user"))
 
-(define-public guix-gd-container-root "/guix-gd-container")
+(define-public guix-gd-root (string-append "/tmp/guix-gd-root-" user-name))
+
+(define-public guix-gd-container-root (string-append "/tmp/guix-gd-container-" user-name))
 
 ;; group for build users for dev guix guile daemon
 ;; also a prefix name for these build users names
@@ -18,13 +20,13 @@
 ;; group name and user name for unprivileged daemon
 (define-public guix-gd-user "guix-gd-daemon")
 
-(define-public guix-gd-dev-sock "/tmp/guix-gd-fallback.sock")
+(define-public guix-gd-dev-sock (string-append "/tmp/guix-gd-fallback-" user-name ".sock"))
 
 ;; configs for overlayfs daemon
-(define-public guix-gd-dev-root "/guix-gd-overlayfs")
+(define-public guix-gd-dev-root (string-append "/tmp/guix-gd-overlayfs-" user-name))
 (define-public guix-gd-daemon-user "root")
 (define-public guix-gd-daemon-group "root")
-(define-public guix-gd-client-user "stas")
+(define-public guix-gd-client-user user-name)
 
 
 

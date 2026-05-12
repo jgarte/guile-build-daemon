@@ -1,14 +1,15 @@
-#!/usr/bin/env bash
-# turn Bash into a "fail-fast" environment to prevent silent failures:
-set -o errexit     # -e: Exit immediately if a command exits with a non-zero status
-set -o nounset     # -u: Treat unset variables as an error and exit immediately
-set -o pipefail    #      Return status of the last command in the pipe that failed
+#!/bin/sh
+# Configure a rootless overlayfs sandbox for a dev guix-daemon.
 
-# Set some defaults to script will run regardless current env:
-SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
-GUIX_GD_DEV_ROOT="${GUIX_GD_DEV_ROOT:-${SCRIPT_DIR}/.dev-root}"
+set -eu
+set -o pipefail 2>/dev/null || true
+
+SCRIPT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
+
+GUIX_GD_DEV_ROOT="${GUIX_GD_DEV_ROOT:-/tmp/guix-gd-overlayfs-${USER:-user}}"
 GUIX_GD_STORE_UPPER_DIR="${GUIX_GD_STORE_UPPER_DIR:-${GUIX_GD_DEV_ROOT}/gnu/store-upper}"
 GUIX_GD_STORE_WORK_DIR="${GUIX_GD_STORE_WORK_DIR:-${GUIX_GD_DEV_ROOT}/gnu/store-work}"
+GUIX_GD_STORE_LOWER_DIR="${GUIX_GD_STORE_LOWER_DIR:-${GUIX_GD_DEV_ROOT}/gnu/store-lower}"
 GUIX_GD_VAR_GUIX_DIR="${GUIX_GD_VAR_GUIX_DIR:-${GUIX_GD_DEV_ROOT}/var/guix}"
 GUIX_GD_ETC_GUIX_DIR="${GUIX_GD_ETC_GUIX_DIR:-${GUIX_GD_DEV_ROOT}/etc/guix}"
 GUIX_GD_DAEMON_USER="${GUIX_GD_DAEMON_USER:-root}"
@@ -16,115 +17,114 @@ GUIX_GD_DAEMON_GROUP="${GUIX_GD_DAEMON_GROUP:-root}"
 GUIX_GD_GROUP="${GUIX_GD_GROUP:-guix-gd-build}"
 GUIX_GD_DAEMON_BIN="${GUIX_GD_DAEMON_BIN:-guix-daemon}"
 
-# Ensure directories exist.
-# list of /var/guix directories is taken from instructions for migration to unpriveledged daemon https://guix.gnu.org/manual/1.5.0/en/html_node/Build-Environment-Setup.html
-mkdir -p \
-      "${GUIX_GD_STORE_WORK_DIR}" \
-      "${GUIX_GD_STORE_UPPER_DIR}" \
-      "${GUIX_GD_VAR_GUIX_DIR}/daemon-socket" \
-      "${GUIX_GD_VAR_GUIX_DIR}/db" \
-      "${GUIX_GD_VAR_GUIX_DIR}/discover" \
-      "${GUIX_GD_VAR_GUIX_DIR}/gcroots" \
-      "${GUIX_GD_VAR_GUIX_DIR}/offload" \
-      "${GUIX_GD_VAR_GUIX_DIR}/substitute" \
-      "${GUIX_GD_VAR_GUIX_DIR}/temproots" \
-      "${GUIX_GD_DEV_ROOT}/var/log/guix" \
-      "${GUIX_GD_ETC_GUIX_DIR}"
+if ! command -v unshare >/dev/null 2>&1; then
+  printf 'ERROR: unshare not found in PATH.\n' >&2
+  exit 1
+fi
 
-# /var/guix/gc.lock is a mutex lock file used by the guix-daemon to ensure that only one garbage collection (GC) process runs at any given time. It should be present
+mkdir -p \
+  "${GUIX_GD_STORE_WORK_DIR}" \
+  "${GUIX_GD_STORE_UPPER_DIR}" \
+  "${GUIX_GD_STORE_LOWER_DIR}" \
+  "${GUIX_GD_VAR_GUIX_DIR}/daemon-socket" \
+  "${GUIX_GD_VAR_GUIX_DIR}/db" \
+  "${GUIX_GD_VAR_GUIX_DIR}/discover" \
+  "${GUIX_GD_VAR_GUIX_DIR}/gcroots" \
+  "${GUIX_GD_VAR_GUIX_DIR}/offload" \
+  "${GUIX_GD_VAR_GUIX_DIR}/substitute" \
+  "${GUIX_GD_VAR_GUIX_DIR}/temproots" \
+  "${GUIX_GD_DEV_ROOT}/var/log/guix" \
+  "${GUIX_GD_ETC_GUIX_DIR}"
+
 touch "${GUIX_GD_VAR_GUIX_DIR}/gc.lock"
 
-# add substitute keys to /etc/guix/acl
-# [guix-repo]/etc/substitutes
-# or at https://bordeaux.guix.gnu.org
-printf '%s\n' "(acl 
- (entry 
-  (public-key 
-   (ecc 
+if [ -f /etc/guix/acl ]; then
+  cp -f /etc/guix/acl "${GUIX_GD_ETC_GUIX_DIR}/acl"
+  chmod u+rw "${GUIX_GD_ETC_GUIX_DIR}/acl"
+elif [ ! -f "${GUIX_GD_ETC_GUIX_DIR}/acl" ]; then
+  printf '%s\n' "(acl
+ (entry
+  (public-key
+   (ecc
     (curve Ed25519)
     (q #8D156F295D24B0D9A86FA5741A840FF2D24F60F7B6C4134814AD55625971B394#)
     )
    )
-  (tag 
+  (tag
    (guix import)
    )
   )
- (entry 
-  (public-key 
-   (ecc 
+ (entry
+  (public-key
+   (ecc
     (curve Ed25519)
     (q #7D602902D3A2DBB83F8A0FB98602A754C5493B0B778C8D1DD4E0F41DE14DE34F#)
     )
    )
-  (tag 
+  (tag
    (guix import)
    )
   )
  )" > "${GUIX_GD_ETC_GUIX_DIR}/acl"
+fi
 
-# Ensure mount points exist in the host FS namespace.
-mkdir -p /gnu/store \
-      /var/guix \
-      /var/guix/daemon-socket \
-      /var/guix/db \
-      /var/guix/discover \
-      /var/guix/gcroots \
-      /var/guix/offload \
-      /var/guix/substitute \
-      /var/guix/temproots \
-      /var/log/guix \
-      /etc/guix
-
-# workdir is for overlayfs internals; keep it root-owned.
-chown root:root "${GUIX_GD_STORE_WORK_DIR}"
 chmod 0700 "${GUIX_GD_STORE_WORK_DIR}"
 
-# Set dirs ownership for daemon.
-chown -R "${GUIX_GD_DAEMON_USER}:${GUIX_GD_DAEMON_GROUP}" \
-      "${GUIX_GD_STORE_UPPER_DIR}" \
-      "${GUIX_GD_VAR_GUIX_DIR}/daemon-socket" \
-      "${GUIX_GD_VAR_GUIX_DIR}/db" \
-      "${GUIX_GD_VAR_GUIX_DIR}/discover" \
-      "${GUIX_GD_VAR_GUIX_DIR}/gcroots" \
-      "${GUIX_GD_VAR_GUIX_DIR}/offload" \
-      "${GUIX_GD_VAR_GUIX_DIR}/substitute" \
-      "${GUIX_GD_VAR_GUIX_DIR}/temproots" \
-      "${GUIX_GD_DEV_ROOT}/var/log/guix" \
-      "${GUIX_GD_ETC_GUIX_DIR}" \
-      "${GUIX_GD_VAR_GUIX_DIR}/gc.lock"
+for path in \
+  /gnu/store \
+  /var/guix/gc.lock \
+  /var/guix/daemon-socket \
+  /var/guix/db \
+  /var/guix/discover \
+  /var/guix/gcroots \
+  /var/guix/offload \
+  /var/guix/substitute \
+  /var/guix/temproots \
+  /var/log/guix \
+  /etc/guix
 
-echo "== guix-gd /gnu/store overlay =="
-echo "daemon user:  ${GUIX_GD_DAEMON_USER}"
+do
+  if [ ! -e "$path" ]; then
+    printf 'ERROR: required path does not exist: %s\n' "$path" >&2
+    exit 1
+  fi
+done
+
+echo "== guix-gd /gnu/store overlay (rootless) =="
+echo "daemon user:   ${GUIX_GD_DAEMON_USER}"
 echo "daemon group:  ${GUIX_GD_DAEMON_GROUP}"
-echo "daemon bin:   ${GUIX_GD_DAEMON_BIN}"
+echo "daemon bin:    ${GUIX_GD_DAEMON_BIN}"
+echo "build group:   ${GUIX_GD_GROUP}"
 echo "/gnu/store -> overlay:"
-echo "                lower=/gnu/store"
+echo "                lower=${GUIX_GD_STORE_LOWER_DIR}"
 echo "                upper=${GUIX_GD_STORE_UPPER_DIR}"
+echo "                work=${GUIX_GD_STORE_WORK_DIR}"
 echo "/var/guix{...} -> ${GUIX_GD_VAR_GUIX_DIR}"
 echo "/etc/guix -> ${GUIX_GD_ETC_GUIX_DIR}"
+echo "namespace mode: unshare --user --map-root-user + unshare --mount"
 echo
 
-printf "Start dev guix-daemon in overlayFS for /gnu/store? [y/N]: "
+printf 'Start rootless dev overlayfs container? [y/N]: '
 read -r CONFIRM
 
 case "$CONFIRM" in
-    [yY][eE][sS]|[yY])
-        # Run in a private mount namespace so remaps disappear automatically when
-        # daemon exits.
-        exec unshare --mount --fork -- env \
-             GUIX_GD_DEV_ROOT="${GUIX_GD_DEV_ROOT}" \
-             GUIX_GD_STORE_UPPER_DIR="${GUIX_GD_STORE_UPPER_DIR}" \
-             GUIX_GD_STORE_WORK_DIR="${GUIX_GD_STORE_WORK_DIR}" \
-             GUIX_GD_VAR_GUIX_DIR="${GUIX_GD_VAR_GUIX_DIR}" \
-             GUIX_GD_ETC_GUIX_DIR="${GUIX_GD_ETC_GUIX_DIR}" \
-             GUIX_GD_DAEMON_USER="${GUIX_GD_DAEMON_USER}" \
-             GUIX_GD_DAEMON_GROUP="${GUIX_GD_DAEMON_GROUP}" \
-             GUIX_GD_DAEMON_BIN="${GUIX_GD_DAEMON_BIN}" \
-             GUIX_GD_GROUP="${GUIX_GD_GROUP}" \
-             bash ${SCRIPT_DIR}/init-overlayfs.sh
-        ;;
-    *)
-        echo "Aborting."
-        exit 1
-        ;;
+  [yY][eE][sS]|[yY])
+    exec unshare --user --map-root-user --fork -- env \
+      GUIX_GD_DEV_ROOT="${GUIX_GD_DEV_ROOT}" \
+      GUIX_GD_STORE_UPPER_DIR="${GUIX_GD_STORE_UPPER_DIR}" \
+      GUIX_GD_STORE_WORK_DIR="${GUIX_GD_STORE_WORK_DIR}" \
+      GUIX_GD_STORE_LOWER_DIR="${GUIX_GD_STORE_LOWER_DIR}" \
+      GUIX_GD_VAR_GUIX_DIR="${GUIX_GD_VAR_GUIX_DIR}" \
+      GUIX_GD_ETC_GUIX_DIR="${GUIX_GD_ETC_GUIX_DIR}" \
+      GUIX_GD_DAEMON_USER="${GUIX_GD_DAEMON_USER}" \
+      GUIX_GD_DAEMON_GROUP="${GUIX_GD_DAEMON_GROUP}" \
+      GUIX_GD_DAEMON_BIN="${GUIX_GD_DAEMON_BIN}" \
+      GUIX_GD_GROUP="${GUIX_GD_GROUP}" \
+      /bin/sh -c 'exec unshare --mount --fork -- /bin/sh "$1"' \
+      sh "${SCRIPT_DIR}/init-overlayfs.sh"
+    ;;
+  *)
+    echo "Aborting."
+    exit 1
+    ;;
 esac

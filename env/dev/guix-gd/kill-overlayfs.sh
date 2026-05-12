@@ -1,7 +1,7 @@
 #!/bin/sh
 # kill-overlayfs.sh - stop the overlayfs init session recorded in guix-gd-overlayfs.pid
 #
-# Reads PID from a PID file (default: ${GUIX_GD_VAR_GUIX_DIR:-/run}/guix-gd-overlayfs.pid),
+# Reads PID from a PID file (default: ${GUIX_GD_DEV_ROOT:-/tmp/guix-gd-overlayfs-${USER:-user}}/overlayfs-container.pid),
 # lists all processes in the same process group (PGID),
 # and prompts to send SIGTERM or SIGKILL to the entire process group.
 #
@@ -11,8 +11,8 @@ set -eu
 # Try to enable pipefail if the shell supports it (not strictly POSIX).
 set -o pipefail 2>/dev/null || true
 
-# PID file (1st arg) or default location under GUIX_GD_VAR_GUIX_DIR or /run
-PID_FILE="${1:-${GUIX_GD_DEV_ROOT:-/run}/overlayfs-container.pid}"
+# PID file (1st arg) or default location under GUIX_GD_DEV_ROOT
+PID_FILE="${1:-${GUIX_GD_DEV_ROOT:-/tmp/guix-gd-overlayfs-${USER:-user}}/overlayfs-container.pid}"
 
 # Ensure PID file exists and is readable
 if [ ! -r "$PID_FILE" ]; then

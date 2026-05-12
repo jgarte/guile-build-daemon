@@ -37,6 +37,9 @@
   "Return full text content of PATH."
   (call-with-input-file path get-string-all))
 
+(define current-user
+  (or (getenv "USER") "user"))
+
 ;; We run tests from `guix shell --pure`, so PATH is intentionally small.
 ;; Use a deterministic host PATH to find core tools (`rm`, `find`, `diff`, etc.).
 (define host-command-path
@@ -50,12 +53,6 @@
            (if (file-exists? path)
                path
                (loop (cdr rest)))))))
-
-(define sudo-bin
-  (or (first-existing-path "/run/setuid-programs/sudo"
-                           "/usr/bin/sudo"
-                           "/bin/sudo")
-      "sudo"))
 
 (define nsenter-bin
   (or (first-existing-path "/run/current-system/profile/bin/nsenter"
@@ -79,14 +76,6 @@ LABEL becomes `$0` inside the script and improves shell diagnostics."
          (string-append "PATH=\"" host-command-path "\"; export PATH; " script)
          label
          args))
-
-(define (ensure-sudo-ready!)
-  "Verify that sudo credentials are available before expensive test steps.
-
-This fails early with a clear message instead of failing later in nested scripts."
-  (let ((status (system* sudo-bin "-v")))
-    (unless (= status 0)
-      (error "sudo authentication failed; run `sudo -v` and retry" status))))
 
 (define (mkdir-p! path)
   "Create PATH recursively (`mkdir -p`)."
@@ -151,11 +140,10 @@ We capture metadata from three mutable areas used by this test harness:
   - ROOT/etc/guix
 
 Important: we normalize paths to be relative to ROOT, so snapshots from
-`/guix-gd-overlayfs-regular` and `/guix-gd-overlayfs-relay` can be compared
+`/tmp/guix-gd-overlayfs-regular-<user>` and `/tmp/guix-gd-overlayfs-relay-<user>` can be compared
 without false differences caused by different absolute prefixes."
   (let ((status
-         (system* sudo-bin
-                  "/bin/sh"
+         (system* "/bin/sh"
                   "-c"
                   (string-append
                    "PATH=\"" host-command-path "\"; export PATH; "
@@ -212,10 +200,9 @@ stdout_file=$4
 stderr_file=$5
 exit_file=$6
 rc=0
-~a ~a --target \"$pid\" --all -- ~a GUIX_DAEMON_SOCKET=\"$socket\" \\
+~a --target \"$pid\" --user --mount --preserve-credentials -- ~a GUIX_DAEMON_SOCKET=\"$socket\" \\
      /bin/sh -lc \"$cmd\" >\"$stdout_file\" 2>\"$stderr_file\" || rc=$?
 printf '%s\\n' \"$rc\" > \"$exit_file\""
-                         sudo-bin
                          nsenter-bin
                          env-bin))
          (status (run-shell-script "run-command-in-container"
@@ -315,17 +302,21 @@ Relay scenario (guix-gd -> fallback):
           (or (string->number (env-ref "GUIX_GD_TEST_EXPECT_EXIT" "0")) 0))
 
          (regular-root (env-ref "GUIX_GD_TEST_REGULAR_ROOT"
-                                "/guix-gd-overlayfs-regular"))
+                                (string-append "/tmp/guix-gd-overlayfs-regular-"
+                                               current-user)))
          (regular-pid-env (getenv "GUIX_GD_TEST_REGULAR_CONTAINER_PID"))
          (regular-pid (if (or (not regular-pid-env)
                               (string-null? regular-pid-env))
                           (read-container-pid "regular" regular-root)
                           regular-pid-env))
          (regular-socket (env-ref "GUIX_GD_TEST_REGULAR_SOCKET"
-                                  "/tmp/guix-gd-fallback-regular.sock"))
+                                  (string-append "/tmp/guix-gd-fallback-regular-"
+                                                 current-user
+                                                 ".sock")))
 
          (relay-root (env-ref "GUIX_GD_TEST_RELAY_ROOT"
-                              "/guix-gd-overlayfs-relay"))
+                              (string-append "/tmp/guix-gd-overlayfs-relay-"
+                                             current-user)))
          (relay-pid-env (getenv "GUIX_GD_TEST_RELAY_CONTAINER_PID"))
          (relay-pid (if (or (not relay-pid-env)
                             (string-null? relay-pid-env))
@@ -340,7 +331,9 @@ Relay scenario (guix-gd -> fallback):
                                                     "/var/guix/daemon-socket/socket")))
          (relay-fallback-socket
           (env-ref "GUIX_GD_TEST_RELAY_FALLBACK_SOCKET"
-                   "/tmp/guix-gd-fallback-relay.sock")))
+                   (string-append "/tmp/guix-gd-fallback-relay-"
+                                  current-user
+                                  ".sock"))))
 
     (ensure-distinct-roots! regular-root relay-root)
 
@@ -374,7 +367,6 @@ Relay scenario (guix-gd -> fallback):
          (artifacts-root (assoc-ref config 'artifacts-root))
          (report-file (string-append artifacts-root "/report.txt"))
          (command (assoc-ref config 'command)))
-    (ensure-sudo-ready!)
     (prepare-artifacts! artifacts-root)
     (let* ((regular (run-scenario! (assoc-ref config 'regular)
                                    command

@@ -26,16 +26,14 @@ Two containers remove the need for any "reset state" command between runs.
 
 Prerequisites (start each in its own terminal):
 
+These targets run rootless via `unshare` (user + mount namespaces), so `sudo` is not required.
+
   make container/regular/start
   make daemon-fallback/regular/start
 
   make container/relay/start
   make daemon-fallback/relay/start
   make daemon/relay/start
-
-Before running the test, authenticate once for `sudo`:
-
-  sudo -v
 
 Run test:
 
@@ -49,17 +47,17 @@ Main environment variables:
 
 Regular scenario:
 
-- `GUIX_GD_TEST_REGULAR_ROOT` (default: `/guix-gd-overlayfs-regular`)
+- `GUIX_GD_TEST_REGULAR_ROOT` (default: `/tmp/guix-gd-overlayfs-regular-<user>`)
 - `GUIX_GD_TEST_REGULAR_CONTAINER_PID` (optional)
-- `GUIX_GD_TEST_REGULAR_SOCKET` (default: `/tmp/guix-gd-fallback-regular.sock`)
+- `GUIX_GD_TEST_REGULAR_SOCKET` (default: `/tmp/guix-gd-fallback-regular-<user>.sock`)
 
 Relay scenario:
 
-- `GUIX_GD_TEST_RELAY_ROOT` (default: `/guix-gd-overlayfs-relay`)
+- `GUIX_GD_TEST_RELAY_ROOT` (default: `/tmp/guix-gd-overlayfs-relay-<user>`)
 - `GUIX_GD_TEST_RELAY_CONTAINER_PID` (optional)
 - `GUIX_GD_TEST_RELAY_SOCKET` (default: `/var/guix/daemon-socket/socket`)
 - `GUIX_GD_TEST_RELAY_SOCKET_HOST` (default: `<relay-root>/var/guix/daemon-socket/socket`)
-- `GUIX_GD_TEST_RELAY_FALLBACK_SOCKET` (default: `/tmp/guix-gd-fallback-relay.sock`)
+- `GUIX_GD_TEST_RELAY_FALLBACK_SOCKET` (default: `/tmp/guix-gd-fallback-relay-<user>.sock`)
 
 Artifacts and summary report are written to `tmp/daemon-differential/`.
 
