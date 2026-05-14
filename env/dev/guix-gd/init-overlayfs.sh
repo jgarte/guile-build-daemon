@@ -13,6 +13,11 @@ GUIX_GD_ETC_GUIX_DIR="${GUIX_GD_ETC_GUIX_DIR:-${GUIX_GD_DEV_ROOT}/etc/guix}"
 GUIX_GD_DAEMON_USER="${GUIX_GD_DAEMON_USER:-root}"
 GUIX_GD_DAEMON_GROUP="${GUIX_GD_DAEMON_GROUP:-root}"
 
+TAIL_BIN="$(command -v tail 2>/dev/null || true)"
+if [ -z "$TAIL_BIN" ]; then
+  TAIL_BIN=/run/current-system/profile/bin/tail
+fi
+
 CURRENT_NS=$(readlink /proc/self/ns/mnt 2>/dev/null || echo "mnt:[unknown]")
 INIT_NS=$(readlink /proc/1/ns/mnt 2>/dev/null || echo "mnt:[unavailable]")
 
@@ -37,6 +42,7 @@ mount --bind "$GUIX_GD_VAR_GUIX_DIR/gcroots" /var/guix/gcroots
 mount --bind "$GUIX_GD_VAR_GUIX_DIR/offload" /var/guix/offload
 mount --bind "$GUIX_GD_VAR_GUIX_DIR/substitute" /var/guix/substitute
 mount --bind "$GUIX_GD_VAR_GUIX_DIR/temproots" /var/guix/temproots
+mount --bind "$GUIX_GD_VAR_GUIX_DIR/profiles/per-user" /var/guix/profiles/per-user
 mount --bind "${GUIX_GD_DEV_ROOT}/var/log/guix" /var/log/guix
 mount --bind "$GUIX_GD_ETC_GUIX_DIR" /etc/guix
 
@@ -50,11 +56,11 @@ chown "$GUIX_GD_DAEMON_USER:$GUIX_GD_DAEMON_GROUP" /gnu/store 2>/dev/null || tru
 chmod 1775 /gnu/store 2>/dev/null || true
 
 # Hold this namespace alive for later nsenter calls.
-setsid sh -c 'exec nohup tail -f /dev/null >/dev/null 2>&1' >/dev/null 2>&1 &
+setsid sh -c "exec nohup \"$TAIL_BIN\" -f /dev/null >/dev/null 2>&1" >/dev/null 2>&1 &
 PID=$!
 
 PID_FILE="${GUIX_GD_DEV_ROOT}/overlayfs-container.pid"
 printf '%s\n' "$PID" > "$PID_FILE"
-chmod 0644 "$PID_FILE"
+chmod 0644 "$PID_FILE" 2>/dev/null || true
 
 echo "OverlayFS init session PID: $PID (saved to $PID_FILE)"

@@ -33,6 +33,7 @@ mkdir -p \
   "${GUIX_GD_VAR_GUIX_DIR}/offload" \
   "${GUIX_GD_VAR_GUIX_DIR}/substitute" \
   "${GUIX_GD_VAR_GUIX_DIR}/temproots" \
+  "${GUIX_GD_VAR_GUIX_DIR}/profiles/per-user" \
   "${GUIX_GD_DEV_ROOT}/var/log/guix" \
   "${GUIX_GD_ETC_GUIX_DIR}"
 
@@ -80,6 +81,7 @@ for path in \
   /var/guix/offload \
   /var/guix/substitute \
   /var/guix/temproots \
+  /var/guix/profiles/per-user \
   /var/log/guix \
   /etc/guix
 
