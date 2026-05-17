@@ -16,8 +16,7 @@ GUIX_LOAD_PATH_ENV  := --load-path='./env/dev' \
 
 GUILE_LOAD_PATH_DEV := "$$(cd ./env/dev && pwd):$$GUILE_LOAD_PATH"
 
-CONFIG_DEV_ENV      := GUILE_LOAD_PATH=$(GUILE_LOAD_PATH_DEV) \
-                        guile -c "(display ((@ (guix-gd config) config-dev-env)))"
+CONFIG_DEV_ENV      := ./env/dev/guix-gd/config.sh
 
 GUIX_DAEMON_DEV_PKG := '(@ (guix-gd packages) guix-gd-daemon)'
 GUIX_DAEMON_DEV     := $(GUIX_TM) -- build $(GUIX_LOAD_PATH_ENV) \
