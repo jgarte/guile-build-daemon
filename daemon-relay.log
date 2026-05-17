@@ -1,3 +1,0 @@
-listening on: /guix-gd-overlayfs-relay/var/guix/daemon-socket/socket
-upstream: /tmp/guix-gd-fallback-relay.sock
-example: guix gc --list-dead
