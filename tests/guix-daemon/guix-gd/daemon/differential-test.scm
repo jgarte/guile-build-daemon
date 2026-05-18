@@ -41,41 +41,40 @@
   (or (getenv "USER") "user"))
 
 ;; We run tests from `guix shell --pure`, so PATH is intentionally small.
-;; Use a deterministic host PATH to find core tools (`rm`, `find`, `diff`, etc.).
+;; Use a deterministic host PATH to find core tools.
 (define host-command-path
   "/run/setuid-programs:/run/current-system/profile/bin:/run/current-system/profile/sbin:/bin:/usr/bin:/usr/sbin")
 
-(define (first-existing-path . candidates)
-  "Return the first existing path from CANDIDATES, or `#f` if none exist."
-  (let loop ((rest candidates))
-    (and (pair? rest)
-         (let ((path (car rest)))
-           (if (file-exists? path)
-               path
-               (loop (cdr rest)))))))
+(define helper-script-dir
+  "tests/guix-daemon/guix-gd/daemon/scripts")
 
-(define nsenter-bin
-  (or (first-existing-path "/run/current-system/profile/bin/nsenter"
-                           "/usr/bin/nsenter"
-                           "/bin/nsenter")
-      "nsenter"))
-
-(define env-bin
-  (or (first-existing-path "/run/current-system/profile/bin/env"
-                           "/usr/bin/env"
-                           "/bin/env")
-      "env"))
+(define (helper-script-path name)
+  "Return absolute repository-relative helper script path by NAME."
+  (string-append helper-script-dir "/" name))
 
 (define (run-shell-script label script . args)
-  "Run shell SCRIPT with stable PATH and pass ARGS as `$1`, `$2`, ...
-
-LABEL becomes `$0` inside the script and improves shell diagnostics."
+  "Run shell SCRIPT with stable PATH and pass ARGS as `$1`, `$2`, ..."
   (apply system*
          "/bin/sh"
          "-c"
          (string-append "PATH=\"" host-command-path "\"; export PATH; " script)
          label
          args))
+
+(define (run-helper-script! label helper-script . args)
+  "Run helper shell script and raise on failure."
+  (let ((status (apply run-shell-script
+                       label
+                       "set -eu
+helper=$1
+shift
+/bin/sh \"$helper\" \"$@\""
+                       helper-script
+                       args)))
+    (unless (= status 0)
+      (error (format #f "~a helper failed" label)
+             helper-script
+             status))))
 
 (define (mkdir-p! path)
   "Create PATH recursively (`mkdir -p`)."
@@ -87,11 +86,9 @@ LABEL becomes `$0` inside the script and improves shell diagnostics."
 
 (define (prepare-artifacts! path)
   "Recreate artifact directory PATH from scratch."
-  (let ((status (run-shell-script "prepare-artifacts"
-                                  "set -eu; dir=$1; rm -rf \"$dir\"; mkdir -p \"$dir\""
-                                  path)))
-    (unless (= status 0)
-      (error "artifact dir preparation failed" path status))))
+  (run-helper-script! "prepare-artifacts"
+                      (helper-script-path "prepare-artifacts.sh")
+                      path))
 
 (define (pid-file-path root)
   "Return overlay container pid-file path for ROOT."
@@ -132,89 +129,30 @@ any need for reset hooks between scenarios."
     value))
 
 (define (snapshot-filesystem! root output-file)
-  "Write deterministic filesystem snapshot for ROOT to OUTPUT-FILE.
-
-We capture metadata from three mutable areas used by this test harness:
-  - ROOT/gnu/store-upper
-  - ROOT/var/guix
-  - ROOT/etc/guix
-
-Important: we normalize paths to be relative to ROOT, so snapshots from
-`/tmp/guix-gd-overlayfs-regular-<user>` and `/tmp/guix-gd-overlayfs-relay-<user>` can be compared
-without false differences caused by different absolute prefixes."
-  (let ((status
-         (system* "/bin/sh"
-                  "-c"
-                  (string-append
-                   "PATH=\"" host-command-path "\"; export PATH; "
-                   "set -eu
-out=$1
-root=$2
-tmp=\"$out.tmp\"
-: > \"$tmp\"
-for d in \"$root/gnu/store-upper\" \"$root/var/guix\" \"$root/etc/guix\"; do
-  if [ -e \"$d\" ]; then
-    find \"$d\" -printf '%p|%y|%m|%s|%l\\n' >> \"$tmp\"
-  fi
-done
-while IFS= read -r line; do
-  path=${line%%|*}
-  rest=${line#*|}
-  rel=${path#\"$root\"/}
-  printf '%s|%s\\n' \"$rel\" \"$rest\"
-done < \"$tmp\" | LC_ALL=C sort > \"$out\"
-rm -f \"$tmp\"")
-                  "snapshot-filesystem"
-                  output-file
-                  root)))
-    (unless (= status 0)
-      (error "filesystem snapshot failed" output-file status))))
+  "Write deterministic filesystem snapshot for ROOT to OUTPUT-FILE."
+  (run-helper-script! "snapshot-filesystem"
+                      (helper-script-path "snapshot-filesystem.sh")
+                      root
+                      output-file))
 
 (define (write-diff! before-file after-file diff-file)
-  "Write unified diff between BEFORE-FILE and AFTER-FILE into DIFF-FILE.
-
-`diff` returns 1 on differences; this is expected and not an error here."
-  (let ((status (run-shell-script "write-diff"
-                                  "set -eu
-before=$1
-after=$2
-diff_file=$3
-diff -u \"$before\" \"$after\" > \"$diff_file\" || true"
-                                  before-file
-                                  after-file
-                                  diff-file)))
-    (unless (= status 0)
-      (error "diff generation failed" diff-file status))))
+  "Write unified diff between BEFORE-FILE and AFTER-FILE into DIFF-FILE."
+  (run-helper-script! "write-diff"
+                      (helper-script-path "write-diff.sh")
+                      before-file
+                      after-file
+                      diff-file))
 
 (define (run-command-in-container! pid socket-path command stdout-file stderr-file exit-file)
-  "Run COMMAND inside container PID using GUIX_DAEMON_SOCKET=SOCKET-PATH.
-
-The command's stdout, stderr, and exit code are persisted in files so test
-reports remain inspectable even after failures."
-  (let* ((script (format #f
-                         "set -eu
-pid=$1
-socket=$2
-cmd=$3
-stdout_file=$4
-stderr_file=$5
-exit_file=$6
-rc=0
-~a --target \"$pid\" --user --mount --preserve-credentials -- ~a GUIX_DAEMON_SOCKET=\"$socket\" \\
-     /bin/sh -lc \"$cmd\" >\"$stdout_file\" 2>\"$stderr_file\" || rc=$?
-printf '%s\\n' \"$rc\" > \"$exit_file\""
-                         nsenter-bin
-                         env-bin))
-         (status (run-shell-script "run-command-in-container"
-                                   script
-                                   pid
-                                   socket-path
-                                   command
-                                   stdout-file
-                                   stderr-file
-                                   exit-file)))
-    (unless (= status 0)
-      (error "command wrapper failed" command status))))
+  "Run COMMAND inside container PID with GUIX_DAEMON_SOCKET=SOCKET-PATH."
+  (run-helper-script! "run-command-in-container"
+                      (helper-script-path "run-command-in-container.sh")
+                      pid
+                      socket-path
+                      command
+                      stdout-file
+                      stderr-file
+                      exit-file))
 
 (define (run-scenario! scenario command artifacts-root)
   "Run one scenario and return collected artifacts as an alist.
