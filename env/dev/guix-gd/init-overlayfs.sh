@@ -4,14 +4,16 @@
 set -eu
 set -o pipefail 2>/dev/null || true
 
-GUIX_GD_DEV_ROOT="${GUIX_GD_DEV_ROOT:-/tmp/guix-gd-overlayfs-${USER:-user}}"
-GUIX_GD_STORE_UPPER_DIR="${GUIX_GD_STORE_UPPER_DIR:-${GUIX_GD_DEV_ROOT}/gnu/store-upper}"
-GUIX_GD_STORE_WORK_DIR="${GUIX_GD_STORE_WORK_DIR:-${GUIX_GD_DEV_ROOT}/gnu/store-work}"
-GUIX_GD_STORE_LOWER_DIR="${GUIX_GD_STORE_LOWER_DIR:-${GUIX_GD_DEV_ROOT}/gnu/store-lower}"
-GUIX_GD_VAR_GUIX_DIR="${GUIX_GD_VAR_GUIX_DIR:-${GUIX_GD_DEV_ROOT}/var/guix}"
-GUIX_GD_ETC_GUIX_DIR="${GUIX_GD_ETC_GUIX_DIR:-${GUIX_GD_DEV_ROOT}/etc/guix}"
-GUIX_GD_DAEMON_USER="${GUIX_GD_DAEMON_USER:-root}"
-GUIX_GD_DAEMON_GROUP="${GUIX_GD_DAEMON_GROUP:-root}"
+SCRIPT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
+. "${SCRIPT_DIR}/config.defaults.sh"
+
+# Re-derive root-relative paths for the selected GUIX_GD_DEV_ROOT.
+GUIX_GD_STORE_UPPER_DIR="${GUIX_GD_DEV_ROOT}/gnu/store-upper"
+GUIX_GD_STORE_WORK_DIR="${GUIX_GD_DEV_ROOT}/gnu/store-work"
+GUIX_GD_STORE_LOWER_DIR="${GUIX_GD_DEV_ROOT}/gnu/store-lower"
+GUIX_GD_VAR_GUIX_DIR="${GUIX_GD_DEV_ROOT}/var/guix"
+GUIX_GD_ETC_GUIX_DIR="${GUIX_GD_DEV_ROOT}/etc/guix"
+GUIX_GD_OVERLAYFS_PID_FILE="${GUIX_GD_DEV_ROOT}/overlayfs-container.pid"
 
 TAIL_BIN="$(command -v tail 2>/dev/null || true)"
 if [ -z "$TAIL_BIN" ]; then
@@ -59,7 +61,7 @@ chmod 1775 /gnu/store 2>/dev/null || true
 setsid sh -c "exec nohup \"$TAIL_BIN\" -f /dev/null >/dev/null 2>&1" >/dev/null 2>&1 &
 PID=$!
 
-PID_FILE="${GUIX_GD_DEV_ROOT}/overlayfs-container.pid"
+PID_FILE="${GUIX_GD_OVERLAYFS_PID_FILE}"
 printf '%s\n' "$PID" > "$PID_FILE"
 chmod 0644 "$PID_FILE" 2>/dev/null || true
 

@@ -3,7 +3,8 @@
 
 set -eu
 
-GUIX_GD_GROUP="${GUIX_GD_GROUP:-guix-gd-build}"
+SCRIPT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
+. "${SCRIPT_DIR}/config.defaults.sh"
 
 if [ "$(id -u)" -ne 0 ]; then
   echo "Skipping build-user initialization: not running as root."

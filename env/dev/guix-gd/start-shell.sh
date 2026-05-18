@@ -4,7 +4,9 @@
 set -eu
 set -o pipefail 2>/dev/null || true
 
-GUIX_GD_DEV_ROOT="${GUIX_GD_DEV_ROOT:-/tmp/guix-gd-overlayfs-${USER:-user}}"
+SCRIPT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
+. "${SCRIPT_DIR}/config.defaults.sh"
+
 PIDFILE="${GUIX_GD_DEV_ROOT}/overlayfs-container.pid"
 
 if [ ! -f "$PIDFILE" ]; then

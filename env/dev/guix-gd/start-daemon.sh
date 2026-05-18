@@ -4,12 +4,10 @@
 set -eu
 set -o pipefail 2>/dev/null || true
 
-GUIX_GD_DEV_ROOT="${GUIX_GD_DEV_ROOT:-/tmp/guix-gd-overlayfs-${USER:-user}}"
+SCRIPT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
+. "${SCRIPT_DIR}/config.defaults.sh"
+
 PIDFILE="${GUIX_GD_DEV_ROOT}/overlayfs-container.pid"
-GUIX_GD_DAEMON_BIN="${GUIX_GD_DAEMON_BIN:-guix-daemon}"
-GUIX_GD_DEV_SOCK="${GUIX_GD_DEV_SOCK:-/tmp/guix-gd-fallback-${USER:-user}.sock}"
-GUIX_GD_DAEMON_ARGS="${GUIX_GD_DAEMON_ARGS:---disable-chroot --disable-deduplication}"
-GUIX_GD_GROUP="${GUIX_GD_GROUP:-guix-gd-build}"
 
 if [ ! -f "$PIDFILE" ]; then
   printf 'ERROR: pidfile not found: %s\n' "$PIDFILE" >&2
