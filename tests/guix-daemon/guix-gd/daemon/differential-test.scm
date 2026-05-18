@@ -1,13 +1,8 @@
 ;; SPDX-License-Identifier: GPL-3.0-or-later
 ;; SPDX-FileCopyrightText: 2026 Andrew Tropin
 
-;;; Differential test for guix-daemon vs guix-gd relay.
-;;;
-;;; Design summary:
-;;; - We run the same Guix client command in TWO separate overlayfs containers.
-;;; - Container A talks directly to a regular fallback guix-daemon.
-;;; - Container B talks to guix-gd relay (which itself talks to fallback daemon).
-;;; - We compare: exit status, stdout, stderr, and filesystem delta.
+;;; Differential test for fallback guix-daemon vs guix-gd relay.
+;;; It runs one client command in two containers and compares results.
 
 (define-module (guix-gd daemon differential-test)
   #:use-module (ares suitbl core)
@@ -76,14 +71,6 @@ shift
              helper-script
              status))))
 
-(define (mkdir-p! path)
-  "Create PATH recursively (`mkdir -p`)."
-  (let ((status (run-shell-script "mkdir-p"
-                                  "set -eu; dir=$1; mkdir -p \"$dir\""
-                                  path)))
-    (unless (= status 0)
-      (error "mkdir -p failed" path status))))
-
 (define (prepare-artifacts! path)
   "Recreate artifact directory PATH from scratch."
   (run-helper-script! "prepare-artifacts"
@@ -107,16 +94,8 @@ shift
         (error "container pid is not a number" label raw pid-file))
       raw)))
 
-(define (ensure-path-exists! label path hint)
-  "Ensure PATH exists, otherwise raise an error with HINT."
-  (unless (file-exists? path)
-    (error (format #f "~a does not exist; ~a" label hint) path)))
-
 (define (ensure-distinct-roots! regular-root relay-root)
-  "Ensure regular and relay tests use different overlay roots.
-
-Using separate roots keeps filesystem side effects isolated and removes
-any need for reset hooks between scenarios."
+  "Fail when both scenarios share the same overlay root."
   (when (string=? regular-root relay-root)
     (error "regular and relay roots must differ" regular-root relay-root)))
 
@@ -173,7 +152,7 @@ SCENARIO keys:
          (stdout-file (string-append scenario-dir "/stdout.txt"))
          (stderr-file (string-append scenario-dir "/stderr.txt"))
          (exit-file (string-append scenario-dir "/exit-code.txt")))
-    (mkdir-p! scenario-dir)
+    (mkdir scenario-dir)
     (snapshot-filesystem! root fs-before-file)
     (run-command-in-container! pid socket command stdout-file stderr-file exit-file)
     (snapshot-filesystem! root fs-after-file)
@@ -212,27 +191,7 @@ SCENARIO keys:
       (format port "relay.artifacts: ~a~%" (assoc-ref relay 'dir)))))
 
 (define (comparison-config)
-  "Read environment configuration, validate prerequisites, and return alist.
-
-Environment variables:
-
-General:
-  GUIX_GD_TEST_COMMAND
-  GUIX_GD_TEST_ARTIFACTS_DIR
-  GUIX_GD_TEST_EXPECT_EXIT
-
-Regular scenario (direct fallback daemon):
-  GUIX_GD_TEST_REGULAR_ROOT
-  GUIX_GD_TEST_REGULAR_CONTAINER_PID
-  GUIX_GD_TEST_REGULAR_SOCKET
-
-Relay scenario (guix-gd -> fallback):
-  GUIX_GD_TEST_RELAY_ROOT
-  GUIX_GD_TEST_RELAY_CONTAINER_PID
-  GUIX_GD_TEST_RELAY_SOCKET            (inside container)
-  GUIX_GD_TEST_RELAY_SOCKET_HOST       (host-visible socket path)
-  GUIX_GD_TEST_RELAY_FALLBACK_SOCKET   (host-visible fallback socket)
-"
+  "Read GUIX_GD_TEST_* configuration and return an alist."
   (let* ((command (env-ref "GUIX_GD_TEST_COMMAND" "guix gc --list-roots"))
          (artifacts-root (env-ref "GUIX_GD_TEST_ARTIFACTS_DIR"
                                   "tmp/daemon-differential"))
@@ -243,10 +202,10 @@ Relay scenario (guix-gd -> fallback):
                                 (string-append "/tmp/guix-gd-overlayfs-regular-"
                                                current-user)))
          (regular-pid-env (getenv "GUIX_GD_TEST_REGULAR_CONTAINER_PID"))
-         (regular-pid (if (or (not regular-pid-env)
-                              (string-null? regular-pid-env))
-                          (read-container-pid "regular" regular-root)
-                          regular-pid-env))
+         (regular-pid (if (and regular-pid-env
+                               (not (string-null? regular-pid-env)))
+                          regular-pid-env
+                          (read-container-pid "regular" regular-root)))
          (regular-socket (env-ref "GUIX_GD_TEST_REGULAR_SOCKET"
                                   (string-append "/tmp/guix-gd-fallback-regular-"
                                                  current-user
@@ -256,36 +215,14 @@ Relay scenario (guix-gd -> fallback):
                               (string-append "/tmp/guix-gd-overlayfs-relay-"
                                              current-user)))
          (relay-pid-env (getenv "GUIX_GD_TEST_RELAY_CONTAINER_PID"))
-         (relay-pid (if (or (not relay-pid-env)
-                            (string-null? relay-pid-env))
-                        (read-container-pid "relay" relay-root)
-                        relay-pid-env))
+         (relay-pid (if (and relay-pid-env
+                             (not (string-null? relay-pid-env)))
+                        relay-pid-env
+                        (read-container-pid "relay" relay-root)))
          (relay-socket (env-ref "GUIX_GD_TEST_RELAY_SOCKET"
-                                "/var/guix/daemon-socket/socket"))
-         ;; The relay socket is inside the relay container as /var/guix/...,
-         ;; but from the host we can validate it via relay root path.
-         (relay-socket-host (env-ref "GUIX_GD_TEST_RELAY_SOCKET_HOST"
-                                     (string-append relay-root
-                                                    "/var/guix/daemon-socket/socket")))
-         (relay-fallback-socket
-          (env-ref "GUIX_GD_TEST_RELAY_FALLBACK_SOCKET"
-                   (string-append "/tmp/guix-gd-fallback-relay-"
-                                  current-user
-                                  ".sock"))))
+                                "/var/guix/daemon-socket/socket")))
 
     (ensure-distinct-roots! regular-root relay-root)
-
-    (ensure-path-exists! "regular daemon socket"
-                         regular-socket
-                         "run `make daemon-fallback/regular/start`")
-
-    (ensure-path-exists! "relay daemon socket"
-                         relay-socket-host
-                         "run `make daemon/relay/start`")
-
-    (ensure-path-exists! "relay fallback daemon socket"
-                         relay-fallback-socket
-                         "run `make daemon-fallback/relay/start`")
 
     `((command . ,command)
       (artifacts-root . ,artifacts-root)
@@ -344,9 +281,7 @@ Relay scenario (guix-gd -> fallback):
     (assertions . 0)))
 
 (define (run-daemon-differential-tests)
-  "Run suitbl tests and return run summary.
-
-`re-raise?` is enabled so runtime exceptions preserve full backtraces."
+  "Run suite and return summary; raise on failures and errors."
   (let ((runner-instance
          (runner:make-suitbl
           #:config `((test-reporter . ,reporter:silent)
