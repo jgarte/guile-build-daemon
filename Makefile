@@ -44,20 +44,20 @@ daemon/build:
 
 
 daemon/init-build-users:
-	env $$($(CONFIG_DEV_ENV)) \
+	$(CONFIG_DEV_ENV) \
 	sh ./env/dev/guix-gd/init-dev-build-users.sh
 
 container/start:
-	env $$($(CONFIG_DEV_ENV)) \
+	$(CONFIG_DEV_ENV) \
 	sh ./env/dev/guix-gd/contain-overlayfs.sh
 
 daemon-fallback/start:
 	$(GUIX_TM) -- shell -- \
-	env $$($(CONFIG_DEV_ENV)) \
+	$(CONFIG_DEV_ENV) \
 	sh ./env/dev/guix-gd/start-daemon.sh
 
 daemon/start:
-	env $$($(CONFIG_DEV_ENV)) \
+	$(CONFIG_DEV_ENV) \
 	sh -c 'daemon_root="$$1"; \
 	rm -f "$$GUIX_GD_DEV_ROOT/var/guix/daemon-socket/socket"; \
 	"$$daemon_root"/bin/guix-gd-daemon \
@@ -67,20 +67,20 @@ daemon/start:
 	sh "$$($(GUIX_DAEMON_DEV))"
 
 container/regular/start:
-	env $$($(CONFIG_DEV_ENV)) \
+	$(CONFIG_DEV_ENV) \
 	GUIX_GD_DEV_ROOT=$(TEST_REGULAR_ROOT) \
 	GUIX_GD_DEV_SOCK=$(TEST_REGULAR_SOCK) \
 	sh ./env/dev/guix-gd/contain-overlayfs.sh
 
 container/relay/start:
-	env $$($(CONFIG_DEV_ENV)) \
+	$(CONFIG_DEV_ENV) \
 	GUIX_GD_DEV_ROOT=$(TEST_RELAY_ROOT) \
 	GUIX_GD_DEV_SOCK=$(TEST_RELAY_SOCK) \
 	sh ./env/dev/guix-gd/contain-overlayfs.sh
 
 daemon-fallback/regular/start:
 	$(GUIX_TM) -- shell -- \
-	env $$($(CONFIG_DEV_ENV)) \
+	$(CONFIG_DEV_ENV) \
 	GUIX_GD_DEV_ROOT=$(TEST_REGULAR_ROOT) \
 	GUIX_GD_DEV_SOCK=$(TEST_REGULAR_SOCK) \
 	GUIX_GD_DAEMON_ARGS='--disable-chroot --disable-deduplication' \
@@ -88,14 +88,14 @@ daemon-fallback/regular/start:
 
 daemon-fallback/relay/start:
 	$(GUIX_TM) -- shell -- \
-	env $$($(CONFIG_DEV_ENV)) \
+	$(CONFIG_DEV_ENV) \
 	GUIX_GD_DEV_ROOT=$(TEST_RELAY_ROOT) \
 	GUIX_GD_DEV_SOCK=$(TEST_RELAY_SOCK) \
 	GUIX_GD_DAEMON_ARGS='--disable-chroot --disable-deduplication' \
 	sh ./env/dev/guix-gd/start-daemon.sh
 
 daemon/relay/start:
-	env $$($(CONFIG_DEV_ENV)) \
+	$(CONFIG_DEV_ENV) \
 	GUIX_GD_DEV_ROOT=$(TEST_RELAY_ROOT) \
 	GUIX_GD_DEV_SOCK=$(TEST_RELAY_SOCK) \
 	sh -c 'daemon_root="$$1"; \
@@ -108,21 +108,21 @@ daemon/relay/start:
 
 container/shell:
 	$(GUIX_TM) -- shell -- \
-	env $$($(CONFIG_DEV_ENV)) \
+	$(CONFIG_DEV_ENV) \
 	sh ./env/dev/guix-gd/start-shell.sh
 
 
 container/regular/stop:
-	env $$($(CONFIG_DEV_ENV)) \
+	$(CONFIG_DEV_ENV) \
 	GUIX_GD_DEV_ROOT=$(TEST_REGULAR_ROOT) \
 	sh ./env/dev/guix-gd/kill-overlayfs.sh
 
 container/relay/stop:
-	env $$($(CONFIG_DEV_ENV)) \
+	$(CONFIG_DEV_ENV) \
 	GUIX_GD_DEV_ROOT=$(TEST_RELAY_ROOT) \
 	sh ./env/dev/guix-gd/kill-overlayfs.sh
 
 container/stop:
-	env $$($(CONFIG_DEV_ENV)) \
+	$(CONFIG_DEV_ENV) \
 	sh ./env/dev/guix-gd/kill-overlayfs.sh
 
