@@ -1,5 +1,9 @@
 #!/bin/sh
 
+# Usage:
+#   ./config.sh <command> [args...]                      (exec mode, default)
+#   GUIX_GD_CONFIG_MODE=source . ./env/dev/guix-gd/config.sh
+
 set -eu
 
 USER_NAME="${USER:-user}"
@@ -73,4 +77,15 @@ export GUIX_GD_TEST_RELAY_SOCKET
 export GUIX_GD_TEST_RELAY_SOCKET_HOST
 export GUIX_GD_TEST_RELAY_FALLBACK_SOCKET
 
-exec env "$@"
+case "${GUIX_GD_CONFIG_MODE:-exec}" in
+  source)
+    return 0 2>/dev/null || exit 0
+    ;;
+  exec|"")
+    exec env "$@"
+    ;;
+  *)
+    printf 'ERROR: unknown GUIX_GD_CONFIG_MODE=%s (expected exec or source)\n' "${GUIX_GD_CONFIG_MODE}" >&2
+    exit 1
+    ;;
+esac
