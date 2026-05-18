@@ -1,16 +1,10 @@
 (define-module (guix-gd packages)
   #:use-module (guix-gd channels)                 ; provides `guix-gd-channels`
   #:use-module (guix packages)                    ; provides `package`
-  #:use-module (gnu packages package-management)  ; provides `guix` & `guix-daemon`
   #:use-module (gnu packages bash)                ; provides `bash-minimal`
   #:use-module (gnu packages guile)               ; provides `guile-3.0`
-  #:use-module (guix utils)                       ; provides `substitute-keyword-arguments`
-  #:use-module (guix channels)                    ; provides `guix-channel?`
   #:use-module (guix build utils)                 ; provides `modify-phases`
-  #:use-module (srfi srfi-1)                      ; provides `find`, etc.
-  #:use-module (guix build-system channel)        ; provides `channel-build-system`
   #:use-module (guix build-system trivial)        ; provides `trivial-build-system`
-  #:use-module (guix git-download)                ; provides `git-fetch`, `git-reference`
   #:use-module ((guix licenses) #:prefix license:)
   #:use-module (guix gexp))
 
