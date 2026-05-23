@@ -1,0 +1,59 @@
+@startdot
+digraph G {
+  graph [rankdir=TB, splines=ortho, nodesep=0.6, ranksep=0.7, pad=0.2, newrank=true];
+  node [fontname="Sans", fontsize=12];
+  edge [dir=both, arrowhead=normal, arrowtail=normal];
+
+  subgraph cluster_v1 {
+    label="v1 sandbox";
+    style=rounded;
+    color="black";
+
+    v1_client [shape=box, label="client", group="v1_main", width=1.2, height=0.5, fixedsize=true];
+    v1_default [shape=circle, label="", width=0.18, fixedsize=true, group="v1_main"];
+    v1_default_lbl [shape=plaintext, label="default\nsocket", group="v1_label"];
+    v1_relay [shape=box, label="relay", group="v1_main", width=1.2, height=0.5, fixedsize=true];
+    v1_relay_sock [shape=circle, label="", width=0.18, fixedsize=true, group="v1_main"];
+    v1_relay_sock_lbl [shape=plaintext, label="relay\nsocket", group="v1_label"];
+    v1_daemon [shape=box, label="v1 daemon", group="v1_main", width=1.2, height=0.5, fixedsize=true];
+
+    v1_client -> v1_default;
+    v1_default -> v1_relay;
+    v1_relay -> v1_relay_sock;
+    v1_relay_sock -> v1_daemon;
+
+    v1_default -> v1_default_lbl [style=invis, dir=none, constraint=false];
+    v1_relay_sock -> v1_relay_sock_lbl [style=invis, dir=none, constraint=false];
+
+    {rank=same; v1_default; v1_default_lbl}
+    {rank=same; v1_relay_sock; v1_relay_sock_lbl}
+  }
+
+  subgraph cluster_v2 {
+    label="v2 sandbox";
+    style=rounded;
+    color="black";
+
+    v2_client [shape=box, label="client", group="v2_main", width=1.6, height=0.5, fixedsize=true];
+    v2_default [shape=circle, label="", width=0.18, fixedsize=true, group="v2_main"];
+    v2_default_lbl [shape=plaintext, label="default\nsocket", group="v2_label"];
+    v2_daemon [shape=box, label="v2 daemon", group="v2_main", width=1.6, height=0.5, fixedsize=true];
+    v2_fallback_sock [shape=circle, label="", width=0.18, fixedsize=true, group="v2_main"];
+    v2_fallback_sock_lbl [shape=plaintext, label="fallback\nsocket", group="v2_label"];
+    v2_fallback_daemon [shape=box, label="fallback daemon", group="v2_main", width=1.6, height=0.5, fixedsize=true];
+
+    v2_client -> v2_default;
+    v2_default -> v2_daemon;
+    v2_daemon -> v2_fallback_sock;
+    v2_fallback_sock -> v2_fallback_daemon;
+
+    v2_default -> v2_default_lbl [style=invis, dir=none, constraint=false];
+    v2_fallback_sock -> v2_fallback_sock_lbl [style=invis, dir=none, constraint=false];
+
+    {rank=same; v2_default; v2_default_lbl}
+    {rank=same; v2_fallback_sock; v2_fallback_sock_lbl}
+  }
+
+  {rank=same; v1_client; v2_client}
+}
+@enddot

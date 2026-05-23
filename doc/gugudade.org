@@ -1,9 +1,60 @@
 #+title: Guix Guile Daemon Development (GuGuDaDe)
 # ------------------------------------------------------------------------------
+* Glossary
+
+*derivation* - low-level build actions and the environment in which they are performed.
+
+*store* - place where successfully build derivations are stored (defaults to /gnu/store). Store has an associated database (defaults to /var/guix/db).
+
+*daemon* (guix build daemon) - specialized process that does such operations as building a package or running the garbage collector, querying the availability of a build result, etc. This is the only process that should have access to the store and its associated database to insure immutability assumptions of Guix’s functional model.
+
+*client* - the daemon listens for connections and spawns one sub-process for each session started by a client (one of the ‘guix’ sub-commands).
+
+*guix-relay* - a wrapper process around build daemon that listens on default
+
+default socket
+relay socket
+
+
+- Container
+  - v1
+    - native
+    - upstream
+    - proper
+    - cpp
+    - old
+    - legacy
+    - nix
+    - classic
+  - v2
+    - guile
+      - host language
+      - inmplementation languate
+      - target
+    - next
+    - port
+    - native
+  - container
+    - isolated namespace
+    - isolations
+    - unshared env
+    - namespaced env
+    - guix-v1-container
+    - guix-v2-container
+    - guix container is a stable term so could be confusing (unless we use guix container)
+    - v1-*sandbox* (i like that)
+    - v2-sandbox
+- guix-relay
+- wrapper
+- guix-v1-tests suit sets?
+
+From google ai
+: Architectural Milestones & the C++ Daemon Removal. The single largest technical goal targeting a v2.0 milestone is the complete elimination of legacy C++ components.The Pure-Scheme Daemon: Historically, Guix has relied on a modified C++ background daemon inherited from early Nix code (guix-daemon). The core roadmap requires a 100% native GNU Guile Scheme reimplementation of the daemon. Removing the C++ daemon eliminates the last non-Scheme core bottleneck, simplifying memory management, streamlining the bootstrap chain, and making the entire build process auditable in a single language.
+
 * Developing Guix on Guix System
 ** Specification and Principles
 - Reproducible development environment (RDE)
-  - Host Guix System should not interfere with development experiments and tests (reproducibility)
+  - Host (Guix) System should not interfere/influence the development experiments and tests (reproducibility)
 - Do not to break or mess with the host Guix System (containerization)
 - Implement 'working' daemon from the start (RPC relay with fallback)
 - Keep the dev daemon always working (modular test driven development - TDD)
