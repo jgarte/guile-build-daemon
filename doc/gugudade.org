@@ -8,48 +8,24 @@
 
 *daemon* (guix build daemon) - specialized process that does such operations as building a package or running the garbage collector, querying the availability of a build result, etc. This is the only process that should have access to the store and its associated database to insure immutability assumptions of Guix’s functional model.
 
+*v1 daemon* - a classic cpp daemon ported from nix
+
+*v2 daemon* - a new dev guile daemon, targeting guix 2.0 (simplifying memory management, streamlining the bootstrap chain, and making the entire build process auditable in a single language)
+
 *client* - the daemon listens for connections and spawns one sub-process for each session started by a client (one of the ‘guix’ sub-commands).
 
-*guix-relay* - a wrapper process around build daemon that listens on default
+*sandbox* - namespace mount and user isolated environment for testing and logging guix client/daemon interactions
 
-default socket
-relay socket
+*v1 sandbox* - captures stdout, stderr, and other logs (RPC via relay) for v1-daemon
 
+*v2 sandbox* - captures stdout, stderr, and other logs (RPC via relay) for v2-daemon
 
-- Container
-  - v1
-    - native
-    - upstream
-    - proper
-    - cpp
-    - old
-    - legacy
-    - nix
-    - classic
-  - v2
-    - guile
-      - host language
-      - inmplementation languate
-      - target
-    - next
-    - port
-    - native
-  - container
-    - isolated namespace
-    - isolations
-    - unshared env
-    - namespaced env
-    - guix-v1-container
-    - guix-v2-container
-    - guix container is a stable term so could be confusing (unless we use guix container)
-    - v1-*sandbox* (i like that)
-    - v2-sandbox
-- guix-relay
-- wrapper
-- guix-v1-tests suit sets?
+*relay* - a simple process that relays RPC between two sockets (default guix daemon socket, and relay socket) and logs the calls and payloads
 
-From google ai
-: Architectural Milestones & the C++ Daemon Removal. The single largest technical goal targeting a v2.0 milestone is the complete elimination of legacy C++ components.The Pure-Scheme Daemon: Historically, Guix has relied on a modified C++ background daemon inherited from early Nix code (guix-daemon). The core roadmap requires a 100% native GNU Guile Scheme reimplementation of the daemon. Removing the C++ daemon eliminates the last non-Scheme core bottleneck, simplifying memory management, streamlining the bootstrap chain, and making the entire build process auditable in a single language.
+*sockets*:
+- default :: /var/guix/daemon-socket/socket
+- relay :: relay socket in the v1-sandbox that v1-daemon is listening
+- fallback :: fallback socket in the v2-sandbox that fallback-daemon (v1-daemon) is listening
 
 * Developing Guix on Guix System
 ** Specification and Principles
@@ -81,6 +57,121 @@ From google ai
   - disable dedup/hardlink by default (creates another problem for tests?)
 - logging :: relay guix daemon
 - tdd :: Implement all tests with =ares-suitbl=
+
+
+#+BEGIN_SRC plantuml :results replace file :file object-diagram.png :exports results
+  @startuml
+  !pragma layout smetana
+  skinparam linetype ortho
+  skinparam shadowing false
+  skinparam defaultTextAlignment center
+
+  frame "v1 sandbox" as V1 {
+    rectangle "client" as V1_Client
+    circle " " as V1_DefaultSocket
+    label "default\nsocket" as V1_DefaultLabel
+    rectangle "relay" as V1_Relay
+    circle " " as V1_RelaySocket
+    label "relay\nsocket" as V1_RelayLabel
+    rectangle "v1 daemon" as V1_Daemon
+
+    V1_Client <-down-> V1_DefaultSocket
+    V1_DefaultSocket <-down-> V1_Relay
+    V1_Relay <-down-> V1_RelaySocket
+    V1_RelaySocket <-down-> V1_Daemon
+
+    V1_DefaultSocket -[hidden]right-> V1_DefaultLabel
+    V1_RelaySocket -[hidden]right-> V1_RelayLabel
+  }
+
+  frame "v2 sandbox" as V2 {
+    rectangle "client" as V2_Client
+    circle " " as V2_DefaultSocket
+    label "default\nsocket" as V2_DefaultLabel
+    rectangle "v2 daemon" as V2_Daemon
+    circle " " as V2_FallbackSocket
+    label "fallback\nsocket" as V2_FallbackLabel
+    rectangle "fallback daemon" as V2_FallbackDaemon
+
+    V2_Client <-down-> V2_DefaultSocket
+    V2_DefaultSocket <-down-> V2_Daemon
+    V2_Daemon <-down-> V2_FallbackSocket
+    V2_FallbackSocket <-down-> V2_FallbackDaemon
+
+    V2_DefaultSocket -[hidden]right-> V2_DefaultLabel
+    V2_FallbackSocket -[hidden]right-> V2_FallbackLabel
+  }
+
+  V1 -right[hidden]- V2
+  @enduml
+#+END_SRC
+
+#+RESULTS:
+[[file:object-diagram.png]]
+
+#+BEGIN_SRC plantuml :results replace file :file dot-diagram.png :exports results
+  @startdot
+  digraph G {
+    graph [rankdir=TB, splines=ortho, nodesep=0.55, ranksep=0.8, newrank=true, pad=0.2];
+    node  [fontname="Sans", fontsize=12, shape=box, width=1.8, height=0.5, fixedsize=true];
+    edge  [dir=both, arrowhead=normal, arrowtail=normal];
+
+    subgraph cluster_v1 {
+      label="v1 sandbox"; style=rounded;
+
+      node [group="v1_main"];
+      v1_client [label="client"];
+      v1_relay [label="relay"];
+      v1_daemon [label="v1 daemon"];
+
+      node [shape=circle, label="", width=0.12, height=0.12, fixedsize=true, group="v1_main"];
+      v1_default;
+      v1_relay_sock;
+
+      node [shape=plaintext, fixedsize=false, group="v1_lbl"];
+      v1_default_lbl [label="default\nsocket"];
+      v1_relay_sock_lbl [label="relay\nsocket"];
+
+      v1_client -> v1_default -> v1_relay -> v1_relay_sock -> v1_daemon;
+      v1_default -> v1_default_lbl [style=invis, dir=none, constraint=false];
+      v1_relay_sock -> v1_relay_sock_lbl [style=invis, dir=none, constraint=false];
+
+      {rank=same; v1_default; v1_default_lbl}
+      {rank=same; v1_relay_sock; v1_relay_sock_lbl}
+    }
+
+    subgraph cluster_v2 {
+      label="v2 sandbox"; style=rounded;
+
+      node [group="v2_main"];
+      v2_client [label="client"];
+      v2_daemon [label="v2 daemon"];
+      v2_fallback_daemon [label="fallback daemon"];
+
+      node [shape=circle, label="", width=0.12, height=0.12, fixedsize=true, group="v2_main"];
+      v2_default;
+      v2_fallback_sock;
+
+      node [shape=plaintext, fixedsize=false, group="v2_lbl"];
+      v2_default_lbl [label="default\nsocket"];
+      v2_fallback_lbl [label="fallback\nsocket"];
+
+      v2_client -> v2_default -> v2_daemon -> v2_fallback_sock -> v2_fallback_daemon;
+      v2_default -> v2_default_lbl [style=invis, dir=none, constraint=false];
+      v2_fallback_sock -> v2_fallback_lbl [style=invis, dir=none, constraint=false];
+
+      {rank=same; v2_default; v2_default_lbl}
+      {rank=same; v2_fallback_sock; v2_fallback_lbl}
+    }
+
+    {rank=same; v1_client; v2_client}
+  }
+  @enddot
+#+END_SRC
+
+#+RESULTS:
+[[file:dot-diagram.png]]
+
 
 
 * Test Driven Development
