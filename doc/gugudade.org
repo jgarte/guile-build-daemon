@@ -40,6 +40,7 @@
 - guix tests use env-var redirection, not mount-namespace virtualization
 - we need to see hosts ~/gnu/store~ (why do we need overlayfs?)
   - maybe prepopulate store with some minimal set (guix, dev tools, etc.)
+  - =guix gc --requisites= (copy or link?)
 - =guix shell --container= does not provide overlayfs mounts
 - overlayfs have different inode/link behavior and affect dedup/hardlink semantics
 - native guix tests have env isolation with =test-env= (no namespaces)
@@ -57,7 +58,6 @@
   - disable dedup/hardlink by default (creates another problem for tests?)
 - logging :: relay guix daemon
 - tdd :: Implement all tests with =ares-suitbl=
-
 
 #+BEGIN_SRC plantuml :results replace file :file object-diagram.png :exports results
   @startuml

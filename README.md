@@ -10,7 +10,7 @@ Start the nREPL server:
 
 ## Differential daemon test
 
-This test runs the same Guix command in two separate overlayfs containers:
+This test runs the same Guix command in two separate rootless containers with a seeded `/gnu/store`:
 
 1. **regular** container → talks directly to fallback `guix-daemon`.
 2. **relay** container → talks to `guix-gd-daemon` relay.
@@ -21,6 +21,7 @@ Then it compares:
 - stdout
 - stderr
 - filesystem delta (`gnu/store-upper`, `var/guix`, `etc/guix`)
+  (`gnu/store-upper` is a writable store view seeded with links to required host store items)
 
 Two containers remove the need for any "reset state" command between runs.
 

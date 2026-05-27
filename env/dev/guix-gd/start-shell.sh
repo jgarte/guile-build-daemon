@@ -1,5 +1,5 @@
 #!/bin/sh
-# Start a shell inside an existing rootless overlayfs namespace.
+# Start a shell inside an existing rootless container namespace.
 
 set -eu
 set -o pipefail 2>/dev/null || true
@@ -24,7 +24,7 @@ case "$PID" in
 esac
 
 if ! ps -p "$PID" >/dev/null 2>&1; then
-  printf 'ERROR: no process with PID %s. Overlayfs container not running?\n' "$PID" >&2
+  printf 'ERROR: no process with PID %s. Container not running?\n' "$PID" >&2
   exit 3
 fi
 
@@ -33,7 +33,7 @@ if ! command -v nsenter >/dev/null 2>&1; then
   exit 4
 fi
 
-printf 'Found overlayfs container PID: %s\n' "$PID"
-printf 'Running: nsenter --target %s --user --mount --preserve-credentials -- sh\n' "$PID"
+printf 'Found container PID: %s\n' "$PID"
+printf 'Running: nsenter --target %s --user --mount --preserve-credentials -- /bin/sh\n' "$PID"
 
-exec nsenter --target "$PID" --user --mount --preserve-credentials -- sh
+exec nsenter --target "$PID" --user --mount --preserve-credentials -- /bin/sh

@@ -1,5 +1,5 @@
 #!/bin/sh
-# Start guix-daemon inside an existing rootless overlayfs namespace.
+# Start guix-daemon inside an existing rootless container namespace.
 
 set -eu
 set -o pipefail 2>/dev/null || true
@@ -24,13 +24,35 @@ case "$PID" in
 esac
 
 if ! ps -p "$PID" >/dev/null 2>&1; then
-  printf 'ERROR: no process with PID %s. Overlayfs container not running?\n' "$PID" >&2
+  printf 'ERROR: no process with PID %s. Container not running?\n' "$PID" >&2
   exit 3
 fi
 
 if ! command -v nsenter >/dev/null 2>&1; then
   printf 'ERROR: nsenter not found in PATH.\n' >&2
   exit 4
+fi
+
+resolve_command_path() {
+  candidate="$1"
+
+  if [ -x "$candidate" ]; then
+    readlink -f "$candidate" 2>/dev/null || printf '%s\n' "$candidate"
+    return 0
+  fi
+
+  resolved="$(command -v "$candidate" 2>/dev/null || true)"
+  if [ -z "$resolved" ]; then
+    return 1
+  fi
+
+  readlink -f "$resolved" 2>/dev/null || printf '%s\n' "$resolved"
+}
+
+DAEMON_BIN="$(resolve_command_path "$GUIX_GD_DAEMON_BIN" 2>/dev/null || true)"
+if [ -z "$DAEMON_BIN" ]; then
+  printf 'ERROR: daemon binary not found: %s\n' "$GUIX_GD_DAEMON_BIN" >&2
+  exit 5
 fi
 
 GROUP_ARG=''
@@ -42,12 +64,12 @@ if [ -n "$GUIX_GD_GROUP" ]; then
   fi
 fi
 
-printf 'Found overlayfs container PID: %s\n' "$PID"
+printf 'Found container PID: %s\n' "$PID"
 rm -f "$GUIX_GD_DEV_SOCK"
 printf 'Running: nsenter --target %s --user --mount --preserve-credentials -- %s --listen=%s %s %s\n' \
-  "$PID" "$GUIX_GD_DAEMON_BIN" "$GUIX_GD_DEV_SOCK" "$GROUP_ARG" "$GUIX_GD_DAEMON_ARGS"
+  "$PID" "$DAEMON_BIN" "$GUIX_GD_DEV_SOCK" "$GROUP_ARG" "$GUIX_GD_DAEMON_ARGS"
 
-set -- "$GUIX_GD_DAEMON_BIN" "--listen=$GUIX_GD_DEV_SOCK"
+set -- "$DAEMON_BIN" "--listen=$GUIX_GD_DEV_SOCK"
 if [ -n "$GROUP_ARG" ]; then
   set -- "$@" "$GROUP_ARG"
 fi

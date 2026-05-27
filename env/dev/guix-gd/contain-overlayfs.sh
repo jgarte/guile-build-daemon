@@ -1,5 +1,5 @@
 #!/bin/sh
-# Configure a rootless overlayfs sandbox for a dev guix-daemon.
+# Configure a rootless sandbox with a seeded /gnu/store for a dev guix-daemon.
 
 set -eu
 set -o pipefail 2>/dev/null || true
@@ -11,12 +11,97 @@ SCRIPT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
 GUIX_GD_STORE_UPPER_DIR="${GUIX_GD_DEV_ROOT}/gnu/store-upper"
 GUIX_GD_STORE_WORK_DIR="${GUIX_GD_DEV_ROOT}/gnu/store-work"
 GUIX_GD_STORE_LOWER_DIR="${GUIX_GD_DEV_ROOT}/gnu/store-lower"
+GUIX_GD_STORE_ITEMS_FILE="${GUIX_GD_DEV_ROOT}/gnu/store-items.txt"
 GUIX_GD_VAR_GUIX_DIR="${GUIX_GD_DEV_ROOT}/var/guix"
 GUIX_GD_ETC_GUIX_DIR="${GUIX_GD_DEV_ROOT}/etc/guix"
 GUIX_GD_OVERLAYFS_PID_FILE="${GUIX_GD_DEV_ROOT}/overlayfs-container.pid"
 
+resolve_command_path() {
+  candidate="$1"
+
+  if [ -x "$candidate" ]; then
+    readlink -f "$candidate" 2>/dev/null || printf '%s\n' "$candidate"
+    return 0
+  fi
+
+  resolved="$(command -v "$candidate" 2>/dev/null || true)"
+  if [ -z "$resolved" ]; then
+    return 1
+  fi
+
+  readlink -f "$resolved" 2>/dev/null || printf '%s\n' "$resolved"
+}
+
+collect_runtime_store_items() {
+  tmp_file="${GUIX_GD_STORE_ITEMS_FILE}.tmp"
+  : > "$tmp_file"
+
+  for candidate in $GUIX_GD_RUNTIME_COMMANDS; do
+    resolved="$(resolve_command_path "$candidate" 2>/dev/null || true)"
+    if [ -z "$resolved" ]; then
+      printf 'WARNING: runtime command not found: %s\n' "$candidate" >&2
+      continue
+    fi
+
+    case "$resolved" in
+      /gnu/store/*)
+        item="${resolved#/gnu/store/}"
+        item="${item%%/*}"
+        root="/gnu/store/${item}"
+        printf '%s\n' "$root" >> "$tmp_file"
+        guix gc --requisites "$root" >> "$tmp_file"
+        ;;
+      *)
+        printf 'WARNING: runtime command outside /gnu/store: %s -> %s\n' "$candidate" "$resolved" >&2
+        ;;
+    esac
+  done
+
+  if [ ! -s "$tmp_file" ]; then
+    rm -f "$tmp_file"
+    printf 'ERROR: no runtime store items were collected. Check GUIX_GD_RUNTIME_COMMANDS.\n' >&2
+    exit 1
+  fi
+
+  LC_ALL=C sort -u "$tmp_file" > "$GUIX_GD_STORE_ITEMS_FILE"
+  rm -f "$tmp_file"
+}
+
+seed_store_links() {
+  while IFS= read -r path; do
+    case "$path" in
+      /gnu/store/*)
+        item="${path#/gnu/store/}"
+        item="${item%%/*}"
+        [ -n "$item" ] || continue
+
+        target="${GUIX_GD_STORE_LOWER_DIR}/${item}"
+        link="${GUIX_GD_STORE_UPPER_DIR}/${item}"
+
+        if [ -L "$link" ]; then
+          current_target="$(readlink "$link" 2>/dev/null || true)"
+          if [ "$current_target" = "$target" ]; then
+            continue
+          fi
+          rm -f "$link"
+        elif [ -e "$link" ]; then
+          # Keep entries created by previous daemon runs.
+          continue
+        fi
+
+        ln -s "$target" "$link"
+        ;;
+    esac
+  done < "$GUIX_GD_STORE_ITEMS_FILE"
+}
+
 if ! command -v unshare >/dev/null 2>&1; then
   printf 'ERROR: unshare not found in PATH.\n' >&2
+  exit 1
+fi
+
+if ! command -v guix >/dev/null 2>&1; then
+  printf 'ERROR: guix not found in PATH.\n' >&2
   exit 1
 fi
 
@@ -24,6 +109,7 @@ mkdir -p \
   "${GUIX_GD_STORE_WORK_DIR}" \
   "${GUIX_GD_STORE_UPPER_DIR}" \
   "${GUIX_GD_STORE_LOWER_DIR}" \
+  "$(dirname -- "${GUIX_GD_STORE_ITEMS_FILE}")" \
   "${GUIX_GD_VAR_GUIX_DIR}/daemon-socket" \
   "${GUIX_GD_VAR_GUIX_DIR}/db" \
   "${GUIX_GD_VAR_GUIX_DIR}/discover" \
@@ -90,21 +176,27 @@ do
   fi
 done
 
-echo "== guix-gd /gnu/store overlay (rootless) =="
+collect_runtime_store_items
+seed_store_links
+
+ITEM_COUNT="$(wc -l < "${GUIX_GD_STORE_ITEMS_FILE}" | tr -d '[:space:]')"
+
+echo "== guix-gd /gnu/store seeded runtime (rootless) =="
 echo "daemon user:   ${GUIX_GD_DAEMON_USER}"
 echo "daemon group:  ${GUIX_GD_DAEMON_GROUP}"
 echo "daemon bin:    ${GUIX_GD_DAEMON_BIN}"
 echo "build group:   ${GUIX_GD_GROUP}"
-echo "/gnu/store -> overlay:"
-echo "                lower=${GUIX_GD_STORE_LOWER_DIR}"
-echo "                upper=${GUIX_GD_STORE_UPPER_DIR}"
-echo "                work=${GUIX_GD_STORE_WORK_DIR}"
+echo "/gnu/store -> bind:"
+echo "                lower=${GUIX_GD_STORE_LOWER_DIR} (host /gnu/store bind mount)"
+echo "                upper=${GUIX_GD_STORE_UPPER_DIR} (writable seeded links)"
+echo "                items=${ITEM_COUNT} (${GUIX_GD_STORE_ITEMS_FILE})"
+echo "runtime cmds:  ${GUIX_GD_RUNTIME_COMMANDS}"
 echo "/var/guix{...} -> ${GUIX_GD_VAR_GUIX_DIR}"
 echo "/etc/guix -> ${GUIX_GD_ETC_GUIX_DIR}"
 echo "namespace mode: unshare --user --map-root-user + unshare --mount"
 echo
 
-printf 'Start rootless dev overlayfs container? [y/N]: '
+printf 'Start rootless dev container? [y/N]: '
 read -r CONFIRM
 
 case "$CONFIRM" in
@@ -114,6 +206,8 @@ case "$CONFIRM" in
       GUIX_GD_STORE_UPPER_DIR="${GUIX_GD_STORE_UPPER_DIR}" \
       GUIX_GD_STORE_WORK_DIR="${GUIX_GD_STORE_WORK_DIR}" \
       GUIX_GD_STORE_LOWER_DIR="${GUIX_GD_STORE_LOWER_DIR}" \
+      GUIX_GD_STORE_ITEMS_FILE="${GUIX_GD_STORE_ITEMS_FILE}" \
+      GUIX_GD_RUNTIME_COMMANDS="${GUIX_GD_RUNTIME_COMMANDS}" \
       GUIX_GD_VAR_GUIX_DIR="${GUIX_GD_VAR_GUIX_DIR}" \
       GUIX_GD_ETC_GUIX_DIR="${GUIX_GD_ETC_GUIX_DIR}" \
       GUIX_GD_DAEMON_USER="${GUIX_GD_DAEMON_USER}" \

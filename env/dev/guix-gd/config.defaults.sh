@@ -8,10 +8,12 @@ _guix_gd_user_name="${USER:-user}"
 : "${GUIX_GD_CONTAINER_ROOT:=/tmp/guix-gd-container-${_guix_gd_user_name}}"
 : "${GUIX_GD_DEV_ROOT:=/tmp/guix-gd-overlayfs-${_guix_gd_user_name}}"
 
-# Overlayfs layout.
+# Container store layout.
 : "${GUIX_GD_STORE_UPPER_DIR:=${GUIX_GD_DEV_ROOT}/gnu/store-upper}"
 : "${GUIX_GD_STORE_WORK_DIR:=${GUIX_GD_DEV_ROOT}/gnu/store-work}"
 : "${GUIX_GD_STORE_LOWER_DIR:=${GUIX_GD_DEV_ROOT}/gnu/store-lower}"
+: "${GUIX_GD_STORE_ITEMS_FILE:=${GUIX_GD_DEV_ROOT}/gnu/store-items.txt}"
+: "${GUIX_GD_RUNTIME_COMMANDS:=/bin/sh guix guix-daemon tail /run/current-system/profile/bin/guix /run/current-system/profile/bin/guix-daemon /run/current-system/profile/bin/tail}"
 : "${GUIX_GD_VAR_GUIX_DIR:=${GUIX_GD_DEV_ROOT}/var/guix}"
 : "${GUIX_GD_ETC_GUIX_DIR:=${GUIX_GD_DEV_ROOT}/etc/guix}"
 : "${GUIX_GD_OVERLAYFS_PID_FILE:=${GUIX_GD_DEV_ROOT}/overlayfs-container.pid}"
@@ -49,6 +51,8 @@ export GUIX_GD_DEV_ROOT
 export GUIX_GD_STORE_UPPER_DIR
 export GUIX_GD_STORE_WORK_DIR
 export GUIX_GD_STORE_LOWER_DIR
+export GUIX_GD_STORE_ITEMS_FILE
+export GUIX_GD_RUNTIME_COMMANDS
 export GUIX_GD_VAR_GUIX_DIR
 export GUIX_GD_ETC_GUIX_DIR
 export GUIX_GD_OVERLAYFS_PID_FILE
