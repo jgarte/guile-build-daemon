@@ -174,6 +174,61 @@
 
 
 
+* Containers (unshare vs guix shell -C)
+
+
+#+BEGIN_SRC shell
+  guix shell -C coreutils guix --share=/tmp/tmp-store=/gnu/store --writable-root --share=/tmp/tmp-sock=/var/guix/daemon-socket/ --network --share=/etc/guix/acl
+#+END_SRC
+
+pros
+- unprivileged user
+- process isolation
+- interprocess comms
+- clean fs (pivot_root)
+
+How to keep process demonized?
+#+BEGIN_SRC shell
+
+  guix shell -C coreutils -- /bin/sh -c 'sleep 99999' &
+
+  wrap=$!
+
+  child=$(cat /proc/$wrap/task/$wrap/children | awk '{print $1}')
+
+  nsenter --target "$child" --user --mount --preserve-credentials -- /bin/sh
+
+
+  guix shell -C coreutils guix --share=/tmp/tmp-store=/gnu/store --writable-root --share=/tmp/tmp-sock=/var/guix/daemon-socket/ --network --share=/etc/guix/acl -- guix-daemon &
+
+
+  ls /proc/15828/task
+
+
+
+  # guix shell -C coreutils -- /bin/sh -c 'sleep 99999' &
+  # [1] 15254
+
+  # stas@slim ~/org/job/guix-guile-daemon$ pstree -p 15254
+  # guix(15254)─┬─guix(15269)───sleep(15270)
+  #             ├─{guix}(15255)
+  #             ├─{guix}(15256)
+  #             ├─{guix}(15257)
+  #             ├─{guix}(15258)
+  #             ├─{guix}(15259)
+  #             ├─{guix}(15260)
+  #             ├─{guix}(15261)
+  #             ├─{guix}(15262)
+  #             ├─{guix}(15263)
+  #             ├─{guix}(15264)
+  #             ├─{guix}(15265)
+  #             └─{guix}(15267)
+
+  # explain why there so many processes (i have 12 cores)
+#+END_SRC
+
+
+
 * Test Driven Development
 Specification:
 - import native guix tests (in the following order)
