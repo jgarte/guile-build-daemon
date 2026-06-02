@@ -28,5 +28,6 @@ If you edit .scm files in Emacs run `M-x arei` to connect current buffer to nREP
 
 ## Contributing
 
+Commit is small digestible chunks.
 This project uses conventional commit messages:
 https://www.conventionalcommits.org
