@@ -7,9 +7,9 @@ GUIX_TM             := guix time-machine --channels=$(CHANNELS)
 
 GUILE_DEV           := $(GUIX_TM) \
                        -- shell guile guile-ares-rs --pure --preserve=.*LANG.* \
-                       -- guile -L './src/guile' \
-                                -L './tests/guile' \
-                                -L './dev/guile'
+                       -- guile -L './src/gxd' \
+                                -L './tests/gxd' \
+                                -L './dev/gxd'
 
 ares:
 	$(GUILE_DEV)  -c "((@ (ares server) run-nrepl-server))"

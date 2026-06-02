@@ -1,6 +1,15 @@
-# Guix Guile Daemon
+# Guix Daemon (gxd)
 
 A Guile implementation of a build daemon for Guix.
+
+## Namespace
+
+The name `gxd` is choosen as a namespace for the next Guix Daemon (aiming to be included to Guix v2.0) because it is:
+- short
+- ending on `d` as in `sshd`, `mpd`, etc.
+- few name colisions in Guix/Linux namespaces
+- 'rhymes' with the (legacy) C++ daemon `nix`
+- sounds native :)
 
 ## Repository Structure
 
@@ -29,5 +38,7 @@ If you edit .scm files in Emacs run `M-x arei` to connect current buffer to nREP
 ## Contributing
 
 Commit is small digestible chunks.
+
 This project uses conventional commit messages:
 https://www.conventionalcommits.org
+
