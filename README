@@ -37,6 +37,31 @@ Start the Guile nREPL server:
 
 If you edit .scm files in Emacs run =M-x arei= to connect current buffer to nREPL server.
 
+*** Dev Sandboxes
+
+Sandboxed to test guix-daemon in is created by ~guix shell --container~
+
+The sandbox filesystem:
+- =/tmp=, =/dev=, =/proc=, and =/sys= are created by ~guix shell --container~
+- =/gnu/store= is bind mounted by ~guix shell --container~
+  - by default it mounts to the host =/gnu/store= as read-only
+  - if =/gnu/store= is explicitly mounded to another dir, e.g. ~--share=/gnu/store=/tmp/fake-gnu-store~, the packages provided to the ~guix shell --container~ as well as their requisites (e.g, ~guix gc --requisites coreutils~) are hard linked from the host =/gnu/store=
+- needs to be created/mounted in the container by hand (for substitutes to work)
+  - =/var/log/guix/acl= (Public-Key Infrastructure (SPKI) Access-Control Lists)
+- automatically populated by ~guix-daemon~?
+  - =/var/guix/daemon-socket/socket=
+  - =/var/guix/gc.lock=
+  - =/var/guix/gcroots=
+  - =/var/guix/temproots=
+  - =/var/log/guix=
+  - =/etc/guix=
+  - =touch ./var/guix/db/db.sqlite=
+
+Caveats:
+- =guix-daemon= and client commands are run from the same unprivileged user inside sandbox
+- unprivileged user inside sandbox is stripped from namespace capabilities (no isolated builds)
+- by defaul =guix= inside the container is pinned to v1.5 (need to package current version)
+
 ** Contributing
 
 Commit is small digestible chunks.
