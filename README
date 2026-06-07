@@ -1,5 +1,4 @@
 -*- mode: org -*-
-
 * Guix Daemon (gxd)
 
 A Guile implementation of a build daemon for Guix.
