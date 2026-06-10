@@ -51,12 +51,8 @@ cat << 'EOF' > ./etc/guix/acl
 )
 EOF
 
-# build a profile for baseline tools inside the sandbox
-# (similar to guix shell --link-profile)
-guix package -p ./profile -i coreutils shadow psmisc bash >/dev/null
-
-# use the currently active host guix (e.g. from guix pull),
-# not the packaged 'guix' from channels.
+# use currently active host guix + guix-daemon (e.g. from guix pull),
+# not packaged defaults from channels.
 HOST_GUIX_PATH=$(readlink -f "$(command -v guix)")
 case "$HOST_GUIX_PATH" in
     /gnu/store/*/bin/guix)
@@ -73,13 +69,57 @@ case "$HOST_GUIX_PATH" in
         ;;
 esac
 
-# collect closure and mount only these store items read-only
-guix gc --requisites ./profile "$HOST_GUIX_STORE_ITEM" > ./store-requisites.list
+if ! command -v guix-daemon >/dev/null 2>&1; then
+    echo "error: 'guix-daemon' not found on host PATH" 1>&2
+    exit 1
+fi
 
-# shell entrypoints resolve via the profile; guix resolves to host-current guix
-ln -sf /profile/bin/sh ./bin/sh
-ln -sf /profile/bin/bash ./bin/bash
-ln -sf "$HOST_GUIX_EXEC_IN_SANDBOX" ./bin/guix
+HOST_GUIX_DAEMON_PATH=$(readlink -f "$(command -v guix-daemon)")
+case "$HOST_GUIX_DAEMON_PATH" in
+    /gnu/store/*/bin/guix-daemon)
+        HOST_GUIX_DAEMON_STORE_ITEM=$(dirname "$(dirname "$HOST_GUIX_DAEMON_PATH")")
+        HOST_GUIX_DAEMON_EXEC_IN_SANDBOX="/gnu/store/$(basename "$HOST_GUIX_DAEMON_STORE_ITEM")/bin/guix-daemon"
+        ;;
+    /gnu/store/*)
+        HOST_GUIX_DAEMON_STORE_ITEM="$HOST_GUIX_DAEMON_PATH"
+        HOST_GUIX_DAEMON_EXEC_IN_SANDBOX="/gnu/store/$(basename "$HOST_GUIX_DAEMON_STORE_ITEM")"
+        ;;
+    *)
+        echo "error: 'guix-daemon' does not resolve to a /gnu/store path: $HOST_GUIX_DAEMON_PATH" 1>&2
+        exit 1
+        ;;
+esac
+
+# build baseline profile (similar to guix shell --link-profile)
+guix package -p ./profile -i coreutils shadow psmisc bash >/dev/null
+
+# collect closure and mount only these store items read-only
+guix gc --requisites \
+    ./profile \
+    "$HOST_GUIX_STORE_ITEM" \
+    "$HOST_GUIX_DAEMON_STORE_ITEM" > ./store-requisites.list
+
+# build a merged profile view that includes host-current guix and guix-daemon
+mkdir -p ./profile-merged/bin ./profile-merged/sbin ./profile-merged/etc
+for entry in ./profile/bin/*; do
+    [ -e "$entry" ] || continue
+    ln -sf "/profile/bin/$(basename "$entry")" "./profile-merged/bin/$(basename "$entry")"
+done
+if [ -d ./profile/sbin ]; then
+    for entry in ./profile/sbin/*; do
+        [ -e "$entry" ] || continue
+        ln -sf "/profile/sbin/$(basename "$entry")" "./profile-merged/sbin/$(basename "$entry")"
+    done
+fi
+ln -sf /profile/etc/profile ./profile-merged/etc/profile
+ln -sf "$HOST_GUIX_EXEC_IN_SANDBOX" ./profile-merged/bin/guix
+ln -sf "$HOST_GUIX_DAEMON_EXEC_IN_SANDBOX" ./profile-merged/bin/guix-daemon
+
+# shell entrypoints resolve via merged profile
+ln -sf /profile-merged/bin/sh ./bin/sh
+ln -sf /profile-merged/bin/bash ./bin/bash
+ln -sf /profile-merged/bin/guix ./bin/guix
+ln -sf /profile-merged/bin/guix-daemon ./bin/guix-daemon
 
 # Create FIFO file to block until sandbox reports its namespace PID.
 mkfifo ./sandbox-internal.pid
@@ -94,6 +134,9 @@ unshare --fork --user --map-root-user /bin/sh -eu -c '
     while IFS= read -r store_item; do
       item_name=\$(basename \"\$store_item\")
       target=\"$SANDBOX_ROOT/gnu/store/\$item_name\"
+      if [ -e \"\$target\" ]; then
+        continue
+      fi
       if [ -d \"\$store_item\" ]; then
         mkdir -p \"\$target\"
       else
@@ -113,11 +156,11 @@ unshare --fork --user --map-root-user /bin/sh -eu -c '
     mkdir -p .old-root
     pivot_root . .old-root
 
-    export GUIX_PROFILE=/profile
-    if [ -f /profile/etc/profile ]; then
-      . /profile/etc/profile
+    export GUIX_PROFILE=/profile-merged
+    if [ -f /profile-merged/etc/profile ]; then
+      . /profile-merged/etc/profile
     fi
-    export PATH=/bin:/profile/bin:/profile/sbin
+    export PATH=/bin:/profile-merged/bin:/profile-merged/sbin:/profile/bin:/profile/sbin
 
     echo \"\$\$\" > /sandbox-internal.pid
     exec sleep infinity
@@ -139,7 +182,8 @@ echo "$SANDBOX_NS_SETTER_PID" > ./dev/sandbox-ns-setter.pid
 echo "Sandbox started:" 1>&2
 echo "  - Fake root:                       $SANDBOX_ROOT" 1>&2
 echo "  - Profile:                         $SANDBOX_ROOT/profile" 1>&2
-echo "  - Guix binary:                     /bin/guix (host current guix)" 1>&2
+echo "  - Merged profile:                  $SANDBOX_ROOT/profile-merged" 1>&2
+echo "  - Guix binaries:                   /profile-merged/bin/guix{,-daemon}" 1>&2
 echo "  - /gnu/store binds:                guix gc --requisites (read-only)" 1>&2
 echo "  - Sandbox PID:                     $SANDBOX_PID" 1>&2
 echo "  - Sandbox PID that sets namespace: $SANDBOX_NS_SETTER_PID" 1>&2
