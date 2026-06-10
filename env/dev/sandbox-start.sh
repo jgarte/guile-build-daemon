@@ -13,7 +13,36 @@ fi
 mkdir -p "$SANDBOX_ROOT" && cd "$SANDBOX_ROOT"
 mkdir --parents \
       gnu/store \
+      etc/guix \
       dev
+
+# add Access-Control Lists for substitutes validation
+cat << 'EOF' > ./etc/guix/acl
+(acl 
+ (entry 
+  (public-key 
+   (ecc 
+    (curve Ed25519)
+    (q #8D156F295D24B0D9A86FA5741A840FF2D24F60F7B6C4134814AD55625971B394#)
+    )
+   )
+  (tag 
+   (guix import)
+   )
+  )
+ (entry 
+  (public-key 
+   (ecc 
+    (curve Ed25519)
+    (q #7D602902D3A2DBB83F8A0FB98602A754C5493B0B778C8D1DD4E0F41DE14DE34F#)
+    )
+   )
+  (tag 
+   (guix import)
+   )
+  )
+ )
+EOF
 
 # Create FIFO file to block the following sript at 'cat' untill it is written
 mkfifo ./dev/sandbox-internal.pid
@@ -26,6 +55,7 @@ guix shell --container \
      --no-cwd \
      --link-profile \
      --share=./gnu/store=/gnu/store \
+     --share=./etc/guix=/etc/guix \
      --share=./dev/sandbox-internal.pid=/dev/sandbox-internal.pid \
      -- sh -c 'echo $$ > /dev/sandbox-internal.pid; exec sleep infinity' &
 
