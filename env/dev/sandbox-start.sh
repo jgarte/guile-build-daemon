@@ -11,61 +11,96 @@ else
     SANDBOX_ROOT=$(mktemp -d /tmp/guix-container-shares-XXXXXX)
 fi
 
-# populate root
+# populate fake root
 mkdir -p "$SANDBOX_ROOT" && cd "$SANDBOX_ROOT"
 mkdir --parents \
-      gnu/store \
+      bin \
+      dev \
       etc/guix \
-      dev
+      gnu/store \
+      proc \
+      run \
+      tmp
+chmod 1777 ./tmp
 
 # add Access-Control Lists for substitutes validation
 cat << 'EOF' > ./etc/guix/acl
-(acl 
- (entry 
-  (public-key 
-   (ecc 
+(acl
+ (entry
+  (public-key
+   (ecc
     (curve Ed25519)
     (q #8D156F295D24B0D9A86FA5741A840FF2D24F60F7B6C4134814AD55625971B394#)
-    )
-   )
-  (tag 
-   (guix import)
    )
   )
- (entry 
-  (public-key 
-   (ecc 
-    (curve Ed25519)
-    (q #7D602902D3A2DBB83F8A0FB98602A754C5493B0B778C8D1DD4E0F41DE14DE34F#)
-    )
-   )
-  (tag 
+  (tag
    (guix import)
-   )
   )
  )
+ (entry
+  (public-key
+   (ecc
+    (curve Ed25519)
+    (q #7D602902D3A2DBB83F8A0FB98602A754C5493B0B778C8D1DD4E0F41DE14DE34F#)
+   )
+  )
+  (tag
+   (guix import)
+  )
+ )
+)
 EOF
 
-# Populate sandbox store with hard-linked requisites.
-# This mirrors what 'guix shell --container --share=/gnu/store=...' does.
-SEED_STORE_ITEMS=$(guix build coreutils guix shadow psmisc bash)
-for store_item in $(guix gc --requisites $SEED_STORE_ITEMS); do
-    item_name=$(basename "$store_item")
-    if [ ! -e "./gnu/store/$item_name" ]; then
-        cp -al "$store_item" ./gnu/store/
-    fi
-done
+# build a profile for tools inside the sandbox
+# (similar to guix shell --link-profile)
+guix package -p ./profile -i coreutils guix shadow psmisc bash >/dev/null
+
+# collect closure and mount only these store items read-only
+# shellcheck disable=SC2086
+guix gc --requisites ./profile > ./store-requisites.list
+
+# shell entrypoints resolve via the profile
+ln -sf /profile/bin/sh ./bin/sh
+ln -sf /profile/bin/bash ./bin/bash
 
 # Create FIFO file to block until sandbox reports its namespace PID.
-mkfifo ./dev/sandbox-internal.pid
+mkfifo ./sandbox-internal.pid
 
 export SANDBOX_ROOT
 unshare --fork --user --map-root-user /bin/sh -eu -c '
   unshare --fork --mount /bin/sh -eu -c "
     mount --make-rprivate /
-    mount --bind \"$SANDBOX_ROOT/gnu/store\" /gnu/store
-    mount --bind \"$SANDBOX_ROOT/etc/guix\" /etc/guix
-    echo \"\$\$\" > \"$SANDBOX_ROOT/dev/sandbox-internal.pid\"
+    mount --bind \"$SANDBOX_ROOT\" \"$SANDBOX_ROOT\"
+
+    # mount only profile closure into fake /gnu/store (read-only)
+    while IFS= read -r store_item; do
+      item_name=\$(basename \"\$store_item\")
+      target=\"$SANDBOX_ROOT/gnu/store/\$item_name\"
+      if [ -d \"\$store_item\" ]; then
+        mkdir -p \"\$target\"
+      else
+        : > \"\$target\"
+      fi
+      mount --bind \"\$store_item\" \"\$target\"
+      mount -o remount,bind,ro \"\$target\"
+    done < \"$SANDBOX_ROOT/store-requisites.list\"
+
+    # minimal Linux API FS for guix userland
+    mount --rbind /dev \"$SANDBOX_ROOT/dev\"
+    mount --rbind /proc \"$SANDBOX_ROOT/proc\"
+    mount -t tmpfs -o mode=1777,nosuid,nodev tmpfs \"$SANDBOX_ROOT/tmp\"
+
+    # pivot to fake root
+    cd \"$SANDBOX_ROOT\"
+    mkdir -p .old-root
+    pivot_root . .old-root
+
+    export GUIX_PROFILE=/profile
+    if [ -f /profile/etc/profile ]; then
+      . /profile/etc/profile
+    fi
+
+    echo \"\$\$\" > /sandbox-internal.pid
     exec sleep infinity
   "
 ' &
@@ -74,8 +109,8 @@ SANDBOX_PID=$!
 echo "$SANDBOX_PID" > ./dev/sandbox.pid
 
 # waits for the FIFO file to get written (avoid racing)
-SANDBOX_NS_PID=$(cat ./dev/sandbox-internal.pid)
-rm -f ./dev/sandbox-internal.pid
+SANDBOX_NS_PID=$(cat ./sandbox-internal.pid)
+rm -f ./sandbox-internal.pid
 echo "$SANDBOX_NS_PID" > ./dev/sandbox-ns.pid
 
 SANDBOX_NS_SETTER_PID=$(ps -o ppid= -p "$SANDBOX_NS_PID" | tr -d ' ')
@@ -83,7 +118,9 @@ echo "$SANDBOX_NS_SETTER_PID" > ./dev/sandbox-ns-setter.pid
 
 # Report to user (stderr)
 echo "Sandbox started:" 1>&2
-echo "  - Shared dirs are bind mounted to: $SANDBOX_ROOT" 1>&2
+echo "  - Fake root:                       $SANDBOX_ROOT" 1>&2
+echo "  - Profile:                         $SANDBOX_ROOT/profile" 1>&2
+echo "  - /gnu/store binds:                guix gc --requisites (read-only)" 1>&2
 echo "  - Sandbox PID:                     $SANDBOX_PID" 1>&2
 echo "  - Sandbox PID that sets namespace: $SANDBOX_NS_SETTER_PID" 1>&2
 echo "  - Sandbox's namespace PID:         $SANDBOX_NS_PID" 1>&2
