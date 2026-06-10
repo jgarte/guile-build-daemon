@@ -51,17 +51,35 @@ cat << 'EOF' > ./etc/guix/acl
 )
 EOF
 
-# build a profile for tools inside the sandbox
+# build a profile for baseline tools inside the sandbox
 # (similar to guix shell --link-profile)
-guix package -p ./profile -i coreutils guix shadow psmisc bash >/dev/null
+guix package -p ./profile -i coreutils shadow psmisc bash >/dev/null
+
+# use the currently active host guix (e.g. from guix pull),
+# not the packaged 'guix' from channels.
+HOST_GUIX_PATH=$(readlink -f "$(command -v guix)")
+case "$HOST_GUIX_PATH" in
+    /gnu/store/*/bin/guix)
+        HOST_GUIX_STORE_ITEM=$(dirname "$(dirname "$HOST_GUIX_PATH")")
+        HOST_GUIX_EXEC_IN_SANDBOX="/gnu/store/$(basename "$HOST_GUIX_STORE_ITEM")/bin/guix"
+        ;;
+    /gnu/store/*)
+        HOST_GUIX_STORE_ITEM="$HOST_GUIX_PATH"
+        HOST_GUIX_EXEC_IN_SANDBOX="/gnu/store/$(basename "$HOST_GUIX_STORE_ITEM")"
+        ;;
+    *)
+        echo "error: 'guix' does not resolve to a /gnu/store path: $HOST_GUIX_PATH" 1>&2
+        exit 1
+        ;;
+esac
 
 # collect closure and mount only these store items read-only
-# shellcheck disable=SC2086
-guix gc --requisites ./profile > ./store-requisites.list
+guix gc --requisites ./profile "$HOST_GUIX_STORE_ITEM" > ./store-requisites.list
 
-# shell entrypoints resolve via the profile
+# shell entrypoints resolve via the profile; guix resolves to host-current guix
 ln -sf /profile/bin/sh ./bin/sh
 ln -sf /profile/bin/bash ./bin/bash
+ln -sf "$HOST_GUIX_EXEC_IN_SANDBOX" ./bin/guix
 
 # Create FIFO file to block until sandbox reports its namespace PID.
 mkfifo ./sandbox-internal.pid
@@ -99,6 +117,7 @@ unshare --fork --user --map-root-user /bin/sh -eu -c '
     if [ -f /profile/etc/profile ]; then
       . /profile/etc/profile
     fi
+    export PATH=/bin:/profile/bin:/profile/sbin
 
     echo \"\$\$\" > /sandbox-internal.pid
     exec sleep infinity
@@ -120,6 +139,7 @@ echo "$SANDBOX_NS_SETTER_PID" > ./dev/sandbox-ns-setter.pid
 echo "Sandbox started:" 1>&2
 echo "  - Fake root:                       $SANDBOX_ROOT" 1>&2
 echo "  - Profile:                         $SANDBOX_ROOT/profile" 1>&2
+echo "  - Guix binary:                     /bin/guix (host current guix)" 1>&2
 echo "  - /gnu/store binds:                guix gc --requisites (read-only)" 1>&2
 echo "  - Sandbox PID:                     $SANDBOX_PID" 1>&2
 echo "  - Sandbox PID that sets namespace: $SANDBOX_NS_SETTER_PID" 1>&2
