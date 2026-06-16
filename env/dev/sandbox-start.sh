@@ -125,8 +125,8 @@ ln -sf /profile-merged/bin/guix-daemon ./bin/guix-daemon
 mkfifo ./sandbox-internal.pid
 
 export SANDBOX_ROOT
-unshare --fork --user --map-root-user /bin/sh -eu -c '
-  unshare --fork --mount /bin/sh -eu -c "
+unshare --user --map-root-user /bin/sh -eu -c '
+  exec unshare --mount /bin/sh -eu -c "
     mount --make-rprivate /
     mount --bind \"$SANDBOX_ROOT\" \"$SANDBOX_ROOT\"
 
@@ -175,9 +175,6 @@ SANDBOX_NS_PID=$(cat ./sandbox-internal.pid)
 rm -f ./sandbox-internal.pid
 echo "$SANDBOX_NS_PID" > ./dev/sandbox-ns.pid
 
-SANDBOX_NS_SETTER_PID=$(ps -o ppid= -p "$SANDBOX_NS_PID" | tr -d ' ')
-echo "$SANDBOX_NS_SETTER_PID" > ./dev/sandbox-ns-setter.pid
-
 # Report to user (stderr)
 echo "Sandbox started:" 1>&2
 echo "  - Fake root:                       $SANDBOX_ROOT" 1>&2
@@ -186,7 +183,6 @@ echo "  - Merged profile:                  $SANDBOX_ROOT/profile-merged" 1>&2
 echo "  - Guix binaries:                   /profile-merged/bin/guix{,-daemon}" 1>&2
 echo "  - /gnu/store binds:                guix gc --requisites (read-only)" 1>&2
 echo "  - Sandbox PID:                     $SANDBOX_PID" 1>&2
-echo "  - Sandbox PID that sets namespace: $SANDBOX_NS_SETTER_PID" 1>&2
 echo "  - Sandbox's namespace PID:         $SANDBOX_NS_PID" 1>&2
 
 # return pid to id the namespace
