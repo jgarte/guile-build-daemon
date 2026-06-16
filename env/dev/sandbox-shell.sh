@@ -1,3 +1,4 @@
+#!/bin/sh
 nsenter --target $1 \
         --preserve-credentials \
         --user \
