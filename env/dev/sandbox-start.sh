@@ -65,19 +65,24 @@ EOF
 
 GUIX_PINNED="./home/user/.config/guix/current"
 GUIX_PROFILE="./home/user/.guix-profile"
+GUIX_PROFILE_IN_SANDBOX="/home/user/.guix-profile"
 
 # build baseline profile (similar to guix shell --link-profile)
 guix package --profile="$GUIX_PROFILE" --install coreutils shadow psmisc bash >/dev/null
 
-# collect closure and mount only these store items read-only
+# collect closure and mount only these store items read-only.
+# guix package creates .guix-profile -> .guix-profile-1-link -> /gnu/store/...
+# guix gc wants the final store paths, not the relative profile symlinks.
+GUIX_PROFILE_STORE=$(readlink -f "$GUIX_PROFILE")
+GUIX_PINNED_STORE=$(readlink -f "$GUIX_PINNED")
 guix gc --requisites \
-    "$GUIX_PROFILE" \
-    "$GUIX_PINNED" \
+    "$GUIX_PROFILE_STORE" \
+    "$GUIX_PINNED_STORE" \
     > ./store-requisites.list
 
 # shell entrypoints
-ln -sf "$GUIX_PROFILE/bin/sh" ./bin/sh
-ln -sf "$GUIX_PROFILE/bin/bash" ./bin/bash
+ln -sf "$GUIX_PROFILE_IN_SANDBOX/bin/sh" ./bin/sh
+ln -sf "$GUIX_PROFILE_IN_SANDBOX/bin/bash" ./bin/bash
 
 # Create FIFO file to block until sandbox reports its namespace PID.
 mkfifo ./sandbox-internal.pid
@@ -126,7 +131,7 @@ unshare --user --map-root-user /bin/sh -eu -c '
     SANDBOX_TERM=\${TERM:-xterm-256color}
     
     echo \"\$\$\" > /sandbox-internal.pid
-    exec /profile/bin/env -i \
+    exec env -i \
       HOME=/home/user \
       USER=user \
       LOGNAME=user \
@@ -134,7 +139,7 @@ unshare --user --map-root-user /bin/sh -eu -c '
       TERM=\"\$SANDBOX_TERM\" \
       PATH=\"\$PATH\" \
       GUIX_PROFILE=\"\$GUIX_PROFILE\" \
-      /profile/bin/sleep infinity
+      sleep infinity
   "
 ' &
 
