@@ -91,7 +91,7 @@ case "$HOST_GUIX_DAEMON_PATH" in
 esac
 
 # build baseline profile (similar to guix shell --link-profile)
-guix package -p ./profile -i coreutils shadow psmisc bash >/dev/null
+guix package --profile=./profile --install coreutils shadow psmisc bash >/dev/null
 
 # collect closure and mount only these store items read-only
 guix gc --requisites \
