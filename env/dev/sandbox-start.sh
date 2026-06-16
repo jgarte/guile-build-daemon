@@ -144,12 +144,12 @@ unshare --user --map-root-user /bin/sh -eu -c '
 ' &
 
 SANDBOX_PID=$!
-echo "$SANDBOX_PID" > ./dev/sandbox.pid
+echo "$SANDBOX_PID" > ./sandbox.pid
 
 # waits for the FIFO file to get written (avoid racing)
 SANDBOX_NS_PID=$(cat ./sandbox-internal.pid)
 rm -f ./sandbox-internal.pid
-echo "$SANDBOX_NS_PID" > ./dev/sandbox-ns.pid
+echo "$SANDBOX_NS_PID" > ./sandbox-ns.pid
 
 # Report to user (stderr)
 echo "Sandbox started:" 1>&2
