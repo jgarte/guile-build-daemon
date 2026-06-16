@@ -17,9 +17,9 @@ echo "Working dir: $(pwd)"
 # /home/user/.config/guix/current must be a symlink to a store profile.
 # If "current" is made as a directory, guix gc rejects it as non-store path.
 mkdir -p "$SANDBOX_ROOT/home/user/.config/guix"
-GUIX_CURRENT_STORE=$(readlink -f "$(guix time-machine --channels=env/guix/channels.scm)")
+GUIX_PINNED_STORE=$(readlink -f "$(guix time-machine --channels=env/guix/channels.scm)")
 rm -rf "$SANDBOX_ROOT/home/user/.config/guix/current"
-ln -s "$GUIX_CURRENT_STORE" \
+ln -s "$GUIX_PINNED_STORE" \
    "$SANDBOX_ROOT/home/user/.config/guix/current"
 
 cd "$SANDBOX_ROOT"
@@ -63,23 +63,21 @@ EOF
 
 # use pinned Guix + guix-daemon from the time-machine profile.
 
-# build baseline profile (similar to guix shell --link-profile)
-guix package --profile=./profile --install coreutils shadow psmisc bash >/dev/null
+GUIX_PINNED="./home/user/.config/guix/current"
+GUIX_PROFILE="./home/user/.guix-profile"
 
-GUIX_CURRENT="./home/user/.config/guix/current"
-GUIX_CURRENT_IN_SANDBOX="/home/user/.config/guix/current"
-GUIX_EXEC_IN_SANDBOX="$GUIX_CURRENT_IN_SANDBOX/bin/guix"
-GUIX_DAEMON_EXEC_IN_SANDBOX="$GUIX_CURRENT_IN_SANDBOX/bin/guix-daemon"
+# build baseline profile (similar to guix shell --link-profile)
+guix package --profile="$GUIX_PROFILE" --install coreutils shadow psmisc bash >/dev/null
 
 # collect closure and mount only these store items read-only
 guix gc --requisites \
-    ./profile \
-    "$GUIX_CURRENT" \
+    "$GUIX_PROFILE" \
+    "$GUIX_PINNED" \
     > ./store-requisites.list
 
 # shell entrypoints
-ln -sf /profile/bin/sh ./bin/sh
-ln -sf /profile/bin/bash ./bin/bash
+ln -sf "$GUIX_PROFILE/bin/sh" ./bin/sh
+ln -sf "$GUIX_PROFILE/bin/bash" ./bin/bash
 
 # Create FIFO file to block until sandbox reports its namespace PID.
 mkfifo ./sandbox-internal.pid
@@ -115,19 +113,28 @@ unshare --user --map-root-user /bin/sh -eu -c '
     cd \"$SANDBOX_ROOT\"
     mkdir -p .old-root
     pivot_root . .old-root
-    
+
+    # clean up the PATH
     export PATH=/bin
 
-    export GUIX_PROFILE=/profile
-    . /profile/etc/profile
-    
     export GUIX_PROFILE=/home/user/.config/guix/current
     . "\$GUIX_PROFILE/etc/profile"
     
-    export PATH=/bin:\$PATH
+    export GUIX_PROFILE=/home/user/.guix-profile
+    . "\$GUIX_PROFILE/etc/profile"
+
+    SANDBOX_TERM=\${TERM:-xterm-256color}
     
     echo \"\$\$\" > /sandbox-internal.pid
-    exec sleep infinity
+    exec /profile/bin/env -i \
+      HOME=/home/user \
+      USER=user \
+      LOGNAME=user \
+      SHELL=/bin/bash \
+      TERM=\"\$SANDBOX_TERM\" \
+      PATH=\"\$PATH\" \
+      GUIX_PROFILE=\"\$GUIX_PROFILE\" \
+      /profile/bin/sleep infinity
   "
 ' &
 
@@ -142,10 +149,6 @@ echo "$SANDBOX_NS_PID" > ./dev/sandbox-ns.pid
 # Report to user (stderr)
 echo "Sandbox started:" 1>&2
 echo "  - Fake root:                       $SANDBOX_ROOT" 1>&2
-echo "  - Profile:                         $SANDBOX_ROOT/profile" 1>&2
-echo "  - Pinned Guix profile:             $SANDBOX_ROOT/home/user/.config/guix/current" 1>&2
-echo "  - Guix binaries:                   /home/user/.config/guix/current/bin/guix{,-daemon}" 1>&2
-echo "  - /gnu/store binds:                guix gc --requisites (read-only)" 1>&2
 echo "  - Sandbox PID:                     $SANDBOX_PID" 1>&2
 echo "  - Sandbox's namespace PID:         $SANDBOX_NS_PID" 1>&2
 
