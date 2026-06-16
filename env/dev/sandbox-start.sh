@@ -11,8 +11,18 @@ else
     SANDBOX_ROOT=$(mktemp -d /tmp/guix-container-shares-XXXXXX)
 fi
 
+echo "Working dir: $(pwd)"
+
 # populate fake root
-mkdir -p "$SANDBOX_ROOT" && cd "$SANDBOX_ROOT"
+# /home/user/.config/guix/current must be a symlink to a store profile.
+# If "current" is made as a directory, guix gc rejects it as non-store path.
+mkdir -p "$SANDBOX_ROOT/home/user/.config/guix"
+GUIX_CURRENT_STORE=$(readlink -f "$(guix time-machine --channels=env/guix/channels.scm)")
+rm -rf "$SANDBOX_ROOT/home/user/.config/guix/current"
+ln -s "$GUIX_CURRENT_STORE" \
+   "$SANDBOX_ROOT/home/user/.config/guix/current"
+
+cd "$SANDBOX_ROOT"
 mkdir --parents \
       bin \
       dev \
@@ -51,55 +61,26 @@ cat << 'EOF' > ./etc/guix/acl
 )
 EOF
 
-# use currently active host guix + guix-daemon (e.g. from guix pull),
-# not packaged defaults from channels.
-HOST_GUIX_PATH=$(readlink -f "$(command -v guix)")
-case "$HOST_GUIX_PATH" in
-    /gnu/store/*/bin/guix)
-        HOST_GUIX_STORE_ITEM=$(dirname "$(dirname "$HOST_GUIX_PATH")")
-        HOST_GUIX_EXEC_IN_SANDBOX="/gnu/store/$(basename "$HOST_GUIX_STORE_ITEM")/bin/guix"
-        ;;
-    /gnu/store/*)
-        HOST_GUIX_STORE_ITEM="$HOST_GUIX_PATH"
-        HOST_GUIX_EXEC_IN_SANDBOX="/gnu/store/$(basename "$HOST_GUIX_STORE_ITEM")"
-        ;;
-    *)
-        echo "error: 'guix' does not resolve to a /gnu/store path: $HOST_GUIX_PATH" 1>&2
-        exit 1
-        ;;
-esac
-
-if ! command -v guix-daemon >/dev/null 2>&1; then
-    echo "error: 'guix-daemon' not found on host PATH" 1>&2
-    exit 1
-fi
-
-HOST_GUIX_DAEMON_PATH=$(readlink -f "$(command -v guix-daemon)")
-case "$HOST_GUIX_DAEMON_PATH" in
-    /gnu/store/*/bin/guix-daemon)
-        HOST_GUIX_DAEMON_STORE_ITEM=$(dirname "$(dirname "$HOST_GUIX_DAEMON_PATH")")
-        HOST_GUIX_DAEMON_EXEC_IN_SANDBOX="/gnu/store/$(basename "$HOST_GUIX_DAEMON_STORE_ITEM")/bin/guix-daemon"
-        ;;
-    /gnu/store/*)
-        HOST_GUIX_DAEMON_STORE_ITEM="$HOST_GUIX_DAEMON_PATH"
-        HOST_GUIX_DAEMON_EXEC_IN_SANDBOX="/gnu/store/$(basename "$HOST_GUIX_DAEMON_STORE_ITEM")"
-        ;;
-    *)
-        echo "error: 'guix-daemon' does not resolve to a /gnu/store path: $HOST_GUIX_DAEMON_PATH" 1>&2
-        exit 1
-        ;;
-esac
+# use pinned Guix + guix-daemon from the time-machine profile.
 
 # build baseline profile (similar to guix shell --link-profile)
 guix package --profile=./profile --install coreutils shadow psmisc bash >/dev/null
 
+GUIX_CURRENT="./home/user/.config/guix/current"
+GUIX_CURRENT_IN_SANDBOX="/home/user/.config/guix/current"
+GUIX_EXEC_IN_SANDBOX="$GUIX_CURRENT_IN_SANDBOX/bin/guix"
+GUIX_DAEMON_EXEC_IN_SANDBOX="$GUIX_CURRENT_IN_SANDBOX/bin/guix-daemon"
+
+printf 'Guix path:        %s\n' "$GUIX_EXEC_IN_SANDBOX"
+printf 'Guix daemon path: %s\n' "$GUIX_DAEMON_EXEC_IN_SANDBOX"
+
 # collect closure and mount only these store items read-only
 guix gc --requisites \
     ./profile \
-    "$HOST_GUIX_STORE_ITEM" \
-    "$HOST_GUIX_DAEMON_STORE_ITEM" > ./store-requisites.list
+    "$GUIX_CURRENT" \
+    > ./store-requisites.list
 
-# build a merged profile view that includes host-current guix and guix-daemon
+# build a merged profile view that includes pinned guix and guix-daemon
 mkdir -p ./profile-merged/bin ./profile-merged/sbin ./profile-merged/etc
 for entry in ./profile/bin/*; do
     [ -e "$entry" ] || continue
@@ -112,8 +93,8 @@ if [ -d ./profile/sbin ]; then
     done
 fi
 ln -sf /profile/etc/profile ./profile-merged/etc/profile
-ln -sf "$HOST_GUIX_EXEC_IN_SANDBOX" ./profile-merged/bin/guix
-ln -sf "$HOST_GUIX_DAEMON_EXEC_IN_SANDBOX" ./profile-merged/bin/guix-daemon
+ln -sf "$GUIX_EXEC_IN_SANDBOX" ./profile-merged/bin/guix
+ln -sf "$GUIX_DAEMON_EXEC_IN_SANDBOX" ./profile-merged/bin/guix-daemon
 
 # shell entrypoints resolve via merged profile
 ln -sf /profile-merged/bin/sh ./bin/sh
