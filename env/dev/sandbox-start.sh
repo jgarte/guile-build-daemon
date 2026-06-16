@@ -71,36 +71,15 @@ GUIX_CURRENT_IN_SANDBOX="/home/user/.config/guix/current"
 GUIX_EXEC_IN_SANDBOX="$GUIX_CURRENT_IN_SANDBOX/bin/guix"
 GUIX_DAEMON_EXEC_IN_SANDBOX="$GUIX_CURRENT_IN_SANDBOX/bin/guix-daemon"
 
-printf 'Guix path:        %s\n' "$GUIX_EXEC_IN_SANDBOX"
-printf 'Guix daemon path: %s\n' "$GUIX_DAEMON_EXEC_IN_SANDBOX"
-
 # collect closure and mount only these store items read-only
 guix gc --requisites \
     ./profile \
     "$GUIX_CURRENT" \
     > ./store-requisites.list
 
-# build a merged profile view that includes pinned guix and guix-daemon
-mkdir -p ./profile-merged/bin ./profile-merged/sbin ./profile-merged/etc
-for entry in ./profile/bin/*; do
-    [ -e "$entry" ] || continue
-    ln -sf "/profile/bin/$(basename "$entry")" "./profile-merged/bin/$(basename "$entry")"
-done
-if [ -d ./profile/sbin ]; then
-    for entry in ./profile/sbin/*; do
-        [ -e "$entry" ] || continue
-        ln -sf "/profile/sbin/$(basename "$entry")" "./profile-merged/sbin/$(basename "$entry")"
-    done
-fi
-ln -sf /profile/etc/profile ./profile-merged/etc/profile
-ln -sf "$GUIX_EXEC_IN_SANDBOX" ./profile-merged/bin/guix
-ln -sf "$GUIX_DAEMON_EXEC_IN_SANDBOX" ./profile-merged/bin/guix-daemon
-
-# shell entrypoints resolve via merged profile
-ln -sf /profile-merged/bin/sh ./bin/sh
-ln -sf /profile-merged/bin/bash ./bin/bash
-ln -sf /profile-merged/bin/guix ./bin/guix
-ln -sf /profile-merged/bin/guix-daemon ./bin/guix-daemon
+# shell entrypoints
+ln -sf /profile/bin/sh ./bin/sh
+ln -sf /profile/bin/bash ./bin/bash
 
 # Create FIFO file to block until sandbox reports its namespace PID.
 mkfifo ./sandbox-internal.pid
@@ -136,13 +115,17 @@ unshare --user --map-root-user /bin/sh -eu -c '
     cd \"$SANDBOX_ROOT\"
     mkdir -p .old-root
     pivot_root . .old-root
+    
+    export PATH=/bin
 
-    export GUIX_PROFILE=/profile-merged
-    if [ -f /profile-merged/etc/profile ]; then
-      . /profile-merged/etc/profile
-    fi
-    export PATH=/bin:/profile-merged/bin:/profile-merged/sbin:/profile/bin:/profile/sbin
-
+    export GUIX_PROFILE=/profile
+    . /profile/etc/profile
+    
+    export GUIX_PROFILE=/home/user/.config/guix/current
+    . "\$GUIX_PROFILE/etc/profile"
+    
+    export PATH=/bin:\$PATH
+    
     echo \"\$\$\" > /sandbox-internal.pid
     exec sleep infinity
   "
@@ -160,8 +143,8 @@ echo "$SANDBOX_NS_PID" > ./dev/sandbox-ns.pid
 echo "Sandbox started:" 1>&2
 echo "  - Fake root:                       $SANDBOX_ROOT" 1>&2
 echo "  - Profile:                         $SANDBOX_ROOT/profile" 1>&2
-echo "  - Merged profile:                  $SANDBOX_ROOT/profile-merged" 1>&2
-echo "  - Guix binaries:                   /profile-merged/bin/guix{,-daemon}" 1>&2
+echo "  - Pinned Guix profile:             $SANDBOX_ROOT/home/user/.config/guix/current" 1>&2
+echo "  - Guix binaries:                   /home/user/.config/guix/current/bin/guix{,-daemon}" 1>&2
 echo "  - /gnu/store binds:                guix gc --requisites (read-only)" 1>&2
 echo "  - Sandbox PID:                     $SANDBOX_PID" 1>&2
 echo "  - Sandbox's namespace PID:         $SANDBOX_NS_PID" 1>&2
