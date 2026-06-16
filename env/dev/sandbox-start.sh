@@ -67,8 +67,8 @@ GUIX_PINNED="./home/user/.config/guix/current"
 GUIX_PROFILE="./home/user/.guix-profile"
 GUIX_PROFILE_IN_SANDBOX="/home/user/.guix-profile"
 
-# build baseline profile (similar to guix shell --link-profile)
-guix package --profile="$GUIX_PROFILE" --install coreutils shadow psmisc bash >/dev/null
+# build baseline profile
+guix package --profile="$GUIX_PROFILE" --install coreutils shadow psmisc bash >/dev/null 2>&1
 
 # collect closure and mount only these store items read-only.
 # guix package creates .guix-profile -> .guix-profile-1-link -> /gnu/store/...
