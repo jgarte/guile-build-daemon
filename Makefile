@@ -10,10 +10,11 @@ GUILE_DEV           := $(GUIX_TM) \
                        -- guile -L './src/gxd' \
                                 -L './tests/gxd' \
                                 -L './dev/gxd'
-
+.PHONY: ares
 ares:
 	$(GUILE_DEV)  -c "((@ (ares server) run-nrepl-server))"
 
+.PHONY: sandbox/start
 sandbox/start:
 	sh ./env/dev/sandbox-start.sh
 
