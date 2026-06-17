@@ -8,13 +8,8 @@ set -o errexit
 # error on undeclared variables
 set -o nounset
 
-
-# Use root dir from the argument or make a new tmp dir
-if [ -n "${1:-}" ]; then
-    SANDBOX_ROOT="$1"
-else
-    SANDBOX_ROOT=$(mktemp -d /tmp/guix-container-shares-XXXXXX)
-fi
+# SANDBOX_ROOT is either provided as the first argument or set to random /tmp dir
+SANDBOX_ROOT=${1:-$(mktemp -d /tmp/guix-sandbox-XXXXXX)}
 
 # populate fake root
 # /home/user/.config/guix/current must be a symlink to a store profile.
