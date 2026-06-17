@@ -2,7 +2,12 @@
 # starts a simple sandbox namespace in the background
 # returns PID for namespace to 'nsenter' into later
 
-set -eu
+
+# exit fast on any errors
+set -o errexit
+# error on undeclared variables
+set -o nounset
+
 
 # Use root dir from the argument or make a new tmp dir
 if [ -n "${1:-}" ]; then
