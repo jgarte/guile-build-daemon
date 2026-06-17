@@ -1,7 +1,7 @@
 #!/bin/sh
-# starts a simple sandbox namespace in the background
-# returns PID for namespace to 'nsenter' into later
-
+# script starts a simple sandbox namespace in the background
+# it returns PID for namespace to 'nsenter' into later
+# script assumes that it is running in the project root (e.g., called from makefile)
 
 # exit fast on any errors
 set -o errexit
@@ -15,8 +15,6 @@ if [ -n "${1:-}" ]; then
 else
     SANDBOX_ROOT=$(mktemp -d /tmp/guix-container-shares-XXXXXX)
 fi
-
-echo "Working dir: $(pwd)"
 
 # populate fake root
 # /home/user/.config/guix/current must be a symlink to a store profile.
