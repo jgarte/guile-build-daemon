@@ -1,6 +1,17 @@
-* Guix Build Daemon
+* Guix Daemon (gxd)
 
 A Guile implementation of a build daemon for Guix.
+
+** Project namespace
+
+The =gxd= is used as a namespace for the next implementation of Guix Daemon.
+
+The rationale behind choosing =gxd= namespace is the following:
+- short and makes a concise prefix
+- ends on =d= as in ~sshd~, ~mpd~, etc.
+- distinct and does not collide with other Guix/Linux namespaces
+- 'rhymes' with the legacy C++ =nix= daemon
+- sounds native :)
 
 ** Getting Started
 
