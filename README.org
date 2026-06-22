@@ -1,14 +1,16 @@
-# Guix Build Daemon
+* Guix Build Daemon
 
 A Guile implementation of a build daemon for Guix.
 
-## Getting Started
+** Getting Started
 
 Start the nREPL server:
 
+#+BEGIN_SRC bash
   make ares
+#+END_SRC
 
-## Contributing
+** Contributing
 
 This project uses conventional commit messages:
 https://www.conventionalcommits.org
