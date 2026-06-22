@@ -1,3 +1,0 @@
-[submodule "src/guix-proper"]
-	path = src/guix-proper
-	url = https://codeberg.org/guix/guix.git
