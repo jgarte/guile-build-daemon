@@ -1,6 +1,6 @@
 * Guix Daemon (gxd)
 
-A Guile implementation of a build daemon for Guix.
+A Guile implementation of a build daemon for Guix (targeting v2.0).
 
 ** Project namespace
 
@@ -20,6 +20,34 @@ Start the nREPL server:
 #+BEGIN_SRC bash
   make ares
 #+END_SRC
+
+** Glossary
+
+The terms =derivation=, =store=, (build) =daemon=, =client= and (client-daemon) =socket= are the core concepts and components of Guix. Those are defined in [[https://guix.gnu.org/manual/devel/en/guix.html][GNU Guix Reference Manual]].
+
+The terms for the new (sub-)components introduced in the current project are defined below.
+
+To distinguish between the old (legacy) and the new implementation of Guix Daemon (presumably to be included in Guix v2.0) we refer to the former as =v1-daemon= (as in =guix-v1-daemon=) and the later as =v2-daemon= (as in =guix-v2-daemon=).
+
+=v1-daemon= (=nix=) - (legacy) C++ daemon ported from [[https://github.com/NixOS/nix][nix package manager]]. It can be also referred to as =nix=. Its source code  lives in the =./nix= directory of Guix (v1) repository.
+
+=v2-daemon= (=gxd=) - Guile implementation of Guix Daemon. Unified implementation language makes it the native daemon. This new implementation is targeting Guix v2.0. It can be also referred to as =gxd= (the current project's namespace).
+
+=fallback-daemon= (assumes =fallback-v1-daemon=) - the =v1-daemon= process that is used as a fallback for operations that are not yet implemented in =v2-daemon=.
+
+=relay= - a process that relays RPCs between two sockets (e.g., =client= to =v2-daemon= socket and  =v2-daemon= to =fallback-daemon= socket) and logs the calls and payloads. It is implemented both as guile module (e.g., to include into =v2-daemon= to relay fallback RPCs) and as stand alone (RPCs logging) package.
+
+=sandbox= - mount and user namespace isolation environment for testing and logging guix client/daemon interactions. Mount namespace provides a clean filesystem with mounted =/gnu/store= to =/etc/guix= to a host directory for inspecting change in daemon's artifacts and guix state. The user namespace emulates =guix-daemon= user and client user (e.g., =user=). The =sandbox= provides isolation so that experiments and testing does not interfere with or break the running (GuixSD) system as well as possibility to track and record filesystem changes for testing.
+
+=v1-sandbox= - logging environment with running =v1-daemon= that communicates with the =client= via logging =relay=
+
+=v2-sandbox= - environment with running =v2-daemon= (with logging =relay= added as guile module =fallback-daemon= (=v1-daemon=)
+
+=differential-test= (=diff-test=) - test suits based on comparing logs and artifacts of =v1-sandbox= and =v2-sandbox= to ensure the backward compatibility of new implementation of guix daemon (=gxd=)
+
+
+
+
 
 ** Contributing
 
