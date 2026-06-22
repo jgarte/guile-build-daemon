@@ -12,5 +12,13 @@ Start the nREPL server:
 
 ** Contributing
 
-This project uses conventional commit messages:
-https://www.conventionalcommits.org
+The formating of commit messages follows simple [[https://scopedcommits.com][Scoped Commits]] standard:
+
+#+BEGIN_EXAMPLE
+  <scope>: <description>
+#+END_EXAMPLE
+
+=<scope>= - the subsystem, area, or module that the commit touches
+=<description>= - a short description of the changes made
+
+
