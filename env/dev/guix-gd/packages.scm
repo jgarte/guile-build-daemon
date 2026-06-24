@@ -12,12 +12,12 @@
   (package
     (name "guix-gd-daemon")
     (version "0.1.0")
-    (source
-     ;; Local development modules to package as an executable command.
-     ;; Path is relative to repository root (development use).
-     (local-file "dev/guix-daemon/guix-gd/daemon"
-                 "daemon"
-                 #:recursive? #t))
+     (source
+      ;; Daemon modules packaged as an executable command.
+      ;; Path is relative to repository root.
+      (local-file "src/guix-daemon/guix-gd/daemon"
+                  "daemon"
+                  #:recursive? #t))
     (build-system trivial-build-system)
     (inputs (list guile-3.0 bash-minimal))
     (arguments
