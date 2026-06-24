@@ -3,7 +3,7 @@
 
 set -eu
 
-HOST_PATH="${GUIX_GD_HOST_PATH:-/run/setuid-programs:/run/current-system/profile/bin:/run/current-system/profile/sbin:/bin:/usr/bin:/usr/sbin}"
+HOST_PATH="${GXD_HOST_PATH:-/run/setuid-programs:/run/current-system/profile/bin:/run/current-system/profile/sbin:/bin:/usr/bin:/usr/sbin}"
 PATH="$HOST_PATH"
 export PATH
 
@@ -30,7 +30,7 @@ stdout_file="$4"
 stderr_file="$5"
 exit_file="$6"
 
-GUIX_BIN="${GUIX_GD_TEST_GUIX_BIN:-}"
+GUIX_BIN="${GXD_TEST_GUIX_BIN:-}"
 if [ -z "$GUIX_BIN" ]; then
   GUIX_BIN="$(resolve_command_path guix 2>/dev/null || true)"
 fi

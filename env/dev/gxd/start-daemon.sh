@@ -7,7 +7,7 @@ set -o pipefail 2>/dev/null || true
 SCRIPT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
 . "${SCRIPT_DIR}/config.defaults.sh"
 
-PIDFILE="${GUIX_GD_DEV_ROOT}/overlayfs-container.pid"
+PIDFILE="${GXD_DEV_ROOT}/overlayfs-container.pid"
 
 if [ ! -f "$PIDFILE" ]; then
   printf 'ERROR: pidfile not found: %s\n' "$PIDFILE" >&2
@@ -49,31 +49,31 @@ resolve_command_path() {
   readlink -f "$resolved" 2>/dev/null || printf '%s\n' "$resolved"
 }
 
-DAEMON_BIN="$(resolve_command_path "$GUIX_GD_DAEMON_BIN" 2>/dev/null || true)"
+DAEMON_BIN="$(resolve_command_path "$GXD_DAEMON_BIN" 2>/dev/null || true)"
 if [ -z "$DAEMON_BIN" ]; then
-  printf 'ERROR: daemon binary not found: %s\n' "$GUIX_GD_DAEMON_BIN" >&2
+  printf 'ERROR: daemon binary not found: %s\n' "$GXD_DAEMON_BIN" >&2
   exit 5
 fi
 
 GROUP_ARG=''
-if [ -n "$GUIX_GD_GROUP" ]; then
-  if grep -q "^${GUIX_GD_GROUP}:" /etc/group; then
-    GROUP_ARG="--build-users-group=${GUIX_GD_GROUP}"
+if [ -n "$GXD_GROUP" ]; then
+  if grep -q "^${GXD_GROUP}:" /etc/group; then
+    GROUP_ARG="--build-users-group=${GXD_GROUP}"
   else
-    printf 'WARNING: build users group not found: %s (continuing without --build-users-group)\n' "$GUIX_GD_GROUP" >&2
+    printf 'WARNING: build users group not found: %s (continuing without --build-users-group)\n' "$GXD_GROUP" >&2
   fi
 fi
 
 printf 'Found container PID: %s\n' "$PID"
-rm -f "$GUIX_GD_DEV_SOCK"
+rm -f "$GXD_DEV_SOCK"
 printf 'Running: nsenter --target %s --user --mount --preserve-credentials -- %s --listen=%s %s %s\n' \
-  "$PID" "$DAEMON_BIN" "$GUIX_GD_DEV_SOCK" "$GROUP_ARG" "$GUIX_GD_DAEMON_ARGS"
+  "$PID" "$DAEMON_BIN" "$GXD_DEV_SOCK" "$GROUP_ARG" "$GXD_DAEMON_ARGS"
 
-set -- "$DAEMON_BIN" "--listen=$GUIX_GD_DEV_SOCK"
+set -- "$DAEMON_BIN" "--listen=$GXD_DEV_SOCK"
 if [ -n "$GROUP_ARG" ]; then
   set -- "$@" "$GROUP_ARG"
 fi
 # shellcheck disable=SC2086
-set -- "$@" $GUIX_GD_DAEMON_ARGS
+set -- "$@" $GXD_DAEMON_ARGS
 
 exec nsenter --target "$PID" --user --mount --preserve-credentials -- "$@"

@@ -1,5 +1,5 @@
 #!/bin/sh
-# Wrapper: load guix-gd defaults, then exec with exported env.
+# Wrapper: load gxd defaults, then exec with exported env.
 
 set -eu
 

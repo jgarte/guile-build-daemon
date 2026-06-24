@@ -191,35 +191,35 @@ SCENARIO keys:
       (format port "relay.artifacts: ~a~%" (assoc-ref relay 'dir)))))
 
 (define (comparison-config)
-  "Read GUIX_GD_TEST_* configuration and return an alist."
-  (let* ((command (env-ref "GUIX_GD_TEST_COMMAND" "guix gc --list-roots"))
-         (artifacts-root (env-ref "GUIX_GD_TEST_ARTIFACTS_DIR"
+  "Read GXD_TEST_* configuration and return an alist."
+  (let* ((command (env-ref "GXD_TEST_COMMAND" "guix gc --list-roots"))
+         (artifacts-root (env-ref "GXD_TEST_ARTIFACTS_DIR"
                                   "tmp/daemon-differential"))
          (expected-exit
-          (or (string->number (env-ref "GUIX_GD_TEST_EXPECT_EXIT" "0")) 0))
+          (or (string->number (env-ref "GXD_TEST_EXPECT_EXIT" "0")) 0))
 
-         (regular-root (env-ref "GUIX_GD_TEST_REGULAR_ROOT"
-                                (string-append "/tmp/guix-gd-overlayfs-regular-"
+         (regular-root (env-ref "GXD_TEST_REGULAR_ROOT"
+                                (string-append "/tmp/gxd-overlayfs-regular-"
                                                current-user)))
-         (regular-pid-env (getenv "GUIX_GD_TEST_REGULAR_CONTAINER_PID"))
+         (regular-pid-env (getenv "GXD_TEST_REGULAR_CONTAINER_PID"))
          (regular-pid (if (and regular-pid-env
                                (not (string-null? regular-pid-env)))
                           regular-pid-env
                           (read-container-pid "regular" regular-root)))
-         (regular-socket (env-ref "GUIX_GD_TEST_REGULAR_SOCKET"
-                                  (string-append "/tmp/guix-gd-fallback-regular-"
+         (regular-socket (env-ref "GXD_TEST_REGULAR_SOCKET"
+                                  (string-append "/tmp/gxd-fallback-regular-"
                                                  current-user
                                                  ".sock")))
 
-         (relay-root (env-ref "GUIX_GD_TEST_RELAY_ROOT"
-                              (string-append "/tmp/guix-gd-overlayfs-relay-"
+         (relay-root (env-ref "GXD_TEST_RELAY_ROOT"
+                              (string-append "/tmp/gxd-overlayfs-relay-"
                                              current-user)))
-         (relay-pid-env (getenv "GUIX_GD_TEST_RELAY_CONTAINER_PID"))
+         (relay-pid-env (getenv "GXD_TEST_RELAY_CONTAINER_PID"))
          (relay-pid (if (and relay-pid-env
                              (not (string-null? relay-pid-env)))
                         relay-pid-env
                         (read-container-pid "relay" relay-root)))
-         (relay-socket (env-ref "GUIX_GD_TEST_RELAY_SOCKET"
+         (relay-socket (env-ref "GXD_TEST_RELAY_SOCKET"
                                 "/var/guix/daemon-socket/socket")))
 
     (ensure-distinct-roots! regular-root relay-root)

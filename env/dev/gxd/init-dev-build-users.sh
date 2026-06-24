@@ -8,13 +8,13 @@ SCRIPT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
 
 if [ "$(id -u)" -ne 0 ]; then
   echo "Skipping build-user initialization: not running as root."
-  echo "If needed, run this script once as root to create ${GUIX_GD_GROUP}-01..10."
+  echo "If needed, run this script once as root to create ${GXD_GROUP}-01..10."
   exit 0
 fi
 
 echo "------------------------------------------"
 echo "Configuration for dev guixdaemon build users:"
-echo "  GUIX_GD_GROUP: $GUIX_GD_GROUP"
+echo "  GXD_GROUP: $GXD_GROUP"
 echo "------------------------------------------"
 
 printf 'Init group/user(s)? [y/N]: '
@@ -23,8 +23,8 @@ read -r CONFIRM
 case "$CONFIRM" in
   [yY][eE][sS]|[yY])
     echo "Proceeding with build user initialization..."
-    if ! grep -q "^${GUIX_GD_GROUP}:" /etc/group; then
-      groupadd --system "$GUIX_GD_GROUP"
+    if ! grep -q "^${GXD_GROUP}:" /etc/group; then
+      groupadd --system "$GXD_GROUP"
     fi
 
     NOLOGIN_BIN="$(command -v nologin || true)"
@@ -33,12 +33,12 @@ case "$CONFIRM" in
     fi
 
     for i in $(seq -w 1 10); do
-      user_name="${GUIX_GD_GROUP}-${i}"
+      user_name="${GXD_GROUP}-${i}"
       if id "$user_name" >/dev/null 2>&1; then
         continue
       fi
 
-      useradd -g "$GUIX_GD_GROUP" -G "$GUIX_GD_GROUP" \
+      useradd -g "$GXD_GROUP" -G "$GXD_GROUP" \
         -d /var/empty -s "$NOLOGIN_BIN" \
         -c "Guix guile build daemon user $i" --system \
         "$user_name"

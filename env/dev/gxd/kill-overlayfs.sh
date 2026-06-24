@@ -7,7 +7,7 @@ set -o pipefail 2>/dev/null || true
 SCRIPT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
 . "${SCRIPT_DIR}/config.defaults.sh"
 
-PID_FILE="${1:-${GUIX_GD_DEV_ROOT}/overlayfs-container.pid}"
+PID_FILE="${1:-${GXD_DEV_ROOT}/overlayfs-container.pid}"
 
 if [ ! -r "$PID_FILE" ]; then
   printf 'No pid file: %s\n' "$PID_FILE"

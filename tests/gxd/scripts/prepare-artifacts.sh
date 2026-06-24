@@ -3,7 +3,7 @@
 
 set -eu
 
-HOST_PATH="${GUIX_GD_HOST_PATH:-/run/setuid-programs:/run/current-system/profile/bin:/run/current-system/profile/sbin:/bin:/usr/bin:/usr/sbin}"
+HOST_PATH="${GXD_HOST_PATH:-/run/setuid-programs:/run/current-system/profile/bin:/run/current-system/profile/sbin:/bin:/usr/bin:/usr/sbin}"
 PATH="$HOST_PATH"
 export PATH
 
