@@ -9,8 +9,8 @@
 ;;; useful for logs (counts, key flags, selected strings).  Unknown operations
 ;;; intentionally remain non-fatal: higher layers switch to raw relay mode.
 
-(define-module (guix-gd daemon protocol client)
-  #:use-module (guix-gd daemon protocol primitives)
+(define-module (gxd protocol client)
+  #:use-module (gxd protocol primitives)
   #:export (advance-with
             advance-n
             advance-string-pairs

@@ -12,8 +12,8 @@
 ;;; This module keeps those rules in one place so higher-level parsers can stay
 ;;; focused on protocol meaning instead of byte indexing mechanics.
 
-(define-module (guix-gd daemon protocol primitives)
-  #:use-module ((guix-gd daemon logging) #:select (summarise-bytevector))
+(define-module (gxd protocol primitives)
+  #:use-module ((gxd logging) #:select (summarise-bytevector))
   #:use-module (ice-9 format)
   #:use-module (rnrs bytevectors)
   #:export (slice-bytevector

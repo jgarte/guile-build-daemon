@@ -1,9 +1,9 @@
 ;; SPDX-License-Identifier: GPL-3.0-or-later
 ;; SPDX-FileCopyrightText: 2026 Andrew Tropin
-(define-module (guix-gd channels)
+(define-module (gxd channels)
   #:use-module (guix channels))
 
-(define-public guix-gd-channels
+(define-public gxd-channels
   (list (channel
          (name 'guix)
          (url "https://git.guix.gnu.org/guix.git")
@@ -17,4 +17,4 @@
             "BBB0 2DDF 2CEA F6A8 0D1D  E643 A2A0 6DF2 A33A 54FA"))))))
 
 ;; return channels
-guix-gd-channels
+gxd-channels

@@ -7,11 +7,11 @@
 ;;;   [operation-specific reply payload]
 ;;;
 ;;; This module decodes only the control-frame layer.  Reply payloads are
-;;; decoded separately in (guix-gd daemon protocol reply).
+;;; decoded separately in (gxd protocol reply).
 
-(define-module (guix-gd daemon protocol daemon)
-  #:use-module (guix-gd daemon protocol constants)
-  #:use-module (guix-gd daemon protocol primitives)
+(define-module (gxd protocol daemon)
+  #:use-module (gxd protocol constants)
+  #:use-module (gxd protocol primitives)
   #:export (parse-daemon-frame-at))
 
 (define (parse-daemon-frame-at bv start client-minor)

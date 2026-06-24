@@ -1,6 +1,6 @@
 ;;; Logging and byte-preview helpers for the Guix daemon relay.
 
-(define-module (guix-gd daemon logging)
+(define-module (gxd logging)
   #:use-module (ice-9 format)       ; format
   #:use-module (rnrs bytevectors)   ; bytevector-u8-ref
   #:use-module (rnrs io ports)      ; force-output

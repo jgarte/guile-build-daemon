@@ -1,6 +1,6 @@
 ;;; Shared per-connection mutable context.
 
-(define-module (guix-gd daemon context)
+(define-module (gxd context)
   #:use-module (ice-9 threads) ; make-mutex, with-mutex
   #:export (make-connection-context
             with-context-lock

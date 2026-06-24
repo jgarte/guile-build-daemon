@@ -1,5 +1,5 @@
-(define-module (guix-gd packages)
-  #:use-module (guix-gd channels)                 ; provides `guix-gd-channels`
+(define-module (gxd packages)
+  #:use-module (gxd channels)                     ; provides `gxd-channels`
   #:use-module (guix packages)                    ; provides `package`
   #:use-module (gnu packages bash)                ; provides `bash-minimal`
   #:use-module (gnu packages guile)               ; provides `guile-3.0`
@@ -8,15 +8,15 @@
   #:use-module ((guix licenses) #:prefix license:)
   #:use-module (guix gexp))
 
-(define-public guix-gd-daemon
+(define-public gxd
   (package
-    (name "guix-gd-daemon")
+    (name "gxd")
     (version "0.1.0")
      (source
       ;; Daemon modules packaged as an executable command.
       ;; Path is relative to repository root.
-      (local-file "src/guix-daemon/guix-gd/daemon"
-                  "daemon"
+      (local-file "src/gxd"
+                  "gxd"
                   #:recursive? #t))
     (build-system trivial-build-system)
     (inputs (list guile-3.0 bash-minimal))
@@ -29,27 +29,25 @@
           (let* ((out #$output)
                  (bin (string-append out "/bin"))
                  (site-root (string-append out "/share/guile/site/3.0"))
-                 (site (string-append site-root "/guix-gd"))
-                 (daemon-module-dir (string-append site "/daemon"))
-                 (wrapper (string-append bin "/guix-gd-daemon"))
+                 (module-dir (string-append site-root "/gxd"))
+                 (wrapper (string-append bin "/gxd"))
                  (guile (string-append #$(this-package-input "guile") "/bin/guile"))
                  (sh (string-append #$(this-package-input "bash-minimal") "/bin/sh")))
             (mkdir-p bin)
-            (mkdir-p site)
-            ;; Install daemon modules under guix-gd/daemon/*.scm.
-            (copy-recursively #$source daemon-module-dir)
+            (mkdir-p module-dir)
+            ;; Install modules under gxd/*.scm.
+            (copy-recursively #$source module-dir)
             ;; CLI wrapper: import module and run (main (command-line)).
             (with-output-to-file wrapper
               (lambda ()
                 (format #t
-                        "#!~a~%exec ~a -L ~a -c '(use-modules (guix-gd daemon daemon)) (main (command-line))' \"$@\"~%"
+                        "#!~a~%exec ~a -L ~a -c '(use-modules (gxd main)) (main (command-line))' \"$@\"~%"
                         sh guile site-root)))
             (chmod wrapper #o555)))))
     (home-page "https://codeberg.org/cons-town/guile-build-daemon")
-    (synopsis "Development Guile script that mimics the Guix daemon protocol")
+    (synopsis "Guile relay and protocol logger for the Guix daemon")
     (description
-     "This package installs the @command{guix-gd-daemon} command, which starts
- a local development Guile script implementing a minimal fake Guix daemon
- listener for protocol debugging.")
+     "This package installs the @command{gxd} command, which listens on a
+ UNIX socket, relays the worker protocol to a fallback @command{guix-daemon},
+ and logs the exchanged calls and payloads for protocol debugging.")
     (license license:gpl3+)))
-

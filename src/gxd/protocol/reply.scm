@@ -8,10 +8,10 @@
 ;;; instead of materializing full payloads, to keep logs readable and avoid
 ;;; excessive overhead in the relay path.
 
-(define-module (guix-gd daemon protocol reply)
-  #:use-module (guix-gd daemon context)
-  #:use-module (guix-gd daemon protocol primitives)
-  #:use-module (guix-gd daemon protocol client)
+(define-module (gxd protocol reply)
+  #:use-module (gxd context)
+  #:use-module (gxd protocol primitives)
+  #:use-module (gxd protocol client)
   #:export (parse-reply-no-payload
             parse-reply-boolean
             parse-reply-string

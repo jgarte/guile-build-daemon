@@ -1,9 +1,9 @@
 ;;; Raw full-duplex relay and connection lifecycle.
 
-(define-module (guix-gd daemon relay)
-  #:use-module (guix-gd daemon context)
-  #:use-module (guix-gd daemon logging)
-  #:use-module (guix-gd daemon observer)
+(define-module (gxd relay)
+  #:use-module (gxd context)
+  #:use-module (gxd logging)
+  #:use-module (gxd observer)
   #:use-module (ice-9 threads)      ; call-with-new-thread, join-thread
   #:use-module (ice-9 binary-ports) ; get-bytevector-some!, put-bytevector
   #:use-module (ice-9 rdelim)       ; read-line

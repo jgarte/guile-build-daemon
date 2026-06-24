@@ -1,10 +1,10 @@
 ;; SPDX-License-Identifier: GPL-3.0-or-later
 ;; SPDX-FileCopyrightText: 2026 Andrew Tropin
 
-;;; Differential test for fallback guix-daemon vs guix-gd relay.
+;;; Differential test for fallback guix-daemon vs gxd relay.
 ;;; It runs one client command in two containers and compares results.
 
-(define-module (guix-gd daemon differential-test)
+(define-module (gxd differential-test)
   #:use-module (ares suitbl core)
   #:use-module ((ares suitbl runner) #:prefix runner:)
   #:use-module ((ares suitbl reporters) #:prefix reporter:)
@@ -41,7 +41,7 @@
   "/run/setuid-programs:/run/current-system/profile/bin:/run/current-system/profile/sbin:/bin:/usr/bin:/usr/sbin")
 
 (define helper-script-dir
-  "tests/guix-daemon/guix-gd/daemon/scripts")
+  "tests/gxd/scripts")
 
 (define (helper-script-path name)
   "Return absolute repository-relative helper script path by NAME."
@@ -257,7 +257,7 @@ SCENARIO keys:
 
 (define-suite daemon-differential-tests
   (suite "guix daemon differential (two containers)"
-    (test "regular daemon and guix-gd relay behave identically"
+    (test "regular daemon and gxd relay behave identically"
       (let* ((result (run-daemon-comparison))
              (config (assoc-ref result 'config))
              (regular (assoc-ref result 'regular))

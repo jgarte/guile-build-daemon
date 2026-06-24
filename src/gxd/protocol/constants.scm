@@ -1,6 +1,6 @@
 ;;; Constants for the Guix daemon 
 
-(define-module (guix-gd daemon protocol constants)
+(define-module (gxd protocol constants)
   #:export (WORKER_MAGIC_1
             WORKER_MAGIC_2
             PROTOCOL_VERSION
