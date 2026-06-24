@@ -21,6 +21,74 @@ Start the nREPL server:
   make ares
 #+END_SRC
 
+** Differential Test
+
+The differential test runs the same Guix client command in two separate
+rootless containers, each with a seeded =/gnu/store=, and compares the results:
+
+1. the *regular* container talks directly to a fallback =guix-daemon=;
+2. the *relay* container talks to the =gxd= relay (which in turn talks to its
+   own fallback =guix-daemon=).
+
+It then compares:
+- exit code
+- stdout
+- stderr
+- filesystem delta (=gnu/store-upper=, =var/guix=, =etc/guix=), where
+  =gnu/store-upper= is a writable store view seeded with links to the required
+  host store items.
+
+Using two containers removes the need for any "reset state" step between runs.
+
+The containers run rootless via =unshare= (user + mount namespaces), so =sudo=
+is not required.  Start each prerequisite in its own terminal:
+
+#+BEGIN_SRC bash
+  make container/regular/start
+  make daemon-fallback/regular/start
+
+  make container/relay/start
+  make daemon-fallback/relay/start
+  make daemon/relay/start
+#+END_SRC
+
+Run the test:
+
+#+BEGIN_SRC bash
+  make test/differential
+#+END_SRC
+
+Stop the containers when done:
+
+#+BEGIN_SRC bash
+  make container/regular/stop
+  make container/relay/stop
+#+END_SRC
+
+Artifacts and a summary report are written to =tmp/daemon-differential/=.
+
+*** Configuration
+
+The test is configured through environment variables (defaults in
+=env/dev/gxd/config.defaults.sh=):
+
+General:
+- =GXD_TEST_COMMAND= (default: =guix gc --list-roots=)
+- =GXD_TEST_ARTIFACTS_DIR= (default: =tmp/daemon-differential=)
+- =GXD_TEST_EXPECT_EXIT= (default: =0=)
+
+Regular scenario (direct fallback daemon):
+- =GXD_TEST_REGULAR_ROOT= (default: =/tmp/gxd-overlayfs-regular-<user>=)
+- =GXD_TEST_REGULAR_CONTAINER_PID= (optional)
+- =GXD_TEST_REGULAR_SOCKET= (default: =/tmp/gxd-fallback-regular-<user>.sock=)
+
+Relay scenario (=gxd= → fallback daemon):
+- =GXD_TEST_RELAY_ROOT= (default: =/tmp/gxd-overlayfs-relay-<user>=)
+- =GXD_TEST_RELAY_CONTAINER_PID= (optional)
+- =GXD_TEST_RELAY_SOCKET= (default: =/var/guix/daemon-socket/socket=)
+- =GXD_TEST_RELAY_SOCKET_HOST= (default: =<relay-root>/var/guix/daemon-socket/socket=)
+- =GXD_TEST_RELAY_FALLBACK_SOCKET= (default: =/tmp/gxd-fallback-relay-<user>.sock=)
+
 ** Glossary
 
 The terms =derivation=, =store=, (build) =daemon=, =client= and (client-daemon) =socket= are the core concepts and components of Guix. Those are defined in [[https://guix.gnu.org/manual/devel/en/guix.html][GNU Guix Reference Manual]].
