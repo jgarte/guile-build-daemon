@@ -43,7 +43,7 @@ To distinguish between the old (legacy) and the new implementation of Guix Daemo
 
 =v2-sandbox= - environment with running =v2-daemon= (with logging =relay= added as guile module =fallback-daemon= (=v1-daemon=)
 
-=differential-test= (=diff-test=) - test suits based on comparing logs and artifacts of =v1-sandbox= and =v2-sandbox= to ensure the backward compatibility of new implementation of guix daemon (=gxd=)
+=differential-test= (=diff-test=) - test suites based on comparing logs and artifacts of =v1-sandbox= and =v2-sandbox= to ensure the backward compatibility of new implementation of guix daemon (=gxd=)
 
 
 
