@@ -73,20 +73,20 @@ The test is configured through environment variables (defaults in
 =env/dev/gxd/config.defaults.sh=):
 
 General:
-- =GXD_TEST_COMMAND= (default: =guix gc --list-roots=)
+- =GXD_TEST_COMMAND=       (default: =guix gc --list-roots=)
 - =GXD_TEST_ARTIFACTS_DIR= (default: =tmp/daemon-differential=)
-- =GXD_TEST_EXPECT_EXIT= (default: =0=)
+- =GXD_TEST_EXPECT_EXIT=   (default: =0=)
 
 Regular scenario (direct fallback daemon):
-- =GXD_TEST_REGULAR_ROOT= (default: =/tmp/gxd-overlayfs-regular-<user>=)
+- =GXD_TEST_REGULAR_ROOT=          (default: =/tmp/gxd-overlayfs-regular-<user>=)
 - =GXD_TEST_REGULAR_CONTAINER_PID= (optional)
-- =GXD_TEST_REGULAR_SOCKET= (default: =/tmp/gxd-fallback-regular-<user>.sock=)
+- =GXD_TEST_REGULAR_SOCKET=        (default: =/tmp/gxd-fallback-regular-<user>.sock=)
 
 Relay scenario (=gxd= → fallback daemon):
-- =GXD_TEST_RELAY_ROOT= (default: =/tmp/gxd-overlayfs-relay-<user>=)
-- =GXD_TEST_RELAY_CONTAINER_PID= (optional)
-- =GXD_TEST_RELAY_SOCKET= (default: =/var/guix/daemon-socket/socket=)
-- =GXD_TEST_RELAY_SOCKET_HOST= (default: =<relay-root>/var/guix/daemon-socket/socket=)
+- =GXD_TEST_RELAY_ROOT=            (default: =/tmp/gxd-overlayfs-relay-<user>=)
+- =GXD_TEST_RELAY_CONTAINER_PID=   (optional)
+- =GXD_TEST_RELAY_SOCKET=          (default: =/var/guix/daemon-socket/socket=)
+- =GXD_TEST_RELAY_SOCKET_HOST=     (default: =<relay-root>/var/guix/daemon-socket/socket=)
 - =GXD_TEST_RELAY_FALLBACK_SOCKET= (default: =/tmp/gxd-fallback-relay-<user>.sock=)
 
 ** Glossary
