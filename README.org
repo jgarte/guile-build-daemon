@@ -113,10 +113,6 @@ To distinguish between the old (legacy) and the new implementation of Guix Daemo
 
 =differential-test= (=diff-test=) - test suits based on comparing logs and artifacts of =v1-sandbox= and =v2-sandbox= to ensure the backward compatibility of new implementation of guix daemon (=gxd=)
 
-
-
-
-
 ** Contributing
 
 The formating of commit messages follows simple [[https://scopedcommits.com][Scoped Commits]] standard:
