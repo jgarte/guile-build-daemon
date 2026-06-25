@@ -1,7 +1,8 @@
 ;; SPDX-License-Identifier: GPL-3.0-or-later
-;; Parsing primitive tests for (gxd).
+;; Tests for (gxd protocol primitives).
 
-(define-module (gxd parsing-test)
+(define-module (gxd protocol primitives-test)
+  #:use-module (gxd protocol primitives)
   #:use-module (ares suitbl core)
   #:use-module ((ares suitbl runner) #:prefix runner:)
   #:use-module ((ares suitbl reporters) #:prefix reporter:)
@@ -10,17 +11,6 @@
   #:use-module (ice-9 match)
   #:export (run-daemon-parser-tests
             daemon-parser-tests))
-
-;; Access non-exported parser primitives from (gxd).
-(define parse-int-at (@@ (gxd main) parse-int-at))
-(define parse-longlong-at (@@ (gxd main) parse-longlong-at))
-(define parse-bool-at (@@ (gxd main) parse-bool-at))
-(define parse-string-at (@@ (gxd main) parse-string-at))
-(define parse-string-list-at (@@ (gxd main) parse-string-list-at))
-(define parse-string-pairs-at (@@ (gxd main) parse-string-pairs-at))
-(define padding-size (@@ (gxd main) padding-size))
-(define parsed-value (@@ (gxd main) parsed-value))
-(define parsed-next (@@ (gxd main) parsed-next))
 
 (define (bv-append . bvs)
   (let ((len (apply + (map bytevector-length bvs))))

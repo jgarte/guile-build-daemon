@@ -3,25 +3,10 @@
 ;;; This module no longer pretends to be a daemon.  Instead, it listens on one
 ;;; UNIX socket, connects to a fallback `guix-daemon` on another socket, and
 ;;; relays bytes in both directions.
-;;;
-;;; Implementation is split across small modules:
-;;;   - (gxd logging)
-;;;   - (gxd context)
-;;;   - (gxd protocol) façade, plus:
-;;;       * (gxd protocol primitives)
-;;;       * (gxd protocol client)
-;;;       * (gxd protocol daemon)
-;;;       * (gxd protocol reply)
-;;;       * (gxd protocol constants)
-;;;   - (gxd observer)
-;;;   - (gxd relay)
 
 (define-module (gxd main)
   #:use-module (gxd logging)
   #:use-module (gxd relay)
-  ;; Re-import parser primitives so existing tests using
-  ;; (@@ (gxd main) <parser>) keep working.
-  #:use-module (gxd protocol)
   #:export (main))
 
 ;; By default the relay listens on the normal Guix daemon socket.  This matches
