@@ -113,6 +113,10 @@ To distinguish between the old (legacy) and the new implementation of Guix Daemo
 
 =differential-test= (=diff-test=) - test suits based on comparing logs and artifacts of =v1-sandbox= and =v2-sandbox= to ensure the backward compatibility of new implementation of guix daemon (=gxd=)
 
+=daemon socket=   - default socket, /var/guix/daemon-socket/socket
+=relay socket=    - socket in the =v1-sandbox= that =v1-daemon= is listening
+=fallback socket= - socket in the =v2-sandbox= that =fallback-daemon= (=v1-daemon=) is listening
+
 ** Contributing
 
 The formating of commit messages follows simple [[https://scopedcommits.com][Scoped Commits]] standard:

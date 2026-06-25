@@ -1,32 +1,5 @@
 #+title: Guix Guile Daemon Development (GuGuDaDe)
 # ------------------------------------------------------------------------------
-* Glossary
-
-*derivation* - low-level build actions and the environment in which they are performed.
-
-*store* - place where successfully build derivations are stored (defaults to /gnu/store). Store has an associated database (defaults to /var/guix/db).
-
-*daemon* (guix build daemon) - specialized process that does such operations as building a package or running the garbage collector, querying the availability of a build result, etc. This is the only process that should have access to the store and its associated database to insure immutability assumptions of Guix’s functional model.
-
-*v1 daemon* - a classic cpp daemon ported from nix
-
-*v2 daemon* - a new dev guile daemon, targeting guix 2.0 (simplifying memory management, streamlining the bootstrap chain, and making the entire build process auditable in a single language)
-
-*client* - the daemon listens for connections and spawns one sub-process for each session started by a client (one of the ‘guix’ sub-commands).
-
-*sandbox* - namespace mount and user isolated environment for testing and logging guix client/daemon interactions
-
-*v1 sandbox* - captures stdout, stderr, and other logs (RPC via relay) for v1-daemon
-
-*v2 sandbox* - captures stdout, stderr, and other logs (RPC via relay) for v2-daemon
-
-*relay* - a simple process that relays RPC between two sockets (default guix daemon socket, and relay socket) and logs the calls and payloads
-
-*sockets*:
-- default :: /var/guix/daemon-socket/socket
-- relay :: relay socket in the v1-sandbox that v1-daemon is listening
-- fallback :: fallback socket in the v2-sandbox that fallback-daemon (v1-daemon) is listening
-
 * Developing Guix on Guix System
 ** Specification and Principles
 - Reproducible development environment (RDE)
