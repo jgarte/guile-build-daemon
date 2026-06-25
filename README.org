@@ -46,10 +46,8 @@ v2.0. It can be also referred to as =gxd= (the current project's namespace).
 =fallback-daemon= (assumes =fallback-v1-daemon=) - the =v1-daemon= process that is
 used as a fallback for operations that are not yet implemented in =v2-daemon=.
 
-=relay= - a process that relays RPCs between two sockets (e.g., =client= to
-=v2-daemon= socket and =v2-daemon= to =fallback-daemon= socket) and logs the calls and
-payloads. It is implemented both as guile module (e.g., to include into
-=v2-daemon= to relay fallback RPCs) and as stand alone (RPCs logging) package.
+=relay= - a process that listens on two specified sockets (e.g., =client= to
+=v2-daemon= socket and =v2-daemon= to =fallback-daemon= socket) and sends RPCs from one socket to anthother both ways. It also logs parsed RPCs for inspection.
 
 =testbox= - mount and user namespace isolated environment for testing and logging
 guix client/daemon interactions. Mount namespace provides a clean filesystem for
