@@ -14,9 +14,9 @@ GUILE_DEV           := $(GUIX_TM) \
 ares:
 	$(GUILE_DEV)  -c "((@ (ares server) run-nrepl-server))"
 
-.PHONY: sandbox/start
-sandbox/start:
-	sh ./env/dev/sandbox-start.sh
+.PHONY: testbox/start
+testbox/start:
+	sh ./env/dev/testbox-start.sh
 
 
 

@@ -1,5 +1,5 @@
 #!/bin/sh
-# script starts a simple sandbox namespace in the background
+# script starts a simple testbox namespace in the background
 # it returns PID for namespace to 'nsenter' into later
 # script assumes that it is running in the project root (e.g., called from makefile)
 
@@ -8,19 +8,19 @@ set -o errexit
 # error on undeclared variables
 set -o nounset
 
-# SANDBOX_ROOT is either provided as the first argument or set to random /tmp dir
-SANDBOX_ROOT=${1:-$(mktemp -d /tmp/guix-sandbox-XXXXXX)}
+# TESTBOX_ROOT is either provided as the first argument or set to random /tmp dir
+TESTBOX_ROOT=${1:-$(mktemp -d /tmp/guix-testbox-XXXXXX)}
 
 # populate fake root
 # /home/user/.config/guix/current must be a symlink to a store profile.
 # If "current" is made as a directory, guix gc rejects it as non-store path.
-mkdir -p "$SANDBOX_ROOT/home/user/.config/guix"
+mkdir -p "$TESTBOX_ROOT/home/user/.config/guix"
 GUIX_PINNED_STORE=$(readlink -f "$(guix time-machine --channels=env/guix/channels.scm)")
-rm -rf "$SANDBOX_ROOT/home/user/.config/guix/current"
+rm -rf "$TESTBOX_ROOT/home/user/.config/guix/current"
 ln -s "$GUIX_PINNED_STORE" \
-   "$SANDBOX_ROOT/home/user/.config/guix/current"
+   "$TESTBOX_ROOT/home/user/.config/guix/current"
 
-cd "$SANDBOX_ROOT"
+cd "$TESTBOX_ROOT"
 mkdir --parents \
       bin \
       dev \
@@ -63,7 +63,7 @@ EOF
 
 GUIX_PINNED="./home/user/.config/guix/current"
 GUIX_PROFILE="./home/user/.guix-profile"
-GUIX_PROFILE_IN_SANDBOX="/home/user/.guix-profile"
+GUIX_PROFILE_IN_TESTBOX="/home/user/.guix-profile"
 
 # build baseline profile
 guix package --profile="$GUIX_PROFILE" --install coreutils shadow psmisc bash >/dev/null 2>&1
@@ -79,22 +79,22 @@ guix gc --requisites \
     > ./store-requisites.list
 
 # shell entrypoints
-ln -sf "$GUIX_PROFILE_IN_SANDBOX/bin/sh" ./bin/sh
-ln -sf "$GUIX_PROFILE_IN_SANDBOX/bin/bash" ./bin/bash
+ln -sf "$GUIX_PROFILE_IN_TESTBOX/bin/sh" ./bin/sh
+ln -sf "$GUIX_PROFILE_IN_TESTBOX/bin/bash" ./bin/bash
 
-# Create FIFO file to block until sandbox reports its namespace PID.
-mkfifo ./sandbox-internal.pid
+# Create FIFO file to block until testbox reports its namespace PID.
+mkfifo ./testbox-internal.pid
 
-export SANDBOX_ROOT
+export TESTBOX_ROOT
 unshare --user --map-root-user /bin/sh -eu -c '
   exec unshare --mount /bin/sh -eu -c "
     mount --make-rprivate /
-    mount --bind \"$SANDBOX_ROOT\" \"$SANDBOX_ROOT\"
+    mount --bind \"$TESTBOX_ROOT\" \"$TESTBOX_ROOT\"
 
     # mount only profile closure into fake /gnu/store (read-only)
     while IFS= read -r store_item; do
       item_name=\$(basename \"\$store_item\")
-      target=\"$SANDBOX_ROOT/gnu/store/\$item_name\"
+      target=\"$TESTBOX_ROOT/gnu/store/\$item_name\"
       if [ -e \"\$target\" ]; then
         continue
       fi
@@ -105,15 +105,15 @@ unshare --user --map-root-user /bin/sh -eu -c '
       fi
       mount --bind \"\$store_item\" \"\$target\"
       mount -o remount,bind,ro \"\$target\"
-    done < \"$SANDBOX_ROOT/store-requisites.list\"
+    done < \"$TESTBOX_ROOT/store-requisites.list\"
 
     # minimal Linux API FS for guix userland
-    mount --rbind /dev \"$SANDBOX_ROOT/dev\"
-    mount --rbind /proc \"$SANDBOX_ROOT/proc\"
-    mount -t tmpfs -o mode=1777,nosuid,nodev tmpfs \"$SANDBOX_ROOT/tmp\"
+    mount --rbind /dev \"$TESTBOX_ROOT/dev\"
+    mount --rbind /proc \"$TESTBOX_ROOT/proc\"
+    mount -t tmpfs -o mode=1777,nosuid,nodev tmpfs \"$TESTBOX_ROOT/tmp\"
 
     # pivot to fake root
-    cd \"$SANDBOX_ROOT\"
+    cd \"$TESTBOX_ROOT\"
     mkdir -p .old-root
     pivot_root . .old-root
 
@@ -126,34 +126,34 @@ unshare --user --map-root-user /bin/sh -eu -c '
     export GUIX_PROFILE=/home/user/.guix-profile
     . "\$GUIX_PROFILE/etc/profile"
 
-    SANDBOX_TERM=\${TERM:-xterm-256color}
+    TESTBOX_TERM=\${TERM:-xterm-256color}
     
-    echo \"\$\$\" > /sandbox-internal.pid
+    echo \"\$\$\" > /testbox-internal.pid
     exec env -i \
       HOME=/home/user \
       USER=user \
       LOGNAME=user \
       SHELL=/bin/bash \
-      TERM=\"\$SANDBOX_TERM\" \
+      TERM=\"\$TESTBOX_TERM\" \
       PATH=\"\$PATH\" \
       GUIX_PROFILE=\"\$GUIX_PROFILE\" \
       sleep infinity
   "
 ' &
 
-SANDBOX_PID=$!
-echo "$SANDBOX_PID" > ./sandbox.pid
+TESTBOX_PID=$!
+echo "$TESTBOX_PID" > ./testbox.pid
 
 # waits for the FIFO file to get written (avoid racing)
-SANDBOX_NS_PID=$(cat ./sandbox-internal.pid)
-rm -f ./sandbox-internal.pid
-echo "$SANDBOX_NS_PID" > ./sandbox-ns.pid
+TESTBOX_NS_PID=$(cat ./testbox-internal.pid)
+rm -f ./testbox-internal.pid
+echo "$TESTBOX_NS_PID" > ./testbox-ns.pid
 
 # Report to user (stderr)
-echo "Sandbox started:" 1>&2
-echo "  - Fake root:                       $SANDBOX_ROOT" 1>&2
-echo "  - Sandbox PID:                     $SANDBOX_PID" 1>&2
-echo "  - Sandbox's namespace PID:         $SANDBOX_NS_PID" 1>&2
+echo "Testbox started:" 1>&2
+echo "  - Fake root:                       $TESTBOX_ROOT" 1>&2
+echo "  - Testbox PID:                     $TESTBOX_PID" 1>&2
+echo "  - Testbox's namespace PID:         $TESTBOX_NS_PID" 1>&2
 
 # return pid to id the namespace
-echo "$SANDBOX_NS_PID"
+echo "$TESTBOX_NS_PID"
