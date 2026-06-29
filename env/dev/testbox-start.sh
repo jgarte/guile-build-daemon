@@ -20,6 +20,19 @@ rm -rf "$TESTBOX_ROOT/home/user/.config/guix/current"
 ln -s "$GUIX_PINNED_STORE" \
    "$TESTBOX_ROOT/home/user/.config/guix/current"
 
+# use pinned Guix + guix-daemon from the time-machine profile.
+
+GUIX_PINNED="$TESTBOX_ROOT/home/user/.config/guix/current"
+GUIX_PROFILE="$TESTBOX_ROOT/home/user/.guix-profile"
+GUIX_PROFILE_IN_TESTBOX="/home/user/.guix-profile"
+
+# build baseline profile
+guix time-machine --channels=env/guix/channels.scm -- \
+     package --profile="$GUIX_PROFILE" --install \
+     coreutils shadow psmisc bash \
+     >/dev/null 2>&1
+
+
 cd "$TESTBOX_ROOT"
 mkdir --parents \
       bin \
@@ -59,14 +72,7 @@ cat << 'EOF' > ./etc/guix/acl
 )
 EOF
 
-# use pinned Guix + guix-daemon from the time-machine profile.
 
-GUIX_PINNED="./home/user/.config/guix/current"
-GUIX_PROFILE="./home/user/.guix-profile"
-GUIX_PROFILE_IN_TESTBOX="/home/user/.guix-profile"
-
-# build baseline profile
-guix package --profile="$GUIX_PROFILE" --install coreutils shadow psmisc bash >/dev/null 2>&1
 
 # collect closure and mount only these store items read-only.
 # guix package creates .guix-profile -> .guix-profile-1-link -> /gnu/store/...
