@@ -2,7 +2,7 @@
   #:use-module ((ice-9 match) #:select (match-let))
   #:use-module (ice-9 textual-ports)
   #:use-module ((guix build syscalls) #:select (safe-clone))
-  #:use-module ((gxd utils) #:select (comment))
+  #:use-module ((gxd prelude))
   #:export (child-proc))
 
 
