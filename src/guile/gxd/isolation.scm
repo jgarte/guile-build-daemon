@@ -1,6 +1,7 @@
 (define-module (gxd isolation)
   #:use-module ((ice-9 match) #:select (match-let))
   #:use-module (ice-9 textual-ports)
+  #:use-module (ice-9 exceptions)
   #:use-module ((guix build syscalls) #:select (safe-clone))
   #:use-module ((gxd prelude))
   #:export (child-proc))
@@ -31,8 +32,10 @@
     (match-let (((in-id payload) (read port)))
       (when print (when print (display-id-msg* "recv " id payload as)))
       (if (eq? id in-id)
-           payload
-          (throw 'received-id-mismatch (format #f "expected id: ~a; actual id: ~a" id in-id))))))
+          payload
+          (raise-exception
+           (make-exception-with-message
+            (format #f "message id mismatch; expected: ~a; actual: ~a" id in-id)))))))
 
 ;; example behavior
 (comment
@@ -52,23 +55,31 @@
    ((proc) (child-proc SIGCHLD proc))
    ((flags proc)
     (match-let (((child . parent) (socketpair PF_UNIX (logior SOCK_CLOEXEC SOCK_STREAM) 0)))
-      ;; flushing out/err, so child cannot flush entries that parent would himself
-      (force-output (current-output-port))
-      (force-output (current-error-port))
+      ;; flushing ports, so child cannot flush entries that parent would himself
+      (flush-all-ports)
       (let ((outer-pid
              (safe-clone
               flags
               (lambda ()
                 (close-port parent)
-                (catch #t
-                  (lambda ()
-                    (proc (send-id-msg* child) (recv-id-msg* child))
-                    (primitive-_exit 0))
-                  (lambda (key . args)
-                    (display-backtrace (make-stack #t) (current-error-port))
-                    (print-exception (current-error-port) #f key args)
-                    (force-output (current-error-port))
-                    (primitive-_exit 1))))
+                (with-exception-handler
+                 (lambda (exn)
+                   (backtrace)
+                   (flush-all-ports)
+                   (primitive-_exit 1))
+                 (lambda ()
+                   (proc (send-id-msg* child) (recv-id-msg* child))
+                   (flush-all-ports)
+                   (primitive-_exit 0))))
               (lambda (pid) pid))))
         (close-port child)
         (list outer-pid (send-id-msg* parent) (recv-id-msg* parent)))))))
+
+(comment
+ (match-let (((child-pid => <=) (child-proc (lambda (=> <=)
+                                              (<= 1)
+                                              (display "child doing some work")
+                                              (sleep 2)
+                                              (=> 2 "done")))))
+   (=> 1)
+   (<= 2)))
