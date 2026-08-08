@@ -1,7 +1,8 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 # SPDX-FileCopyrightText: 2026 Andrew Tropin
 
-GUIXTM=guix time-machine -C ./env/guix/gxd/env/guix/channels.scm
+GUIXTM=guix time-machine --unsafe-channel-evaluation \
+	-C ./env/guix/gxd/env/guix/channels.scm
 GUIX=$(GUIXTM) --
 DEV_ENV_LOAD_PATH=-L ./env/guix -L ./env/deps
 DEV_ENV=$(GUIX) shell \
