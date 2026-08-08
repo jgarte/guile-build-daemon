@@ -1,7 +1,7 @@
 ;; SPDX-License-Identifier: GPL-3.0-or-later
 ;; SPDX-FileCopyrightText: 2026 Andrew Tropin
 
-(define-module (gxd env dev packages)
+(define-module (gxd env guix packages)
   #:use-module (gnu packages)
   #:use-module (gnu packages guile-xyz)
   #:use-module (gxd env guix channels)

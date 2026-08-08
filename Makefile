@@ -3,10 +3,10 @@
 
 GUIXTM=guix time-machine -C ./env/guix/gxd/env/guix/channels.scm
 GUIX=$(GUIXTM) --
-DEV_ENV_LOAD_PATH=-L ./env/guix -L ./env/dev
+DEV_ENV_LOAD_PATH=-L ./env/guix -L ./env/deps
 DEV_ENV=$(GUIX) shell \
 	${DEV_ENV_LOAD_PATH} \
-	-e '(@ (gxd env dev packages) dev-env)' \
+	-e '(@ (gxd env guix packages) dev-env)' \
 	--pure --preserve=.*LANG.* --
 GUILE=$(DEV_ENV) guile
 
