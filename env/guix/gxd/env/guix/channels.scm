@@ -1,7 +1,12 @@
 ;; SPDX-License-Identifier: GPL-3.0-or-later
 ;; SPDX-FileCopyrightText: 2026 Andrew Tropin
 
-(list (channel
+(define-module (gxd env guix channels)
+  #:use-module (guix channels)
+  #:export (core-channels))
+
+(define core-channels
+  (list (channel
         (name 'guix)
         (url "https://codeberg.org/guix/guix.git")
         (branch "master")
@@ -22,4 +27,6 @@
           (make-channel-introduction
             "257cebd587b66e4d865b3537a9a88cccd7107c95"
             (openpgp-fingerprint
-              "2841 9AC6 5038 7440 C7E9  2FFA 2208 D209 58C1 DEB0")))))
+              "2841 9AC6 5038 7440 C7E9  2FFA 2208 D209 58C1 DEB0"))))))
+
+core-channels

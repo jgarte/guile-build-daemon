@@ -1,10 +1,11 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 # SPDX-FileCopyrightText: 2026 Andrew Tropin
 
-GUIXTM=guix time-machine -C ./env/guix/channels.scm
+GUIXTM=guix time-machine -C ./env/guix/gxd/env/guix/channels.scm
 GUIX=$(GUIXTM) --
+DEV_ENV_LOAD_PATH=-L ./env/guix -L ./env/guile
 DEV_ENV=$(GUIX) shell \
-	--load-path='./env/guile' \
+	${DEV_ENV_LOAD_PATH} \
 	--manifest='./env/guile/gxd/manifest.scm' \
 	--pure --preserve=.*LANG.* --
 GUILE=$(DEV_ENV) guile
