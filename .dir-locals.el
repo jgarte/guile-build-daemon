@@ -1,3 +1,6 @@
+;; SPDX-License-Identifier: GPL-3.0-or-later
+;; SPDX-FileCopyrightText: 2026 Andrew Zhurov
+
 ;; Per-directory local variables for gxd.
 ((nil
   . ((fill-column . 78)
@@ -34,7 +37,7 @@
      (eval . (put 'package 'scheme-indent-function 0))
 
      ;; Suitbl DSL forms.
-     (eval . (put 'define-suite 'scheme-indent-function 1))
      (eval . (put 'suite 'scheme-indent-function 1))
-     (eval . (put 'test 'scheme-indent-function 1))
-     (eval . (put 'with-test-runner 'scheme-indent-function 1)))))
+     (eval . (put 'test 'scheme-indent-function 2))
+     (eval . (put 'test-loader 'scheme-indent-function 2))
+     (eval . (put 'suite-loader 'scheme-indent-function 1)))))
