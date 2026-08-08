@@ -1,7 +1,10 @@
+;; SPDX-License-Identifier: GPL-3.0-or-later
+;; SPDX-FileCopyrightText: 2026 Andrew Zhurov
+
 (define-module (gxd manifest)
   #:use-module (gnu packages)
   #:use-module (gnu packages package-management)
-  #:use-module (gxd packages)
+  #:use-module (gxd env dev packages)
   #:use-module (guix profiles))
 
 (packages->manifest
