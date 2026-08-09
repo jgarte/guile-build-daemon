@@ -9,7 +9,7 @@
 ;; The `guile-ares-rs' of the pinned Guix is 0.9.7, which predates the
 ;; suitbl context-binding syntax and the (ares suitbl checks) module.
 (define-public guile-ares-rs-latest
-  (let ((commit "5b4908c2786e5b65e3267691e21aedd98eb2f464")
+  (let ((commit "27b2f2cfeaca38171347730d8dfc9951cf417f72")
         (revision "0"))
     (package
       (inherit guile-ares-rs)
@@ -23,4 +23,4 @@
          (file-name (git-file-name "guile-ares-rs" version))
          (sha256
           (base32
-           "1pj03akd9v2v02r7389m246ppkkhiw8g9z87qm5g9nsm35vckyd7")))))))
+           "1vs7wwlr4f8dndjhsa1iz36r8sszawjgll4kggfx7ly78zalj4lm")))))))
