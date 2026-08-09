@@ -52,8 +52,16 @@
   ;; "Takes a lambda, which is passed a bidirectional 'parent' socket, executes it in a forked process.
   ;;  Returns the PID of that process and a bidirectional channel to communicate with it."
   (case-lambda
-   ((proc) (child-proc SIGCHLD proc))
-   ((flags proc)
+    ;; SIGCHLD flag instructs kernel to send a SIGCHLD signal to the parent process when child exits
+    ((proc) (child-proc SIGCHLD proc))
+    ;; Useful flags for namespace child isolation:
+    ;; CLONE_NEWPID - Process IDs
+    ;; CLONE_NEWNET - Network
+    ;; CLONE_NEWNS - Mount Points / File System
+    ;; CLONE_NEWUTS - Hostnames
+    ;; CLONE_NEWIPC - Inter-Process Communication
+    ;; CLONE_NEWUSER - Users and Groups
+    ((flags proc)
     (match-let (((child . parent) (socketpair PF_UNIX (logior SOCK_CLOEXEC SOCK_STREAM) 0)))
       ;; flushing ports, so child cannot flush entries that parent would himself
       (flush-all-ports)
