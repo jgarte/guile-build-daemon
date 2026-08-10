@@ -49,8 +49,26 @@
            (<= 2 #:print #t)))))
 
 (define* (child-proc flags proc)
-  ;; "Takes a lambda, which is passed a bidirectional 'parent' socket, executes it in a forked process.
-  ;;  Returns the PID of that process and a bidirectional channel to communicate with it."
+  "Create a child process and a bidirectional message channel.
+
+FLAGS are passed to `safe-clone'.  In this new child process, the PROC
+is called with two procedures as arguments.  First is procedure to
+send message to parent process, second is to receive message.  These
+procedures are created by `msg-send' and `msg-recv' recpectively.
+
+The 'send message procedure' takes ID of the message and optioan
+PAYLOAD as well as optional key #:print, if you need to display the
+messages set it to #t. The 'read message procedure' takes message ID
+and optional #:print.
+
+Return two values: the child PID and a parent runner.  The runner
+calls a parent procedure with the parent-side send and receive
+procedures.
+
+The child and parent each close the unused end of a Unix stream
+socket. The child exits with `primitive-_exit' status 0 after CHILD
+returns.  If CHILD raises an exception, a backtrace is printed, ports
+are flushed, and the child exits with status 1."
   (match-let (((child . parent) (socketpair PF_UNIX (logior SOCK_CLOEXEC SOCK_STREAM) 0)))
     ;; flushing ports, so child cannot flush entries that parent would himself
     (flush-all-ports)
