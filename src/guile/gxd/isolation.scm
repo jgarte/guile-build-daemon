@@ -69,26 +69,27 @@ The child and parent each close the unused end of a Unix stream
 socket. The child exits with `primitive-_exit' status 0 after CHILD
 returns.  If CHILD raises an exception, a backtrace is printed, ports
 are flushed, and the child exits with status 1."
-  (match-let (((child . parent) (socketpair PF_UNIX (logior SOCK_CLOEXEC SOCK_STREAM) 0)))
+  (match-let (((child-port . parent-port)
+               (socketpair PF_UNIX (logior SOCK_CLOEXEC SOCK_STREAM) 0)))
     ;; flushing ports, so child cannot flush entries that parent would himself
     (flush-all-ports)
     (let ((outer-pid
            (safe-clone
             flags
             (lambda ()
-              (close-port parent)
+              (close-port parent-port)
               (with-exception-handler
                   (lambda (exn)
                     (backtrace)
                     (flush-all-ports)
                     (primitive-_exit 1))
                 (lambda ()
-                  (proc (msg-send child) (msg-recv child))
+                  (proc (msg-send child-port) (msg-recv child-port))
                   (flush-all-ports)
                   (primitive-_exit 0))))
             (lambda (pid) pid))))
-      (close-port child)
-      (list outer-pid (msg-send parent) (msg-recv parent)))))
+      (close-port child-port)
+      (list outer-pid (msg-send parent-port) (msg-recv parent-port)))))
 
 (comment
  (match-let (((child-pid => <=) (child-proc SIGCHLD
