@@ -7,6 +7,13 @@
   #:use-module (ice-9 atomic)
   #:use-module (ice-9 rdelim)
 
+  #:use-module ((guix build syscalls)
+                ;; Linux clone flags, from linux/sched.h
+                #:select (CLONE_NEWUSER
+                          CLONE_NEWNS
+                          CLONE_NEWPID))
+
+
   #:use-module (ares suitbl core)
   #:use-module (ares suitbl checks)
   #:use-module ((gxd isolation) #:select (child-proc))
@@ -59,4 +66,32 @@
       (is (eq? *box #f)) ;; parent's version is intact
       (set! *box 1)
       (=> 'parent-mutated)
-      (is (eq? (<= 'child-value) #t)))))
+      (is (eq? (<= 'child-value) #t))))
+
+  ;; Linux clone flags, from linux/sched.h for namespace child isolation:
+  ;; CLONE_NEWPID - Process IDs
+  ;; CLONE_NEWNET - Network
+  ;; CLONE_NEWNS - Mount Points / File System
+  ;; CLONE_NEWUTS - Hostnames
+  ;; CLONE_NEWIPC - Inter-Process Communication
+  ;; CLONE_NEWUSER - Users and Groups
+
+  (test "clone into new user, mount and pid namespaces" ()
+        (match-let (((_ => <=)
+                     (child-proc
+                      (logior CLONE_NEWUSER  ;; Users and Groups
+                              CLONE_NEWNS  ;; Mount Points / File System
+                              CLONE_NEWPID  ;; Process IDs
+                              SIGCHLD  ;; signal on child exit
+                              )
+                      (lambda (=> <=)
+                        (=> 'ns/mnt (readlink "/proc/self/ns/mnt"))
+                        (=> 'ns/pid (readlink "/proc/self/ns/pid"))
+                        (=> 'ns/user (readlink "/proc/self/ns/user"))))))
+          (is (not (string=? (<= 'ns/mnt) (readlink "/proc/self/ns/mnt"))))
+          (is (not (string=? (<= 'ns/pid) (readlink "/proc/self/ns/pid"))))
+          (is (not (string=? (<= 'ns/user) (readlink "/proc/self/ns/user")))))))
+
+
+
+
