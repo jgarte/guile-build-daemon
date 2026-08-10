@@ -48,38 +48,36 @@
            ;; (<= 'not-a-2) ;; would throw, id mismatch
            (<= 2 #:print #t)))))
 
-(define child-proc
+(define* (child-proc flags proc)
   ;; "Takes a lambda, which is passed a bidirectional 'parent' socket, executes it in a forked process.
   ;;  Returns the PID of that process and a bidirectional channel to communicate with it."
-  (case-lambda
-   ((proc) (child-proc SIGCHLD proc))
-   ((flags proc)
-    (match-let (((child . parent) (socketpair PF_UNIX (logior SOCK_CLOEXEC SOCK_STREAM) 0)))
-      ;; flushing ports, so child cannot flush entries that parent would himself
-      (flush-all-ports)
-      (let ((outer-pid
-             (safe-clone
-              flags
-              (lambda ()
-                (close-port parent)
-                (with-exception-handler
-                 (lambda (exn)
-                   (backtrace)
-                   (flush-all-ports)
-                   (primitive-_exit 1))
-                 (lambda ()
-                   (proc (msg-send child) (msg-recv child))
-                   (flush-all-ports)
-                   (primitive-_exit 0))))
-              (lambda (pid) pid))))
-        (close-port child)
-        (list outer-pid (msg-send parent) (msg-recv parent)))))))
+  (match-let (((child . parent) (socketpair PF_UNIX (logior SOCK_CLOEXEC SOCK_STREAM) 0)))
+    ;; flushing ports, so child cannot flush entries that parent would himself
+    (flush-all-ports)
+    (let ((outer-pid
+           (safe-clone
+            flags
+            (lambda ()
+              (close-port parent)
+              (with-exception-handler
+                  (lambda (exn)
+                    (backtrace)
+                    (flush-all-ports)
+                    (primitive-_exit 1))
+                (lambda ()
+                  (proc (msg-send child) (msg-recv child))
+                  (flush-all-ports)
+                  (primitive-_exit 0))))
+            (lambda (pid) pid))))
+      (close-port child)
+      (list outer-pid (msg-send parent) (msg-recv parent)))))
 
 (comment
- (match-let (((child-pid => <=) (child-proc (lambda (=> <=)
-                                              (<= 1)
-                                              (display "child doing some work")
-                                              (sleep 2)
-                                              (=> 2 "done")))))
+ (match-let (((child-pid => <=) (child-proc SIGCHLD
+                                 (lambda (=> <=)
+                                   (<= 1)
+                                   (display "child doing some work")
+                                   (sleep 2)
+                                   (=> 2 "done")))))
    (=> 1)
    (<= 2)))
