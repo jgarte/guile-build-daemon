@@ -27,7 +27,7 @@
     ;; To prevent this we're flushing the message right away.
     (force-output port)))
 
-(define* (msg-recv port #:key  as)
+(define* (msg-recv port #:key as)
   (lambda* (id #:key print)
     (match-let (((in-id payload) (read port)))
       (when print (when print (msg-display "recv " id payload as)))
@@ -84,12 +84,15 @@ are flushed, and the child exits with status 1."
                     (flush-all-ports)
                     (primitive-_exit 1))
                 (lambda ()
-                  (proc (msg-send child-port) (msg-recv child-port))
+                  (proc (msg-send child-port #:as 'child)
+                        (msg-recv child-port #:as 'child))
                   (flush-all-ports)
                   (primitive-_exit 0))))
             (lambda (pid) pid))))
       (close-port child-port)
-      (list outer-pid (msg-send parent-port) (msg-recv parent-port)))))
+      (list outer-pid
+            (msg-send parent-port #:as 'parent)
+            (msg-recv parent-port #:as 'parent)))))
 
 (comment
  (match-let (((child-pid => <=) (child-proc SIGCHLD
