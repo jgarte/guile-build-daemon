@@ -31,9 +31,7 @@
 
   (test "when expecting message with one ID and get with another - throws" ()
     (match-let (((_ => <=) (child-proc (lambda (=> <=)
-                                         (=> 1)
-                                         (display content file)
-                                         (=> 'done)))))
+                                         (=> 1)))))
       (is (throws-exception? (<= 'not-1)))))
 
   (test "atomic-boxes are also isolated; child's mutation of the val isn't seen by parent" ()
