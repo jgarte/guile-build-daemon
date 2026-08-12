@@ -6,17 +6,12 @@
   #:use-module (ice-9 exceptions)
   #:use-module (ice-9 atomic)
   #:use-module (ice-9 rdelim)
-
-  #:use-module ((guix build syscalls)
-                ;; Linux clone flags, from linux/sched.h
-                #:select (CLONE_NEWUSER
-                          CLONE_NEWNS
-                          CLONE_NEWPID))
-
-
   #:use-module (ares suitbl core)
   #:use-module (ares suitbl checks)
-  #:use-module ((gxd isolation) #:select (child-proc))
+  #:use-module ((gxd isolation) #:select (child-proc
+                                          CLONE_NEWUSER
+                                          CLONE_NEWNS
+                                          CLONE_NEWPID))
   #:use-module ((gxd prelude)))
 
 (define (slurp file)
@@ -67,14 +62,6 @@
       (set! *box 1)
       (=> 'parent-mutated)
       (is (eq? (<= 'child-value) #t))))
-
-  ;; Linux clone flags, from linux/sched.h for namespace child isolation:
-  ;; CLONE_NEWPID - Process IDs
-  ;; CLONE_NEWNET - Network
-  ;; CLONE_NEWNS - Mount Points / File System
-  ;; CLONE_NEWUTS - Hostnames
-  ;; CLONE_NEWIPC - Inter-Process Communication
-  ;; CLONE_NEWUSER - Users and Groups
 
   (test "clone into new user, mount and pid namespaces" ()
         (match-let (((_ => <=)

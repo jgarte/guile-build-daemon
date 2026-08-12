@@ -2,7 +2,22 @@
   #:use-module ((ice-9 match) #:select (match-let))
   #:use-module (ice-9 textual-ports)
   #:use-module (ice-9 exceptions)
-  #:use-module ((guix build syscalls) #:select (safe-clone))
+  #:use-module ((guix build syscalls) #:select (safe-clone
+                                                ;; Linux clone flags, from linux/sched.h
+                                                ;; for namespace isolation:
+                                                CLONE_NEWPID  ;; Process IDs
+                                                CLONE_NEWNET  ;; Network
+                                                CLONE_NEWNS  ;; Mount Points / File System
+                                                CLONE_NEWUTS  ;; Hostnames
+                                                CLONE_NEWIPC  ;; Inter-Process Communication
+                                                CLONE_NEWUSER  ;; Users and Groups
+                                                ))
+  #:re-export (CLONE_NEWPID
+               CLONE_NEWNET
+               CLONE_NEWNS
+               CLONE_NEWUTS
+               CLONE_NEWIPC
+               CLONE_NEWUSER)
   #:use-module ((gxd prelude))
   #:export (child-proc))
 
