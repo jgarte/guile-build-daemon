@@ -31,8 +31,8 @@
         (is (string=? content (slurp file))))))
 
   (test "when expecting message with one ID and get with another - throws" ()
-        (match-let (((_ => <=) (child-proc SIGCHLD
-                                (lambda (=> <=)
+        (match-let (((_ _ <=) (child-proc SIGCHLD
+                                (lambda (=> _)
                                   (=> 1)
                                   (display content file)
                                   (=> 'done)))))
@@ -40,8 +40,8 @@
 
   (test "atomic-boxes are also isolated; child's mutation of the val isn't seen by parent" ()
     (let ((box (make-atomic-box 0)))
-      (match-let (((_ => <=) (child-proc SIGCHLD
-                              (lambda (=> <=)
+      (match-let (((_ _ <=) (child-proc SIGCHLD
+                              (lambda (=> _)
                                 (atomic-box-set! box 1)
                                 (=> 'done)))))
         (<= 'done)
