@@ -48,10 +48,10 @@
            ;; (<= 'not-a-2) ;; would throw, id mismatch
            (<= 2 #:print #t)))))
 
-(define* (child-proc flags proc)
+(define* (child-proc flags child)
   "Create a child process and a bidirectional message channel.
 
-FLAGS are passed to `safe-clone'.  In this new child process, the PROC
+FLAGS are passed to `safe-clone'.  In this new child process, the CHILD
 is called with two procedures as arguments.  First is procedure to
 send message to parent process, second is to receive message.  These
 procedures are created by `msg-send' and `msg-recv' recpectively.
@@ -84,8 +84,8 @@ are flushed, and the child exits with status 1."
                     (flush-all-ports)
                     (primitive-_exit 1))
                 (lambda ()
-                  (proc (msg-send child-port #:as 'child)
-                        (msg-recv child-port #:as 'child))
+                  (child (msg-send child-port #:as 'child)
+                         (msg-recv child-port #:as 'child))
                   (flush-all-ports)
                   (primitive-_exit 0))))
             (lambda (pid) pid))))
