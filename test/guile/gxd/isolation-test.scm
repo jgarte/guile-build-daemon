@@ -64,20 +64,20 @@
       (is (eq? (<= 'child-value) #t))))
 
   (test "clone into new user, mount and pid namespaces" ()
-        (match-let (((_ => <=)
-                     (child-proc
-                      (logior CLONE_NEWUSER  ;; Users and Groups
-                              CLONE_NEWNS  ;; Mount Points / File System
-                              CLONE_NEWPID  ;; Process IDs
-                              SIGCHLD  ;; signal on child exit
-                              )
-                      (lambda (=> <=)
-                        (=> 'ns/mnt (readlink "/proc/self/ns/mnt"))
-                        (=> 'ns/pid (readlink "/proc/self/ns/pid"))
-                        (=> 'ns/user (readlink "/proc/self/ns/user"))))))
-          (is (not (string=? (<= 'ns/mnt) (readlink "/proc/self/ns/mnt"))))
-          (is (not (string=? (<= 'ns/pid) (readlink "/proc/self/ns/pid"))))
-          (is (not (string=? (<= 'ns/user) (readlink "/proc/self/ns/user")))))))
+    (match-let (((_ => <=)
+                 (child-proc
+                  (logior CLONE_NEWUSER  ;; Users and Groups
+                          CLONE_NEWNS  ;; Mount Points / File System
+                          CLONE_NEWPID  ;; Process IDs
+                          SIGCHLD  ;; signal on child exit
+                          )
+                  (lambda (=> <=)
+                    (=> 'ns/mnt (readlink "/proc/self/ns/mnt"))
+                    (=> 'ns/pid (readlink "/proc/self/ns/pid"))
+                    (=> 'ns/user (readlink "/proc/self/ns/user"))))))
+      (is (not (string=? (<= 'ns/mnt) (readlink "/proc/self/ns/mnt"))))
+      (is (not (string=? (<= 'ns/pid) (readlink "/proc/self/ns/pid"))))
+      (is (not (string=? (<= 'ns/user) (readlink "/proc/self/ns/user")))))))
 
 
 
