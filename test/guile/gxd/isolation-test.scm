@@ -4,7 +4,7 @@
 (define-module (gxd isolation-test)
   #:use-module ((ice-9 match) #:select (match-let))
   #:use-module (ice-9 exceptions)
-  #:use-module (ice-9 atomic)
+  #:use-module ((ice-9 atomic) #:select (make-atomic-box atomic-box-ref atomic-box-set!))
   #:use-module (ice-9 rdelim)
 
   #:use-module (ares suitbl core)
