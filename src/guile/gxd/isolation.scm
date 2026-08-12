@@ -51,24 +51,21 @@
 (define* (child-proc flags child)
   "Create a child process and a bidirectional message channel.
 
-FLAGS are passed to `safe-clone'.  In this new child process, the CHILD
-is called with two procedures as arguments.  First is procedure to
-send message to parent process, second is to receive message.  These
-procedures are created by `msg-send' and `msg-recv' recpectively.
+FLAGS is a bitwise integer that specifies which resources the child process
+shares with the parent.  You can use `logior' (bitwise OR) to combine individual
+flags (e.g., flags for `clone' syscall listed in linux/sched.h)
 
-The 'send message procedure' takes ID of the message and optioan
-PAYLOAD as well as optional key #:print, if you need to display the
-messages set it to #t. The 'read message procedure' takes message ID
-and optional #:print.
+In this new child process, the CHILD thunk is called with two arguments. First
+argument is a procedure to send a message to parent process ('send'), second
+argument is to receive a message ('recv').  These procedures are created by
+`msg-send' and `msg-recv' respectively.
 
-Return two values: the child PID and a parent runner.  The runner
-calls a parent procedure with the parent-side send and receive
-procedures.
+The 'send' procedure takes ID of the message and optional PAYLOAD as well as
+optional key #:print which you can set to #t if you need to display the
+messages. The 'recv' procedure takes message ID and the optional #:print.
 
-The child and parent each close the unused end of a Unix stream
-socket. The child exits with `primitive-_exit' status 0 after CHILD
-returns.  If CHILD raises an exception, a backtrace is printed, ports
-are flushed, and the child exits with status 1."
+Return list of 3 elements: The child PID and the parent-side `send' and `recv'
+procedures."
   (match-let (((child-port . parent-port)
                (socketpair PF_UNIX (logior SOCK_CLOEXEC SOCK_STREAM) 0)))
     ;; flushing ports, so child cannot flush entries that parent would himself
