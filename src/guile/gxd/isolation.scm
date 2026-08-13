@@ -55,10 +55,10 @@ FLAGS is a bitwise integer that specifies which resources the child process
 shares with the parent.  You can use `logior' (bitwise OR) to combine individual
 flags (e.g., flags for `clone' syscall listed in linux/sched.h)
 
-In this new child process, the CHILD thunk is called with two arguments. First
-argument is a procedure to send a message to parent process ('send'), second
-argument is to receive a message ('recv').  These procedures are created by
-`msg-send' and `msg-recv' respectively.
+In this new child process, the CHILD procedure is called with two
+arguments. First argument is a procedure to send a message to parent
+process ('send'), second argument is to receive a message ('recv').  These
+procedures are created by `msg-send' and `msg-recv' respectively.
 
 The 'send' procedure takes ID of the message and optional PAYLOAD as well as
 optional key #:print which you can set to #t if you need to display the
