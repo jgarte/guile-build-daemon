@@ -3,13 +3,13 @@
 
 (define-module (gxd isolation-test)
   #:use-module ((ice-9 match) #:select (match-let))
-  #:use-module (ice-9 exceptions)
-  #:use-module ((ice-9 atomic) #:select (make-atomic-box atomic-box-ref atomic-box-set!))
-  #:use-module (ice-9 rdelim)
+  #:use-module ((ice-9 atomic)
+                #:select (atomic-box-ref atomic-box-set! make-atomic-box))
+  #:use-module ((ice-9 rdelim) #:select (read-string))
   #:use-module ((srfi srfi-11) #:select (let-values))
 
-  #:use-module (ares suitbl core)
-  #:use-module (ares suitbl checks)
+  #:use-module ((ares suitbl core) #:select (define-suite is test))
+  #:use-module ((ares suitbl checks) #:select (throws-exception?))
   #:use-module ((gxd isolation) #:select (child-proc
                                           read-current-id-map-ranges
                                           write-id-map-ranges!

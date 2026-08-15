@@ -1,7 +1,6 @@
 (define-module (gxd isolation)
   #:use-module ((ice-9 match) #:select (match-let))
-  #:use-module (ice-9 textual-ports)
-  #:use-module (ice-9 exceptions)
+  #:use-module ((ice-9 exceptions) #:select (make-exception-with-message))
   #:use-module ((rnrs bytevectors)
                 #:select (bytevector-copy!
                           bytevector-length
