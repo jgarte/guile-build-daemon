@@ -14,8 +14,14 @@
   #:use-module ((gxd testbox)
                 #:select (make-testbox-manifest
                           start-testbox
+                          start-testbox-process!
                           teardown-testbox!
-                          testbox-pid1)))
+                          testbox-manifest
+                          testbox-pid1
+                          wait-testbox-process!))
+  #:use-module (gxd prelude))
+
+(define guile (readlink "/proc/self/exe"))
 
 (define (namespace-id pid name)
   "Return the identifier of PID's NAME namespace, which two processes share
@@ -28,6 +34,15 @@ exactly when they are in the same one."
       (lambda () #t)
       (lambda () (proc box))
       (lambda () (teardown-testbox! box)))))
+
+(define (role-exit-status box role expression)
+  "Run EXPRESSION as ROLE in BOX and return the status it exited with.
+A role process is exec-only with no channel back, so it reports a single number
+by exiting with it, which limits what EXPRESSION can report to a byte."
+  (status:exit-val
+   (wait-testbox-process!
+    (start-testbox-process! box role guile
+                            (list "-c" (format #f "(exit ~s)" expression))))))
 
 (define (reaped? pid)
   "Return #t when PID has been collected already.  Waiting on such a pid
@@ -84,6 +99,32 @@ fails with ECHILD, which is what distinguishes it from one still running."
 
       (is (string=? "expected teardown failure" (exception-message captured)))
       (is (reaped? pid1))))
+
+  (test "programs run as either declared role" ()
+    (call-with-testbox
+     (lambda (box)
+       (define (declared role key)
+         (get-in (testbox-manifest box) (list 'testbox/roles role key)))
+       (define (report role expression)
+         (role-exit-status box role expression))
+
+       (is (= (declared 'daemon 'role/uid) (report 'daemon '(getuid))))
+       (is (= (declared 'daemon 'role/gid) (report 'daemon '(getgid))))
+       (is (= (declared 'user 'role/uid) (report 'user '(getuid))))
+       (is (= (declared 'user 'role/gid) (report 'user '(getgid))))
+
+       ;; A role must not keep the groups of whoever started the box.
+       (is (= 0 (report 'daemon '(vector-length (getgroups)))))
+       (is (= 0 (report 'user '(vector-length (getgroups))))))))
+
+  (test "process wait status is stable" ()
+    (call-with-testbox
+     (lambda (box)
+       (let ((process
+              (start-testbox-process! box 'daemon guile
+                                      '("-c" "(exit 7)"))))
+         (is (= 7 (status:exit-val (wait-testbox-process! process))))
+         (is (= 7 (status:exit-val (wait-testbox-process! process))))))))
 
   (test "startup failure releases PID 1 before propagating" ()
     (define expected (make-exception-with-message "expected mapping failure"))
