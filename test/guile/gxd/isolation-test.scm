@@ -80,6 +80,7 @@ afterwards."
        (lambda (=> <=)
          (<= 'go)
          (display content file)
+         (force-output file)
          (=> 'done))
        (lambda (_ => <=)
          (is (string=? "" (slurp file)))
