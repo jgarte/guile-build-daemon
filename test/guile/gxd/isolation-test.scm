@@ -6,10 +6,13 @@
   #:use-module (ice-9 exceptions)
   #:use-module ((ice-9 atomic) #:select (make-atomic-box atomic-box-ref atomic-box-set!))
   #:use-module (ice-9 rdelim)
+  #:use-module ((srfi srfi-11) #:select (let-values))
 
   #:use-module (ares suitbl core)
   #:use-module (ares suitbl checks)
   #:use-module ((gxd isolation) #:select (child-proc
+                                          read-current-id-map-ranges
+                                          write-id-map-ranges!
                                           CLONE_NEWUSER
                                           CLONE_NEWNS
                                           CLONE_NEWPID))
@@ -70,6 +73,21 @@ afterwards."
        (<= 'never-sent))
      (lambda (_ => <=)
        (is (string=? "waiting" (<= 'ready)))))))
+
+(define (mapped-ids id)
+  "Return the uid and gid a child sees after switching to ID inside its map."
+  (call-with-child-proc
+   (logior CLONE_NEWUSER SIGCHLD)
+   (lambda (=> <=)
+     (<= 'ids-mapped)
+     (setgid id)
+     (setuid id)
+     (=> 'ids (list (getuid) (getgid))))
+   (lambda (child-pid => <=)
+     (let-values (((uid-ranges gid-ranges) (read-current-id-map-ranges 2)))
+       (write-id-map-ranges! child-pid uid-ranges gid-ranges))
+     (=> 'ids-mapped)
+     (<= 'ids))))
 
 (define-suite (child-proc-tests)
   (test "messages preserve non-ASCII text under the C locale" ()
@@ -162,3 +180,14 @@ afterwards."
        (is (not (string=? (<= 'ns/mnt) (readlink "/proc/self/ns/mnt"))))
        (is (not (string=? (<= 'ns/pid) (readlink "/proc/self/ns/pid"))))
        (is (not (string=? (<= 'ns/user) (readlink "/proc/self/ns/user"))))))))
+
+(define-suite (write-id-maps-tests)
+  (test "mapping exposes only the requested number of subordinate ids" ()
+    (let-values (((uid-ranges gid-ranges) (read-current-id-map-ranges 2)))
+      (match-let ((((_ _ _) (_ _ uid-count)) uid-ranges)
+                  (((_ _ _) (_ _ gid-count)) gid-ranges))
+        (is (= 2 uid-count))
+        (is (= 2 gid-count)))))
+
+  (test "setuid helpers map multiple ids" ()
+    (is (equal? '((1 1) (2 2)) (map mapped-ids '(1 2))))))
