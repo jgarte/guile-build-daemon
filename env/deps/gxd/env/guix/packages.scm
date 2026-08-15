@@ -37,4 +37,5 @@
   (cons* guix-package
          guile-ares-rs-latest
          (map specification->package
-              '("guile"))))
+              '("guile"
+                "util-linux"))))
