@@ -52,6 +52,13 @@
            (make-exception-with-message
             (format #f "message id mismatch; expected: ~a; actual: ~a" id in-id)))))))
 
+(define (make-disconnect port)
+  (let ((disconnected? #f))
+    (lambda ()
+      (unless disconnected?
+        (set! disconnected? #t)
+        (close-port port)))))
+
 ;; example behavior
 (comment
  (match-let (((child . parent) (socketpair PF_UNIX (logior SOCK_CLOEXEC SOCK_STREAM) 0)))
@@ -79,8 +86,8 @@ The 'send' procedure takes ID of the message and optional PAYLOAD as well as
 optional key #:print which you can set to #t if you need to display the
 messages. The 'recv' procedure takes message ID and the optional #:print.
 
-Return list of 3 elements: The child PID and the parent-side `send' and `recv'
-procedures."
+Return the child PID, the parent-side `send' and `recv' procedures, and an
+idempotent procedure that closes the parent endpoint."
   (match-let (((child-port . parent-port)
                (socketpair PF_UNIX (logior SOCK_CLOEXEC SOCK_STREAM) 0)))
     ;; flushing ports, so child cannot flush entries that parent would himself
@@ -104,14 +111,17 @@ procedures."
       (close-port child-port)
       (list outer-pid
             (msg-send parent-port #:as 'parent)
-            (msg-recv parent-port #:as 'parent)))))
+            (msg-recv parent-port #:as 'parent)
+            (make-disconnect parent-port)))))
 
 (comment
- (match-let (((child-pid => <=) (child-proc SIGCHLD
-                                 (lambda (=> <=)
-                                   (<= 1)
-                                   (display "child doing some work")
-                                   (sleep 2)
-                                   (=> 2 "done")))))
+ (match-let (((child-pid => <= disconnect!)
+              (child-proc SIGCHLD
+                          (lambda (=> <=)
+                            (<= 1)
+                            (display "child doing some work")
+                            (sleep 2)
+                            (=> 2 "done")))))
    (=> 1)
-   (<= 2)))
+   (<= 2)
+   (disconnect!)))
