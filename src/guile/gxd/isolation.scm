@@ -2,6 +2,12 @@
   #:use-module ((ice-9 match) #:select (match-let))
   #:use-module (ice-9 textual-ports)
   #:use-module (ice-9 exceptions)
+  #:use-module ((rnrs bytevectors)
+                #:select (bytevector-copy!
+                          bytevector-length
+                          make-bytevector
+                          string->utf8))
+  #:use-module ((srfi srfi-197) #:select (chain))
   #:use-module ((guix build syscalls) #:select (safe-clone
                                                 ;; Linux clone flags, from linux/sched.h
                                                 ;; for namespace isolation:
@@ -32,17 +38,32 @@
 
 ;; Two simple util functions to create sender and receiver message functions,
 ;; where messages get matched by ID, and optional `payload' can be carried.
+
+;; Linux MSG_NOSIGNAL, from sys/socket.h.  Without it a send to a closed peer
+;; raises SIGPIPE, whose default action terminates the process before Scheme
+;; can handle anything; with it the send reports EPIPE instead.
+(define MSG_NOSIGNAL #x4000)
+
+(define (send-all port bytes)
+  "Send all of BYTES over PORT, which may accept them a few at a time."
+  (let loop ((pending bytes))
+    (let ((sent (send port pending MSG_NOSIGNAL)))
+      (unless (= sent (bytevector-length pending))
+        (let* ((length (- (bytevector-length pending) sent))
+               (rest (make-bytevector length)))
+          (bytevector-copy! pending sent rest 0 length)
+          (loop rest))))))
+
 (define* (msg-send port #:key as)
   (lambda* (id #:optional payload #:key print)
     (when print (msg-display "send " id payload as))
-    (write (list id payload) port)
-    ;; Since child-proc exits via privitive-_exit,
-    ;; which doesn't do Guile unwind, which would flush the buffered messages,
-    ;; written buffered messages would be lost.
-    ;; To prevent this we're flushing the message right away.
-    (force-output port)))
+    (chain (list id payload)
+           (object->string _)
+           (string->utf8 _)
+           (send-all port _))))
 
 (define* (msg-recv port #:key as)
+  (set-port-encoding! port "UTF-8")
   (lambda* (id #:key print)
     (match-let (((in-id payload) (read port)))
       (when print (when print (msg-display "recv " id payload as)))
