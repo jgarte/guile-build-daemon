@@ -72,6 +72,27 @@ afterwards."
        (is (string=? "waiting" (<= 'ready)))))))
 
 (define-suite (child-proc-tests)
+  (test "messages preserve non-ASCII text under the C locale" ()
+    (let ((locale (setlocale LC_ALL)))
+      (dynamic-wind
+        (lambda () (setlocale LC_ALL "C"))
+        (lambda ()
+          (call-with-child-proc
+           SIGCHLD
+           (lambda (=> _) (=> 'text "é"))
+           (lambda (_ => <=)
+             (is (string=? "é" (<= 'text))))))
+        (lambda () (setlocale LC_ALL locale)))))
+
+  (test "sending to an exited peer raises instead of killing this process" ()
+    (match-let (((pid => <= disconnect!)
+                 (child-proc SIGCHLD (lambda (=> _) (=> 'ready)))))
+      (<= 'ready)
+      ;; Wait for the child so its endpoint is certainly closed before sending.
+      (waitpid pid)
+      (is (throws-exception? (=> 'unreachable)))
+      (disconnect!)))
+
   (test "message receival blocks process until message arrival" ()
     (let ((file (tmpfile))
           (content "content"))
