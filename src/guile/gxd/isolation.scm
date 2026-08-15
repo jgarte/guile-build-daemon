@@ -7,7 +7,15 @@
                           bytevector-length
                           make-bytevector
                           string->utf8))
+  #:use-module ((srfi srfi-1) #:select (append-map find))
   #:use-module ((srfi srfi-197) #:select (chain))
+  #:use-module ((gnu build accounts)
+                #:select (read-subgid
+                          read-subuid
+                          subid-entry-count
+                          subid-entry-name
+                          subid-entry-start))
+  #:use-module ((guix build utils) #:select (invoke))
   #:use-module ((guix build syscalls) #:select (safe-clone
                                                 ;; Linux clone flags, from linux/sched.h
                                                 ;; for namespace isolation:
@@ -25,7 +33,9 @@
                CLONE_NEWIPC
                CLONE_NEWUSER)
   #:use-module ((gxd prelude))
-  #:export (child-proc))
+  #:export (child-proc
+            read-current-id-map-ranges
+            write-id-map-ranges!))
 
 
 
@@ -146,3 +156,50 @@ idempotent procedure that closes the parent endpoint."
    (=> 1)
    (<= 2)
    (disconnect!)))
+
+(define (subid-entry user entries required-count)
+  "Return the first of ENTRIES granting USER at least REQUIRED-COUNT
+subordinate ids, or raise an error when USER has no range that large."
+  (or (find (lambda (entry)
+              (and (string=? user (subid-entry-name entry))
+                   (>= (subid-entry-count entry) required-count)))
+            entries)
+      (error "no suitable subordinate id range" user required-count)))
+
+(define (read-current-id-map-ranges required-count)
+  "Return UID and GID map ranges covering REQUIRED-COUNT subordinate ids.
+Each is a list of (INSIDE OUTSIDE COUNT) ranges mapping the current user to
+root, then REQUIRED-COUNT ids drawn from the ranges configured for them."
+  (let* ((user (passwd:name (getpwuid (getuid))))
+         (uid-entry (subid-entry user (read-subuid) required-count))
+         (gid-entry (subid-entry user (read-subgid) required-count)))
+    (values `((0 ,(getuid) 1)
+              (1 ,(subid-entry-start uid-entry)
+                 ,required-count))
+            `((0 ,(getgid) 1)
+              (1 ,(subid-entry-start gid-entry)
+                 ,required-count)))))
+
+(define (id-map-arguments ranges)
+  (append-map (lambda (range) (map number->string range)) ranges))
+
+(define (id-map-helper name)
+  (or (chain '("/run/privileged/bin" "/usr/bin")
+             (map (lambda (directory)
+                    (string-append directory "/" name)) _)
+             (find (lambda (path) (access? path X_OK)) _))
+      (error "id map helper not found" name)))
+
+(define (write-id-map-ranges helper pid ranges)
+  (apply invoke
+         (id-map-helper helper)
+         (number->string pid)
+         (id-map-arguments ranges)))
+
+(define (write-id-map-ranges! pid uid-ranges gid-ranges)
+  "Install UID-RANGES and GID-RANGES in the user namespace of PID."
+  ;; These helpers are setuid-root, which is what allows a map with more than
+  ;; the single self-mapping an unprivileged process could write itself.  They
+  ;; need setgroups to remain allowed, so do not deny it before calling them.
+  (write-id-map-ranges "newuidmap" pid uid-ranges)
+  (write-id-map-ranges "newgidmap" pid gid-ranges))
