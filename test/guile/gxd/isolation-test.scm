@@ -21,12 +21,17 @@
 
 (define (call-with-child-proc flags child proc)
   "Call PROC with the pid and the parent-side send and receive procedures of a
-CHILD process started with FLAGS, reaping the child afterwards."
-  (match-let (((pid => <=) (child-proc flags child)))
+CHILD process started with FLAGS, releasing the channel and reaping the child
+afterwards."
+  (match-let (((pid => <= disconnect!) (child-proc flags child)))
     (dynamic-wind
       (lambda () #t)
       (lambda () (proc pid => <=))
-      (lambda () (waitpid pid)))))
+      (lambda ()
+        ;; Close the channel before waiting: a child left blocked on a receive
+        ;; exits once its endpoint is gone, where waiting first would deadlock.
+        (disconnect!)
+        (waitpid pid)))))
 
 (define (alive? pid)
   "Return #t when PID can be signalled, and so has not been reaped."
@@ -53,7 +58,18 @@ CHILD process started with FLAGS, reaping the child afterwards."
        (=> 'exit)))
 
     (is alive-inside?)
-    (is (not (alive? child-pid)))))
+    (is (not (alive? child-pid))))
+
+  (test "a scope releases a child still waiting to be spoken to" ()
+    ;; The scope must close the channel before waiting: this child blocks on a
+    ;; message the body never sends, and only its endpoint closing ends it.
+    (call-with-child-proc
+     SIGCHLD
+     (lambda (=> <=)
+       (=> 'ready "waiting")
+       (<= 'never-sent))
+     (lambda (_ => <=)
+       (is (string=? "waiting" (<= 'ready)))))))
 
 (define-suite (child-proc-tests)
   (test "message receival blocks process until message arrival" ()
