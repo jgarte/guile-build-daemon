@@ -1,5 +1,5 @@
 (define-module (gxd isolation)
-  #:use-module ((ice-9 match) #:select (match-let))
+  #:use-module ((ice-9 match) #:select (match-lambda match-let))
   #:use-module ((ice-9 exceptions) #:select (make-exception-with-message))
   #:use-module ((rnrs bytevectors)
                 #:select (bytevector-copy!
@@ -34,6 +34,7 @@
   #:use-module ((gxd prelude))
   #:export (child-proc
             read-current-id-map-ranges
+            start-in-namespaces
             write-id-map-ranges!))
 
 
@@ -202,3 +203,33 @@ root, then REQUIRED-COUNT ids drawn from the ranges configured for them."
   ;; need setgroups to remain allowed, so do not deny it before calling them.
   (write-id-map-ranges "newuidmap" pid uid-ranges)
   (write-id-map-ranges "newgidmap" pid gid-ranges))
+
+(define namespace-options
+  '(("user" . "user")
+    ("mount" . "mnt")
+    ("pid" . "pid")))
+
+(define (start-in-namespaces nsenter pid uid gid program arguments)
+  "Start PROGRAM with ARGUMENTS in the user, mount and pid namespaces of PID.
+UID and GID name the identity inside that user namespace, not on the host.
+Return the pid of the process monitoring PROGRAM, whose wait status is
+PROGRAM's own."
+  (let ((command
+         (append (list "nsenter")
+                 (map (match-lambda
+                        ((option . name)
+                         (format #f "--~a=/proc/~a/ns/~a"
+                                 option pid name)))
+                      namespace-options)
+                 (list (format #f "--setgid=~a" gid)
+                       (format #f "--setuid=~a" uid)
+                       program)
+                 arguments)))
+    (flush-all-ports)
+    (safe-clone SIGCHLD
+                (lambda ()
+                  (with-exception-handler
+                      (lambda (_) (primitive-_exit 127))
+                    (lambda () (apply execl nsenter command))
+                    #:unwind? #t))
+                (lambda (monitor-pid) monitor-pid))))
