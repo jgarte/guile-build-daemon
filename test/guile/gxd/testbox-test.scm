@@ -18,6 +18,7 @@
                           teardown-testbox!
                           testbox-manifest
                           testbox-pid1
+                          testbox-process-pid
                           wait-testbox-process!))
   #:use-module (gxd prelude))
 
@@ -81,10 +82,15 @@ fails with ECHILD, which is what distinguishes it from one still running."
   (test "teardown preserves its first failure after reaping" ()
     (let* ((box (start-testbox (make-testbox-manifest)))
            (pid1 (testbox-pid1 box))
+           (process (start-testbox-process! box 'daemon guile
+                                            '("-c" "(sleep 10)")))
+           (process-pid (testbox-process-pid process))
            (failing-send
             (lambda _
               (raise-exception
                (make-exception-with-message "expected teardown failure")))))
+
+      (is (alive? process-pid))
 
       ;; Reap PID 1 early so a later step fails too, and the first failure has
       ;; something it could be displaced by.
@@ -98,7 +104,8 @@ fails with ECHILD, which is what distinguishes it from one still running."
            (capture-exception (lambda () (teardown-testbox! box))))))
 
       (is (string=? "expected teardown failure" (exception-message captured)))
-      (is (reaped? pid1))))
+      (is (reaped? pid1))
+      (is (reaped? process-pid))))
 
   (test "programs run as either declared role" ()
     (call-with-testbox

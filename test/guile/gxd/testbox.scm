@@ -120,7 +120,7 @@ stopped startup, and says more than a complaint about a broken handle."
         status)))
 
 (define (teardown-testbox! box)
-  "Stop BOX, releasing the channel and process it owns.
+  "Stop BOX, releasing every process and channel it owns.
 Raise the first failure encountered, once every step has been attempted: the
 failure that stopped the box is more informative than one caused by the
 half-released state it left behind."
@@ -134,5 +134,8 @@ half-released state it left behind."
       (attempt (lambda () ((testbox-send! box) 'terminate)))
       (attempt (lambda () ((testbox-disconnect! box))))
       (attempt (lambda () (waitpid (testbox-pid1 box) 0)))
+      (for-each (lambda (process)
+                  (attempt (lambda () (wait-testbox-process! process))))
+                (testbox-processes box))
 
       (when failure (raise-exception failure)))))
