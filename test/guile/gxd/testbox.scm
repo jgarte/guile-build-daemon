@@ -11,6 +11,7 @@
                 #:select (child-proc
                           read-current-id-map-ranges
                           write-id-map-ranges!))
+  #:use-module ((gxd test-prelude) #:select (capture-exception))
   #:use-module (gxd prelude)
   #:export (make-testbox-manifest
             start-testbox
@@ -47,15 +48,30 @@
   "Return the declarative roles available inside a testbox."
   `((testbox/roles . ,roles)))
 
+(define (cleanup-start-failure! child-pid disconnect! exception)
+  "Release CHILD-PID and its channel, then re-raise EXCEPTION.
+Each step is attempted even if an earlier one failed, so one unusable handle
+cannot strand the rest.  Their own failures are discarded: EXCEPTION is what
+stopped startup, and says more than a complaint about a broken handle."
+  (capture-exception disconnect!)
+  (capture-exception (lambda () (kill child-pid SIGKILL)))
+  (capture-exception (lambda () (waitpid child-pid 0)))
+  (raise-exception exception))
+
 (define (start-testbox manifest)
   "Start an isolated testbox described by MANIFEST."
   (match-let (((child-pid => <= disconnect!)
                (child-proc (logior namespace-flags SIGCHLD) testbox-init)))
-    (let-values (((uid-ranges gid-ranges) (read-current-id-map-ranges 2)))
-      (write-id-map-ranges! child-pid uid-ranges gid-ranges))
-    ;; Do not return until PID 1 has installed its child-reaping policy.
-    (<= 'ready)
-    (make-testbox manifest child-pid => disconnect! #t)))
+    (with-exception-handler
+        (lambda (exception)
+          (cleanup-start-failure! child-pid disconnect! exception))
+      (lambda ()
+        (let-values (((uid-ranges gid-ranges) (read-current-id-map-ranges 2)))
+          (write-id-map-ranges! child-pid uid-ranges gid-ranges))
+        ;; Do not return until PID 1 has installed its child-reaping policy.
+        (<= 'ready)
+        (make-testbox manifest child-pid => disconnect! #t))
+      #:unwind? #t)))
 
 (define (teardown-testbox! box)
   "Stop BOX and reap its PID 1 process."

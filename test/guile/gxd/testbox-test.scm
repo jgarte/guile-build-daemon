@@ -60,4 +60,30 @@ fails with ECHILD, which is what distinguishes it from one still running."
 
        (is (fresh? 'user))
        (is (fresh? 'mnt))
-       (is (fresh? 'pid))))))
+       (is (fresh? 'pid)))))
+
+  (test "startup failure releases PID 1 before propagating" ()
+    (define expected (make-exception-with-message "expected mapping failure"))
+    (define child-pid #f)
+    (define child-was-alive? #f)
+
+    ;; Fail the first step after the child exists, so startup has something to
+    ;; roll back.  Liveness is recorded here because by the time the assertions
+    ;; run the child is expected to be gone.
+    (define (failing-write-id-maps pid uid-ranges gid-ranges)
+      (set! child-pid pid)
+      (set! child-was-alive? (alive? pid))
+      (raise-exception expected))
+
+    (define captured
+      (with-module-binding
+       (resolve-module '(gxd testbox)) 'write-id-map-ranges!
+       failing-write-id-maps
+       (lambda ()
+         (capture-exception
+          (lambda () (start-testbox (make-testbox-manifest)))))))
+
+    (is (eq? expected captured))
+    (is (integer? child-pid))
+    (is child-was-alive?)
+    (is (reaped? child-pid))))
