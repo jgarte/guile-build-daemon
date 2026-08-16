@@ -5,6 +5,7 @@
   #:use-module ((ice-9 exceptions)
                 #:select (exception-args
                           exception-kind
+                          exception-message
                           make-exception-with-message))
   #:use-module ((ice-9 match) #:select (match))
   #:use-module ((ares suitbl core) #:select (define-suite is test))
@@ -61,6 +62,28 @@ fails with ECHILD, which is what distinguishes it from one still running."
        (is (fresh? 'user))
        (is (fresh? 'mnt))
        (is (fresh? 'pid)))))
+
+  (test "teardown preserves its first failure after reaping" ()
+    (let* ((box (start-testbox (make-testbox-manifest)))
+           (pid1 (testbox-pid1 box))
+           (failing-send
+            (lambda _
+              (raise-exception
+               (make-exception-with-message "expected teardown failure")))))
+
+      ;; Reap PID 1 early so a later step fails too, and the first failure has
+      ;; something it could be displaced by.
+      (kill pid1 SIGKILL)
+      (waitpid pid1 0)
+
+      (define captured
+        (with-module-binding
+         (resolve-module '(gxd isolation)) 'send failing-send
+         (lambda ()
+           (capture-exception (lambda () (teardown-testbox! box))))))
+
+      (is (string=? "expected teardown failure" (exception-message captured)))
+      (is (reaped? pid1))))
 
   (test "startup failure releases PID 1 before propagating" ()
     (define expected (make-exception-with-message "expected mapping failure"))

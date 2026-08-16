@@ -74,9 +74,19 @@ stopped startup, and says more than a complaint about a broken handle."
       #:unwind? #t)))
 
 (define (teardown-testbox! box)
-  "Stop BOX and reap its PID 1 process."
+  "Stop BOX, releasing the channel and process it owns.
+Raise the first failure encountered, once every step has been attempted: the
+failure that stopped the box is more informative than one caused by the
+half-released state it left behind."
   (when (testbox-active? box)
-    ((testbox-send! box) 'terminate)
-    ((testbox-disconnect! box))
-    (waitpid (testbox-pid1 box) 0)
-    (set-testbox-active?! box #f)))
+    (set-testbox-active?! box #f)
+    (let ((failure #f))
+      (define (attempt thunk)
+        (let ((raised (capture-exception thunk)))
+          (unless failure (set! failure raised))))
+
+      (attempt (lambda () ((testbox-send! box) 'terminate)))
+      (attempt (lambda () ((testbox-disconnect! box))))
+      (attempt (lambda () (waitpid (testbox-pid1 box) 0)))
+
+      (when failure (raise-exception failure)))))
