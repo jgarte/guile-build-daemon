@@ -19,6 +19,42 @@
   (seek file 0 SEEK_SET)
   (read-string file))
 
+(define (call-with-child-proc flags child proc)
+  "Call PROC with the pid and the parent-side send and receive procedures of a
+CHILD process started with FLAGS, reaping the child afterwards."
+  (match-let (((pid => <=) (child-proc flags child)))
+    (dynamic-wind
+      (lambda () #t)
+      (lambda () (proc pid => <=))
+      (lambda () (waitpid pid)))))
+
+(define (alive? pid)
+  "Return #t when PID can be signalled, and so has not been reaped."
+  (with-exception-handler
+      (lambda (_) #f)
+    (lambda ()
+      (kill pid 0)
+      #t)
+    #:unwind? #t))
+
+(define-suite (call-with-child-proc-tests)
+  (test "a scope reaps the child it started" ()
+    (define child-pid #f)
+    (define alive-inside? #f)
+
+    ;; Liveness is recorded inside the scope because by the time the assertions
+    ;; run the child is expected to be gone.
+    (call-with-child-proc
+     SIGCHLD
+     (lambda (=> <=) (<= 'exit))
+     (lambda (pid => <=)
+       (set! child-pid pid)
+       (set! alive-inside? (alive? pid))
+       (=> 'exit)))
+
+    (is alive-inside?)
+    (is (not (alive? child-pid)))))
+
 (define-suite (child-proc-tests)
   (test "message receival blocks process until message arrival" ()
     (let ((file (tmpfile))
