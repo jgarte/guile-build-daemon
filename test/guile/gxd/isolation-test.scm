@@ -5,6 +5,7 @@
   #:use-module ((ice-9 match) #:select (match match-let))
   #:use-module ((ice-9 atomic)
                 #:select (atomic-box-ref atomic-box-set! make-atomic-box))
+  #:use-module ((ice-9 ftw) #:select (scandir))
   #:use-module ((srfi srfi-1) #:select (any))
   #:use-module ((srfi srfi-11) #:select (let-values))
   #:use-module ((srfi srfi-13)
@@ -13,9 +14,11 @@
 
   #:use-module ((ares suitbl core) #:select (define-suite is test))
   #:use-module ((ares suitbl checks) #:select (throws-exception?))
+  #:use-module ((guix build utils) #:select (delete-file-recursively))
   #:use-module ((guix build syscalls) #:select (mount MS_SHARED))
   #:use-module ((gxd isolation) #:select (child-proc
                                           make-mounts-private!
+                                          pivot-into!
                                           read-current-id-map-ranges
                                           write-id-map-ranges!
                                           CLONE_NEWUSER
@@ -218,6 +221,41 @@ afterwards."
      (lambda (_ => <=)
        (is (eq? 'shared (<= 'before)))
        (is (eq? 'private (<= 'after)))))))
+
+(define (call-with-root entries proc)
+  "Call PROC with a root directory containing directories named by ENTRIES."
+  (let ((root (mkdtemp "/tmp/pivot-into-test-XXXXXX")))
+    (dynamic-wind
+      (lambda ()
+        (for-each (lambda (entry)
+                    (mkdir (string-append root "/" entry)))
+                  entries))
+      (lambda () (proc root))
+      (lambda ()
+        (delete-file-recursively root)))))
+
+(define (observe-pivoted-root root)
+  "Return the entries and PID visible after pivoting into ROOT."
+  (call-with-child-proc
+   (logior CLONE_NEWUSER CLONE_NEWNS CLONE_NEWPID SIGCHLD)
+   (lambda (=> <=)
+     (make-mounts-private!)
+     (pivot-into! root)
+     (=> 'observed
+         `((entries . ,(scandir
+                        "/"
+                        (lambda (entry) (not (member entry '("." ".."))))))
+           (pid . ,(readlink "/proc/self")))))
+   (lambda (_ => <=) (<= 'observed))))
+
+(define-suite (pivot-into-tests)
+  (test "a process that pivots is left in the root it was given" ()
+    (define entries '(".old-root" "only-here" "proc"))
+    (define observed
+      (call-with-root entries observe-pivoted-root))
+
+    (is (equal? entries (get observed 'entries)))
+    (is (string=? "1" (get observed 'pid)))))
 
 (define-suite (write-id-maps-tests)
   (test "mapping exposes only the requested number of subordinate ids" ()
