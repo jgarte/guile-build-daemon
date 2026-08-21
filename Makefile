@@ -18,7 +18,7 @@ DEV_SRC_LOAD_PATH=${TEST_SRC_LOAD_PATH} -L ./dev/guile
 
 GUILE_DEV=${GUILE} ${DEV_SRC_LOAD_PATH}
 
-.PHONY: ares check
+.PHONY: ares check testbox-btrfs/install testbox-btrfs/remove
 
 ares:
 	${GUILE_DEV} -c \
@@ -26,3 +26,9 @@ ares:
 
 check:
 	${DEV_ENV} ares-suitbl -- ${TEST_SRC_LOAD_PATH}
+
+testbox-btrfs/install:
+	./env/testbox-btrfs/install.sh
+
+testbox-btrfs/remove:
+	./env/testbox-btrfs/remove.sh
