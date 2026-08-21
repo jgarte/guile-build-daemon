@@ -37,5 +37,6 @@
   (cons* guix-package
          guile-ares-rs-latest
          (map specification->package
-              '("guile"
+              '("btrfs-progs"
+                "guile"
                 "util-linux"))))
