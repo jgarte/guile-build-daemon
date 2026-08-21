@@ -5,12 +5,14 @@
   #:use-module ((ice-9 match) #:select (match-let))
   #:use-module ((ice-9 atomic)
                 #:select (atomic-box-ref atomic-box-set! make-atomic-box))
-  #:use-module ((ice-9 rdelim) #:select (read-string))
+  #:use-module ((ice-9 rdelim) #:select (read-line read-string))
   #:use-module ((srfi srfi-11) #:select (let-values))
+  #:use-module ((srfi srfi-13) #:select (string-contains))
 
   #:use-module ((ares suitbl core) #:select (define-suite is test))
   #:use-module ((ares suitbl checks) #:select (throws-exception?))
   #:use-module ((gxd isolation) #:select (child-proc
+                                          make-mounts-private!
                                           read-current-id-map-ranges
                                           write-id-map-ranges!
                                           CLONE_NEWUSER
@@ -180,6 +182,49 @@ afterwards."
        (is (not (string=? (<= 'ns/mnt) (readlink "/proc/self/ns/mnt"))))
        (is (not (string=? (<= 'ns/pid) (readlink "/proc/self/ns/pid"))))
        (is (not (string=? (<= 'ns/user) (readlink "/proc/self/ns/user"))))))))
+
+;; Host visibility is not a useful observable: mounts created in a user
+;; namespace cannot propagate back to the host.  Inspect mountinfo propagation
+;; fields instead to distinguish inherited shared/slave mounts from private ones.
+(define (propagating-mounts)
+  "Return propagating mountinfo lines and the total mount count."
+  ;; The optional fields encode propagation: `shared:N' sends mount events,
+  ;; `master:N' receives them, and a line with neither is private.
+  (call-with-input-file "/proc/self/mountinfo"
+    (lambda (port)
+      (let loop ((propagating '()) (total 0))
+        (define line (read-line port))
+        (cond ((eof-object? line) (values propagating total))
+              ((or (string-contains line " shared:")
+                   (string-contains line " master:"))
+               (loop (cons line propagating) (+ total 1)))
+              (else (loop propagating (+ total 1))))))))
+
+(define (child-propagating-mounts private?)
+  "Return the propagating and total mount counts from a fresh mount namespace.
+Make its mounts private first when PRIVATE? is true."
+  (call-with-child-proc
+   (logior CLONE_NEWUSER CLONE_NEWNS SIGCHLD)
+   (lambda (=> <=)
+     (when private? (make-mounts-private!))
+     (let-values (((propagating total) (propagating-mounts)))
+       (=> 'counted (list (length propagating) total))))
+   (lambda (_ => <=) (apply values (<= 'counted)))))
+
+(define-suite (make-mounts-private-tests)
+  (test "a fresh mount namespace still follows the mounts it came from" ()
+    ;; Making mounts private is only worth doing because they do not start
+    ;; that way; without this the test below would prove nothing.
+    (let-values (((propagating total) (child-propagating-mounts #f)))
+      (is (> propagating 0))
+      (is (> total 0))))
+
+  (test "no mount is left propagating" ()
+    ;; Every mount, not just the root: the root alone goes private without
+    ;; MS_REC, and its submounts would carry on propagating.
+    (let-values (((propagating total) (child-propagating-mounts #t)))
+      (is (= 0 propagating))
+      (is (> total 0)))))
 
 (define-suite (write-id-maps-tests)
   (test "mapping exposes only the requested number of subordinate ids" ()

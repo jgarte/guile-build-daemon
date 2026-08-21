@@ -15,7 +15,9 @@
                           subid-entry-name
                           subid-entry-start))
   #:use-module ((guix build utils) #:select (invoke))
-  #:use-module ((guix build syscalls) #:select (safe-clone
+  #:use-module ((guix build syscalls) #:select (mount
+                                                safe-clone
+                                                MS_REC
                                                 ;; Linux clone flags, from linux/sched.h
                                                 ;; for namespace isolation:
                                                 CLONE_NEWPID  ;; Process IDs
@@ -33,6 +35,7 @@
                CLONE_NEWUSER)
   #:use-module ((gxd prelude))
   #:export (child-proc
+            make-mounts-private!
             read-current-id-map-ranges
             start-in-namespaces
             write-id-map-ranges!))
@@ -203,6 +206,16 @@ root, then REQUIRED-COUNT ids drawn from the ranges configured for them."
   ;; need setgroups to remain allowed, so do not deny it before calling them.
   (write-id-map-ranges "newuidmap" pid uid-ranges)
   (write-id-map-ranges "newgidmap" pid gid-ranges))
+
+;; Linux MS_PRIVATE, from linux/mount.h.  The pinned Guix exports MS_BIND,
+;; MS_REC and MNT_DETACH from (guix build syscalls), but not this one.
+(define MS_PRIVATE (ash 1 18))
+
+(define (make-mounts-private!)
+  "Make / and every mount below it private to this mount namespace."
+  ;; New mount namespaces inherit propagation groups.  MS_REC makes every
+  ;; inherited mount private, not only /, so later host mounts cannot enter.
+  (mount #f "/" #f (logior MS_REC MS_PRIVATE)))
 
 (define namespace-options
   '(("user" . "user")
