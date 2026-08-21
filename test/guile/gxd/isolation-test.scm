@@ -16,8 +16,10 @@
   #:use-module ((ares suitbl checks) #:select (throws-exception?))
   #:use-module ((guix build utils) #:select (delete-file-recursively))
   #:use-module ((guix build syscalls) #:select (mount MS_SHARED))
+  #:use-module ((guix utils) #:select (call-with-temporary-directory))
   #:use-module ((gxd isolation) #:select (child-proc
                                           make-mounts-private!
+                                          bind-mount-read-only!
                                           pivot-into!
                                           read-current-id-map-ranges
                                           write-id-map-ranges!
@@ -25,7 +27,7 @@
                                           CLONE_NEWNS
                                           CLONE_NEWPID))
   #:use-module ((gxd prelude))
-  #:use-module ((gxd test-prelude) #:select (slurp)))
+  #:use-module ((gxd test-prelude) #:select (slurp spit)))
 
 (define (call-with-child-proc flags child proc)
   "Call PROC with the pid and the parent-side send and receive procedures of a
@@ -247,6 +249,39 @@ afterwards."
                         (lambda (entry) (not (member entry '("." ".."))))))
            (pid . ,(readlink "/proc/self")))))
    (lambda (_ => <=) (<= 'observed))))
+
+(define (observe-read-only-bind-mount source target)
+  "Return the source content and whether TARGET accepts a write after mounting."
+  (call-with-child-proc
+   (logior CLONE_NEWUSER CLONE_NEWNS SIGCHLD)
+   (lambda (=> <=)
+     (<= 'ids-mapped)
+     (bind-mount-read-only! source target)
+     (=> 'observed
+         `((content . ,(slurp (string-append target "/file")))
+           (writable? . ,(not (throws-exception?
+                               (spit (string-append target "/written")
+                                     "written")))))))
+   (lambda (child-pid => <=)
+     (let-values (((uid-ranges gid-ranges) (read-current-id-map-ranges 1)))
+       (write-id-map-ranges! child-pid uid-ranges gid-ranges))
+     (=> 'ids-mapped)
+     (<= 'observed))))
+
+(define-suite (bind-mount-read-only-tests)
+  (test "source contents are exposed read-only at the target" ()
+    (define content "source content")
+    (define observed
+      (call-with-temporary-directory
+       (lambda (directory)
+         (let ((source (string-append directory "/source"))
+               (target (string-append directory "/target")))
+           (mkdir source)
+           (spit (string-append source "/file") content)
+           (observe-read-only-bind-mount source target)))))
+
+    (is (string=? content (get observed 'content)))
+    (is (not (get observed 'writable?)))))
 
 (define-suite (pivot-into-tests)
   (test "a process that pivots is left in the root it was given" ()
