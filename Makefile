@@ -1,13 +1,15 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 # SPDX-FileCopyrightText: 2026 Andrew Tropin
 
+include .envrc
+
 GUIXTM=./env/guix/time-machine
 GUIX=$(GUIXTM) --
 DEV_ENV_LOAD_PATH=-L ./env/guix -L ./env/deps
 DEV_ENV=$(GUIX) shell \
 	${DEV_ENV_LOAD_PATH} \
 	-e '(@ (gxd env guix packages) dev-env)' \
-	--pure --preserve=.*LANG.* --
+	--pure --preserve=.*LANG.* --preserve=^TESTBOX_BTRFS --
 GUILE=$(DEV_ENV) guile
 
 GXD_SRC_LOAD_PATH=-L ./src/guile
