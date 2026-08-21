@@ -16,7 +16,14 @@
                           subid-entry-start))
   #:use-module ((guix build utils) #:select (invoke))
   #:use-module ((guix build syscalls) #:select (mount
+                                                pivot-root
                                                 safe-clone
+                                                umount
+                                                MNT_DETACH
+                                                MS_BIND
+                                                MS_NODEV
+                                                MS_NOEXEC
+                                                MS_NOSUID
                                                 MS_REC
                                                 ;; Linux clone flags, from linux/sched.h
                                                 ;; for namespace isolation:
@@ -36,6 +43,7 @@
   #:use-module ((gxd prelude))
   #:export (child-proc
             make-mounts-private!
+            pivot-into!
             read-current-id-map-ranges
             start-in-namespaces
             write-id-map-ranges!))
@@ -216,6 +224,25 @@ root, then REQUIRED-COUNT ids drawn from the ranges configured for them."
   ;; New mount namespaces inherit propagation groups.  MS_REC makes every
   ;; inherited mount private, not only /, so later host mounts cannot enter.
   (mount #f "/" #f (logior MS_REC MS_PRIVATE)))
+
+(define (pivot-into! root)
+  "Make ROOT this process's root, put the old root out of reach, and mount
+procfs for this PID namespace."
+  ;; pivot_root takes a mount point, so bind ROOT onto itself.  MS_REC carries
+  ;; its submounts, including the source-tree mount, into that bind.
+  (mount root root #f (logior MS_BIND MS_REC))
+  ;; Inherited procfs reports the PID namespace in which it was mounted.
+  (mount "proc" (string-append root "/proc") "proc"
+         (logior MS_NOSUID MS_NODEV MS_NOEXEC))
+  (chdir root)
+  (let ((old-root ".old-root"))
+    (unless (file-exists? old-root) (mkdir old-root))
+    (pivot-root "." old-root)
+    (chdir "/")
+    ;; Detaching is what puts the old root out of reach; until then the box
+    ;; holds a handle on the tree it came from, whatever its own root shows.
+    (umount (string-append "/" old-root) MNT_DETACH)
+    (rmdir (string-append "/" old-root))))
 
 (define namespace-options
   '(("user" . "user")

@@ -5,6 +5,7 @@
   #:use-module ((ice-9 match) #:select (match-let))
   #:use-module ((ice-9 atomic)
                 #:select (atomic-box-ref atomic-box-set! make-atomic-box))
+  #:use-module ((ice-9 ftw) #:select (scandir))
   #:use-module ((ice-9 rdelim) #:select (read-line read-string))
   #:use-module ((srfi srfi-11) #:select (let-values))
   #:use-module ((srfi srfi-13) #:select (string-contains))
@@ -13,6 +14,7 @@
   #:use-module ((ares suitbl checks) #:select (throws-exception?))
   #:use-module ((gxd isolation) #:select (child-proc
                                           make-mounts-private!
+                                          pivot-into!
                                           read-current-id-map-ranges
                                           write-id-map-ranges!
                                           CLONE_NEWUSER
@@ -225,6 +227,46 @@ Make its mounts private first when PRIVATE? is true."
     (let-values (((propagating total) (child-propagating-mounts #t)))
       (is (= 0 propagating))
       (is (> total 0)))))
+
+(define (call-with-root proc)
+  "Call PROC with a root directory containing /proc and /only-here."
+  (let ((root (mkdtemp "/tmp/pivot-into-test-XXXXXX")))
+    (dynamic-wind
+      (lambda ()
+        (mkdir (string-append root "/proc"))
+        (mkdir (string-append root "/only-here")))
+      (lambda () (proc root))
+      (lambda ()
+        (rmdir (string-append root "/proc"))
+        (rmdir (string-append root "/only-here"))
+        (rmdir root)))))
+
+(define (pivoted-into root)
+  "Return what a child in ROOT sees of it and of the tree it came from."
+  (call-with-child-proc
+   (logior CLONE_NEWUSER CLONE_NEWNS CLONE_NEWPID SIGCHLD)
+   (lambda (=> <=)
+     (make-mounts-private!)
+     (pivot-into! root)
+     (=> 'seen `((entries . ,(scandir "/"))
+                 ;; The directory the root was made under, which the child can
+                 ;; only reach if the tree it came from is still there.
+                 (tmp? . ,(file-exists? "/tmp"))
+                 (own-directory? . ,(file-exists? "/only-here")))))
+   (lambda (_ => <=) (<= 'seen))))
+
+(define-suite (pivot-into-tests)
+  (test "a process that pivots is left in the root it was given" ()
+    (call-with-root
+     (lambda (root)
+       (let ((seen (pivoted-into root)))
+         (is (get seen 'own-directory?))
+         ;; /tmp holds the root itself, so seeing it would mean the box is
+         ;; still looking at the tree its root was made in.
+         (is (not (get seen 'tmp?)))
+         ;; Nothing of the old root is left to reach, not even the empty
+         ;; directory it was pivoted under.
+         (is (not (member ".old-root" (get seen 'entries)))))))))
 
 (define-suite (write-id-maps-tests)
   (test "mapping exposes only the requested number of subordinate ids" ()
