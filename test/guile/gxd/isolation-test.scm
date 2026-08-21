@@ -2,14 +2,20 @@
 ;; SPDX-FileCopyrightText: 2026 Andrew Zhurov
 
 (define-module (gxd isolation-test)
-  #:use-module ((ice-9 match) #:select (match-let))
+  #:use-module ((ice-9 match) #:select (match match-let))
   #:use-module ((ice-9 atomic)
                 #:select (atomic-box-ref atomic-box-set! make-atomic-box))
+  #:use-module ((srfi srfi-1) #:select (any))
   #:use-module ((srfi srfi-11) #:select (let-values))
+  #:use-module ((srfi srfi-13)
+                #:select (string-prefix? string-tokenize))
+  #:use-module ((srfi srfi-197) #:select (chain))
 
   #:use-module ((ares suitbl core) #:select (define-suite is test))
   #:use-module ((ares suitbl checks) #:select (throws-exception?))
+  #:use-module ((guix build syscalls) #:select (mount MS_SHARED))
   #:use-module ((gxd isolation) #:select (child-proc
+                                          make-mounts-private!
                                           read-current-id-map-ranges
                                           write-id-map-ranges!
                                           CLONE_NEWUSER
@@ -176,6 +182,42 @@ afterwards."
        (is (not (string=? (<= 'ns/mnt) (readlink "/proc/self/ns/mnt"))))
        (is (not (string=? (<= 'ns/pid) (readlink "/proc/self/ns/pid"))))
        (is (not (string=? (<= 'ns/user) (readlink "/proc/self/ns/user"))))))))
+
+(define (mount-propagation path)
+  "Return the propagation type of the mount at PATH."
+  (define (propagation line)
+    (match (string-tokenize line)
+      ((_ _ _ _ mount-point _ optional ... "-" _ _ _)
+       (and (string=? path mount-point)
+            (cond
+             ((any (lambda (field) (string-prefix? "shared:" field))
+                   optional)
+              'shared)
+             ((any (lambda (field)
+                     (or (string-prefix? "master:" field)
+                         (string-prefix? "propagate_from:" field)))
+                   optional)
+              'slave)
+             ((member "unbindable" optional) 'unbindable)
+             (else 'private))))
+      (_ #f)))
+  (chain "/proc/self/mountinfo"
+         (slurp _)
+         (string-split _ #\newline)
+         (any propagation _)))
+
+(define-suite (make-mounts-private-tests)
+  (test "an inherited shared submount is made private" ()
+    (call-with-child-proc
+     (logior CLONE_NEWUSER CLONE_NEWNS SIGCHLD)
+     (lambda (=> <=)
+       (mount #f "/proc" #f MS_SHARED)
+       (=> 'before (mount-propagation "/proc"))
+       (make-mounts-private!)
+       (=> 'after (mount-propagation "/proc")))
+     (lambda (_ => <=)
+       (is (eq? 'shared (<= 'before)))
+       (is (eq? 'private (<= 'after)))))))
 
 (define-suite (write-id-maps-tests)
   (test "mapping exposes only the requested number of subordinate ids" ()
