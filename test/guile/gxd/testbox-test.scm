@@ -9,6 +9,7 @@
                           make-exception-with-message))
   #:use-module ((ice-9 ftw) #:select (scandir))
   #:use-module ((ice-9 match) #:select (match))
+  #:use-module ((srfi srfi-1) #:select (find))
   #:use-module ((ares suitbl core) #:select (define-suite is test))
   #:use-module ((gxd test-prelude)
                 #:select (capture-exception
@@ -44,6 +45,12 @@ exactly when they are in the same one."
       (lambda () #t)
       (lambda () (proc box))
       (lambda () (teardown-testbox! box)))))
+
+(define (store-item directory)
+  "Return an item name from store DIRECTORY."
+  (or (find (lambda (name) (not (member name '("." ".."))))
+            (scandir directory))
+      (error "no store items to compare" directory)))
 
 (define (role-exit-status box role expression)
   "Run EXPRESSION as ROLE in BOX and return the status it exited with.
@@ -250,3 +257,21 @@ fails with ECHILD, which is what distinguishes it from one still running."
     (is child-was-alive?)
     (is (reaped? child-pid))
     (is (not (file-exists? root)))))
+
+(define-suite (testbox-store-tests)
+  (test "a testbox has its base store and not the host store" ()
+    (let* ((base (require-testbox-base))
+           (host-only (search-path %load-path "ares/suitbl/core.scm"))
+           (from-base (store-item (string-append base "/gnu/store"))))
+      (is (file-exists? host-only))
+      (is (not (file-exists? (string-append base host-only))))
+      (is (file-exists? (string-append "/gnu/store/" from-base)))
+
+      (call-with-testbox
+       (lambda (box)
+         (define (box-sees? path)
+           (= 1 (role-exit-status box 'daemon
+                                  `(if (file-exists? ,path) 1 0))))
+
+         (is (not (box-sees? host-only)))
+         (is (box-sees? (string-append "/gnu/store/" from-base))))))))
