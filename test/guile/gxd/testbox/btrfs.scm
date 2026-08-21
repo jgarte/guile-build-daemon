@@ -8,6 +8,7 @@
   #:use-module ((guix build utils) #:select (invoke))
   #:export (delete-testbox-root!
             require-testbox-base
+            snapshot-base!
             testbox-root-path))
 
 ;; Linux BTRFS_SUPER_MAGIC, from linux/magic.h.
@@ -41,3 +42,12 @@
   "Delete the testbox root owned by PID1."
   (invoke (btrfs) "--quiet" "subvolume" "delete"
           (testbox-root-path pid1)))
+
+(define (snapshot-base! pid1)
+  "Snapshot the base into the testbox root owned by PID1 and return its path."
+  (let ((base (require-testbox-base))
+        (destination (testbox-root-path pid1)))
+    (when (file-exists? destination)
+      (error "testbox root already exists" destination))
+    (invoke (btrfs) "--quiet" "subvolume" "snapshot" base destination)
+    destination))
