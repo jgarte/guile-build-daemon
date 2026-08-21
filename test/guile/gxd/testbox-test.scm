@@ -7,10 +7,18 @@
                           exception-kind
                           exception-message
                           make-exception-with-message))
+  #:use-module ((ice-9 ftw) #:select (scandir))
   #:use-module ((ice-9 match) #:select (match))
   #:use-module ((ares suitbl core) #:select (define-suite is test))
   #:use-module ((gxd test-prelude)
-                #:select (capture-exception with-module-binding))
+                #:select (capture-exception
+                          with-module-binding
+                          with-module-bindings))
+  #:use-module ((gxd testbox btrfs)
+                #:select (delete-testbox-root!
+                          require-testbox-base
+                          snapshot-base!
+                          testbox-root-path))
   #:use-module ((gxd testbox)
                 #:select (make-testbox-manifest
                           start-testbox
@@ -19,6 +27,7 @@
                           testbox-manifest
                           testbox-pid1
                           testbox-process-pid
+                          testbox-root
                           wait-testbox-process!))
   #:use-module (gxd prelude))
 
@@ -68,6 +77,23 @@ fails with ECHILD, which is what distinguishes it from one still running."
     #:unwind? #t))
 
 (define-suite (testbox-tests)
+  (test "boxes started together get a root each" ()
+    ;; Concurrent boxes share the test process, so roots cannot use its pid.
+    (let ((first (start-testbox (make-testbox-manifest))))
+      (dynamic-wind
+        (lambda () #t)
+        (lambda ()
+          (let ((second (start-testbox (make-testbox-manifest))))
+            (dynamic-wind
+              (lambda () #t)
+              (lambda ()
+                (is (not (string=? (testbox-root first)
+                                   (testbox-root second))))
+                (is (file-exists? (testbox-root first)))
+                (is (file-exists? (testbox-root second))))
+              (lambda () (teardown-testbox! second)))))
+        (lambda () (teardown-testbox! first)))))
+
   (test "testbox enters fresh user, mount, and pid namespaces" ()
     (call-with-testbox
      (lambda (box)
@@ -79,9 +105,10 @@ fails with ECHILD, which is what distinguishes it from one still running."
        (is (fresh? 'mnt))
        (is (fresh? 'pid)))))
 
-  (test "teardown preserves its first failure after reaping" ()
+  (test "teardown preserves its first failure and root after a reap failure" ()
     (let* ((box (start-testbox (make-testbox-manifest)))
            (pid1 (testbox-pid1 box))
+           (root (testbox-root box))
            (process (start-testbox-process! box 'daemon guile
                                             '("-c" "(sleep 10)")))
            (process-pid (testbox-process-pid process))
@@ -105,7 +132,10 @@ fails with ECHILD, which is what distinguishes it from one still running."
 
       (is (string=? "expected teardown failure" (exception-message captured)))
       (is (reaped? pid1))
-      (is (reaped? process-pid))))
+      (is (reaped? process-pid))
+      (is (file-exists? root))
+
+      (delete-testbox-root! pid1)))
 
   (test "programs run as either declared role" ()
     (call-with-testbox
@@ -133,10 +163,69 @@ fails with ECHILD, which is what distinguishes it from one still running."
          (is (= 7 (status:exit-val (wait-testbox-process! process))))
          (is (= 7 (status:exit-val (wait-testbox-process! process))))))))
 
+  (test "startup retains the root when PID 1 cannot be reaped" ()
+    (define expected (make-exception-with-message "expected startup failure"))
+    (define child-pid #f)
+    (define testbox-module (resolve-module '(gxd testbox)))
+    (define waitpid (module-ref testbox-module 'waitpid))
+
+    (define (failing-write-id-maps pid uid-ranges gid-ranges)
+      (set! child-pid pid)
+      (raise-exception expected))
+
+    (define (failing-pid1-wait pid options)
+      (if (and child-pid (= child-pid pid))
+          (raise-exception
+           (make-exception-with-message "expected reap failure"))
+          (waitpid pid options)))
+
+    (define (start)
+      (capture-exception
+       (lambda () (start-testbox (make-testbox-manifest)))))
+    (define captured
+      (with-module-bindings
+       testbox-module
+       `((write-id-map-ranges! . ,failing-write-id-maps)
+         (waitpid . ,failing-pid1-wait))
+       start))
+    (define root (testbox-root-path child-pid))
+
+    (is (eq? expected captured))
+    (is (file-exists? root))
+
+    (waitpid child-pid 0)
+    (delete-testbox-root! child-pid))
+
+  (test "startup collision preserves the stale root" ()
+    (define root #f)
+    (define child-pid #f)
+    (define child-proc
+      (module-ref (resolve-module '(gxd isolation)) 'child-proc))
+
+    (define (child-proc-with-stale-root flags child)
+      (let ((result (child-proc flags child)))
+        (set! child-pid (car result))
+        (set! root (snapshot-base! child-pid))
+        result))
+
+    (define captured
+      (with-module-binding
+       (resolve-module '(gxd isolation)) 'child-proc
+       child-proc-with-stale-root
+       (lambda ()
+         (capture-exception
+          (lambda () (start-testbox (make-testbox-manifest)))))))
+
+    (is captured)
+    (is (file-exists? root))
+
+    (delete-testbox-root! child-pid))
+
   (test "startup failure releases PID 1 before propagating" ()
     (define expected (make-exception-with-message "expected mapping failure"))
     (define child-pid #f)
     (define child-was-alive? #f)
+    (define testbox-module (resolve-module '(gxd testbox)))
 
     ;; Fail the first step after the child exists, so startup has something to
     ;; roll back.  Liveness is recorded here because by the time the assertions
@@ -146,15 +235,18 @@ fails with ECHILD, which is what distinguishes it from one still running."
       (set! child-was-alive? (alive? pid))
       (raise-exception expected))
 
+    (define (start)
+      (capture-exception
+       (lambda () (start-testbox (make-testbox-manifest)))))
     (define captured
-      (with-module-binding
-       (resolve-module '(gxd testbox)) 'write-id-map-ranges!
-       failing-write-id-maps
-       (lambda ()
-         (capture-exception
-          (lambda () (start-testbox (make-testbox-manifest)))))))
+      (with-module-bindings
+       testbox-module
+       `((write-id-map-ranges! . ,failing-write-id-maps))
+       start))
+    (define root (testbox-root-path child-pid))
 
     (is (eq? expected captured))
     (is (integer? child-pid))
     (is child-was-alive?)
-    (is (reaped? child-pid))))
+    (is (reaped? child-pid))
+    (is (not (file-exists? root)))))
