@@ -5,6 +5,7 @@
   #:use-module ((ice-9 match) #:select (match-let))
   #:use-module ((ice-9 atomic)
                 #:select (atomic-box-ref atomic-box-set! make-atomic-box))
+  #:use-module ((guix build syscalls) #:select (mount))
   #:use-module ((ice-9 ftw) #:select (scandir))
   #:use-module ((ice-9 rdelim) #:select (read-line read-string))
   #:use-module ((srfi srfi-11) #:select (let-values))
@@ -14,6 +15,7 @@
   #:use-module ((ares suitbl checks) #:select (throws-exception?))
   #:use-module ((gxd isolation) #:select (child-proc
                                           make-mounts-private!
+                                          mount-source!
                                           pivot-into!
                                           read-current-id-map-ranges
                                           write-id-map-ranges!
@@ -233,7 +235,7 @@ Make its mounts private first when PRIVATE? is true."
   (let ((root (mkdtemp "/tmp/pivot-into-test-XXXXXX")))
     (dynamic-wind
       (lambda ()
-        (mkdir (string-append root "/proc"))
+        (mkdir (string-append root "/proc") #o755)
         (mkdir (string-append root "/only-here")))
       (lambda () (proc root))
       (lambda ()
@@ -254,6 +256,63 @@ Make its mounts private first when PRIVATE? is true."
                  (tmp? . ,(file-exists? "/tmp"))
                  (own-directory? . ,(file-exists? "/only-here")))))
    (lambda (_ => <=) (<= 'seen))))
+
+(define (mounted-source-in-box root source)
+  "Return whether a box in ROOT sees SOURCE's file and can write beside it."
+  (call-with-child-proc
+   (logior CLONE_NEWUSER CLONE_NEWNS CLONE_NEWPID SIGCHLD)
+   (lambda (=> <=)
+     ;; Wait for the parent to install the id maps.  Until it has, this
+     ;; process has no id the kernel can represent, and creating anything on
+     ;; a filesystem it mounts fails with EOVERFLOW.
+     (<= 'ids-mapped)
+     (make-mounts-private!)
+     ;; A box's root is a filesystem of its own, and pivoting recursively
+     ;; binds it; a plain directory would make the source's mount part of
+     ;; whatever subtree that directory sits in.  A tmpfs here stands in for
+     ;; the clone, and belongs to this namespace alone.
+     (mount "tmpfs" root "tmpfs" 0)
+     (mkdir (string-append root "/proc"))
+     (mount-source! root source)
+     (pivot-into! root)
+     (=> 'seen
+         `((file? . ,(file-exists? (string-append source "/file")))
+           (wrote? . ,(catch #t
+                        (lambda ()
+                          (call-with-output-file (string-append source "/written")
+                            (lambda (port) (display "no" port)))
+                          #t)
+                        (lambda _ #f))))))
+   (lambda (child-pid => <=)
+     (let-values (((uid-ranges gid-ranges) (read-current-id-map-ranges 2)))
+       (write-id-map-ranges! child-pid uid-ranges gid-ranges))
+     (=> 'ids-mapped)
+     (<= 'seen))))
+
+(define (call-with-source proc)
+  "Call PROC with a directory standing in for the source tree, holding a file
+a box can look for."
+  (let ((source (mkdtemp "/tmp/mount-source-test-XXXXXX")))
+    (dynamic-wind
+      (lambda ()
+        (call-with-output-file (string-append source "/file")
+          (lambda (port) (display "from the host" port))))
+      (lambda () (proc source))
+      (lambda ()
+        (delete-file (string-append source "/file"))
+        (rmdir source)))))
+
+(define-suite (mount-source-tests)
+  (test "a box reads the source at the path it has outside, and cannot write it" ()
+    (call-with-root
+     (lambda (root)
+       (call-with-source
+        (lambda (source)
+          (let ((seen (mounted-source-in-box root source)))
+            (is (get seen 'file?))
+            (is (not (get seen 'wrote?)))
+            ;; The failed write must not have reached the host either.
+            (is (not (file-exists? (string-append source "/written")))))))))))
 
 (define-suite (pivot-into-tests)
   (test "a process that pivots is left in the root it was given" ()

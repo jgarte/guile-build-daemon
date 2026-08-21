@@ -14,7 +14,7 @@
                           subid-entry-count
                           subid-entry-name
                           subid-entry-start))
-  #:use-module ((guix build utils) #:select (invoke))
+  #:use-module ((guix build utils) #:select (invoke mkdir-p))
   #:use-module ((guix build syscalls) #:select (mount
                                                 pivot-root
                                                 safe-clone
@@ -24,7 +24,9 @@
                                                 MS_NODEV
                                                 MS_NOEXEC
                                                 MS_NOSUID
+                                                MS_RDONLY
                                                 MS_REC
+                                                MS_REMOUNT
                                                 ;; Linux clone flags, from linux/sched.h
                                                 ;; for namespace isolation:
                                                 CLONE_NEWPID  ;; Process IDs
@@ -43,6 +45,7 @@
   #:use-module ((gxd prelude))
   #:export (child-proc
             make-mounts-private!
+            mount-source!
             pivot-into!
             read-current-id-map-ranges
             start-in-namespaces
@@ -224,6 +227,17 @@ root, then REQUIRED-COUNT ids drawn from the ranges configured for them."
   ;; New mount namespaces inherit propagation groups.  MS_REC makes every
   ;; inherited mount private, not only /, so later host mounts cannot enter.
   (mount #f "/" #f (logior MS_REC MS_PRIVATE)))
+
+(define (mount-source! root source)
+  "Bind-mount SOURCE read-only at the same absolute path below ROOT.
+Call before `pivot-into!' so the mount point is reachable."
+  (let ((target (string-append root source)))
+    (mkdir-p target)
+    (mount source target #f MS_BIND)
+    ;; Bind mounts inherit flags; remount to add MS_RDONLY.  Preserve locked
+    ;; MS_NOSUID and MS_NODEV, or the kernel rejects the remount with EPERM.
+    (mount #f target #f
+           (logior MS_BIND MS_REMOUNT MS_RDONLY MS_NOSUID MS_NODEV))))
 
 (define (pivot-into! root)
   "Make ROOT this process's root, put the old root out of reach, and mount
