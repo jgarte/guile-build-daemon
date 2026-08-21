@@ -29,6 +29,11 @@ user needs at least two subordinate IDs delegated in `/etc/subuid` and
 Mapping more than a single ID also needs the setuid-root `newuidmap` and
 `newgidmap` helpers, which the `shadow` package provides.
 
+Initialize and mount the testbox disk before running `make check` or starting
+Ares:
+
+  make testbox-disk/init
+
 ## Contributing
 
 This project uses Scoped Commits for commit messages format:

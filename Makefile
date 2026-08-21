@@ -32,12 +32,11 @@ GLP_DEV     = -L ./dev/guile ${GLP_TEST}
 DEV_ENV = $(GUIX) shell ${GLP_DEV_ENV} \
           -e '(@ (gxd env guix packages) dev-env)' \
           --pure --preserve=.*LANG.* --
-GUILE_DEV = $(DEV_ENV) guile ${GLP_DEV}
 
 SUDO := $(shell command -v sudo)
 
 # Testbox Disk Paths (writable by unprivileged user)
-TESTBOX_DIRECTORY                = target/testbox
+TESTBOX_DIRECTORY                := $(abspath target/testbox)
 TESTBOX_DISK_MOUNT_POINT         = ${TESTBOX_DIRECTORY}/mnt
 TESTBOX_DISK_BASE_SUBVOLUME_PATH = ${TESTBOX_DISK_MOUNT_POINT}/base
 TESTBOX_DISK_IMAGE               = ${TESTBOX_DIRECTORY}/disk.img
@@ -52,6 +51,11 @@ TESTBOX_DISK_ENV = env \
        TESTBOX_DISK_IMAGE_SIZE=${TESTBOX_DISK_IMAGE_SIZE} \
        TESTBOX_DISK_BOOTSTRAP_ARCHIVE=${TESTBOX_DISK_BOOTSTRAP_ARCHIVE}
 
+TEST_ENV = $(DEV_ENV) env \
+       TESTBOX_DISK_BASE_SUBVOLUME_PATH=${TESTBOX_DISK_BASE_SUBVOLUME_PATH}
+
+GUILE_DEV = $(TEST_ENV) guile ${GLP_DEV}
+
 # ----------------------------------------------------------------------------
 
 .PHONY: ares
@@ -60,7 +64,7 @@ ares:
 
 .PHONY: check
 check:
-	${DEV_ENV} ares-suitbl -- ${GLP_TEST}
+	${TEST_ENV} ares-suitbl -- ${GLP_TEST}
 
 .PHONY: testbox-disk/bootstrap-archive
 testbox-disk/bootstrap-archive: ${TESTBOX_DISK_BOOTSTRAP_ARCHIVE}
