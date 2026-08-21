@@ -6,7 +6,8 @@
 (define-module (gxd testbox btrfs-test)
   #:use-module ((ares suitbl core) #:select (define-suite is test))
   #:use-module ((gxd test-prelude) #:select (capture-exception))
-  #:use-module ((gxd testbox btrfs) #:select (require-testbox-base)))
+  #:use-module ((gxd testbox btrfs)
+                #:select (delete-testbox-root! require-testbox-base)))
 
 (define-suite (testbox-btrfs-tests)
   (test "a missing base is refused" ()

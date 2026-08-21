@@ -5,7 +5,10 @@
 
 (define-module (gxd testbox btrfs)
   #:use-module ((guix build syscalls) #:select (file-system-type statfs))
-  #:export (require-testbox-base))
+  #:use-module ((guix build utils) #:select (invoke))
+  #:export (delete-testbox-root!
+            require-testbox-base
+            testbox-root-path))
 
 ;; Linux BTRFS_SUPER_MAGIC, from linux/magic.h.
 (define BTRFS_SUPER_MAGIC #x9123683E)
@@ -24,3 +27,17 @@
     (unless (file-exists? base)
       (error "testbox base is not installed" base))
     base))
+
+(define (btrfs)
+  (or (search-path (string-split (or (getenv "PATH") "") #\:) "btrfs")
+      (error "unable to find btrfs")))
+
+(define (testbox-root-path pid1)
+  "Return the testbox root path for PID1."
+  (string-append (getenv "TESTBOX_BTRFS") "/testbox-roots/testbox-"
+                 (number->string pid1)))
+
+(define (delete-testbox-root! pid1)
+  "Delete the testbox root owned by PID1."
+  (invoke (btrfs) "--quiet" "subvolume" "delete"
+          (testbox-root-path pid1)))
