@@ -1,0 +1,19 @@
+#!/bin/sh
+# SPDX-License-Identifier: GPL-3.0-or-later
+# SPDX-FileCopyrightText: 2026 Andrew Tropin
+# SPDX-FileCopyrightText: 2026 Andrew Zhurov
+# SPDX-FileCopyrightText: 2026 buttonspresser
+
+set -eu
+
+root=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
+set -- -C "$root/env/guix/gxd/env/guix/channels.scm" "$@"
+
+# Newer Guix requires this opt-out; older Guix rejects it.
+if guix time-machine --help 2>/dev/null |
+   grep -q -- --unsafe-channel-evaluation
+then
+  set -- --unsafe-channel-evaluation "$@"
+fi
+
+exec guix time-machine "$@"
