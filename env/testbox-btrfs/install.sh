@@ -46,3 +46,25 @@ if ! awk -v m="$TESTBOX_BTRFS" '$2 == m { f = 1 } END { exit !f }' /proc/mounts;
 fi
 
 mkdir -p "$TESTBOX_BTRFS/testbox-roots"
+
+base="$TESTBOX_BTRFS/base"
+if [[ -e $base ]]; then
+  printf '%s\n' "$base"
+  exit 0
+fi
+
+btrfs=$("${DEV_ENV[@]}" guile -c \
+  '(display (search-path (string-split (getenv "PATH") #\:) "btrfs"))')
+pack=$("${GUIXTM[@]}" -- \
+       pack -L ./env/guix -L ./env/deps \
+       --localstatedir \
+       --manifest=./test/guile/gxd/testbox/base-manifest.scm)
+
+"$btrfs" subvolume create "$base" >/dev/null
+trap '"$btrfs" subvolume delete "$base" >/dev/null' EXIT
+tar --extract --file "$pack" --directory "$base" \
+  --no-same-owner --same-permissions
+"$btrfs" property set -t s "$base" ro true
+trap - EXIT
+
+printf '%s\n' "$base"
