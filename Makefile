@@ -2,13 +2,13 @@
 # SPDX-FileCopyrightText: 2026 Andrew Tropin
 
 GUIXTM=guix time-machine --unsafe-channel-evaluation \
-	-C ./env/guix/gxd/env/guix/channels.scm
+       -C ./env/guix/gxd/env/guix/channels.scm
 GUIX=$(GUIXTM) --
 DEV_ENV_LOAD_PATH=-L ./env/guix -L ./env/deps
 DEV_ENV=$(GUIX) shell \
-	${DEV_ENV_LOAD_PATH} \
-	-e '(@ (gxd env guix packages) dev-env)' \
-	--pure --preserve=.*LANG.* --
+       ${DEV_ENV_LOAD_PATH} \
+       -e '(@ (gxd env guix packages) dev-env)' \
+       --pure --preserve=.*LANG.* --
 GUILE=$(DEV_ENV) guile
 
 GXD_SRC_LOAD_PATH=-L ./src/guile
@@ -20,8 +20,7 @@ GUILE_DEV=${GUILE} ${DEV_SRC_LOAD_PATH}
 .PHONY: ares check
 
 ares:
-	${GUILE_DEV} -c \
-	"((@ (ares server) run-nrepl-server))"
+	${GUILE_DEV} -c "((@ (ares server) run-nrepl-server))"
 
 check:
 	${DEV_ENV} ares-suitbl -- ${TEST_SRC_LOAD_PATH}
