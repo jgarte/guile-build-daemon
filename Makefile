@@ -55,3 +55,7 @@ check:
 .PHONY: testbox-disk/init
 testbox-disk/init:
 	${DEV_ENV} ${TESTBOX_DISK_ENV} sh ./env/testbox-disk/init.sh
+
+.PHONY: testbox-disk/delete
+testbox-disk/delete:
+	${DEV_ENV} ${TESTBOX_DISK_ENV} sh ./env/testbox-disk/delete.sh
