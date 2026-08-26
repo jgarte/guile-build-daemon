@@ -1,9 +1,18 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 # SPDX-FileCopyrightText: 2026 Andrew Tropin
 
-GUIXTM=guix time-machine --unsafe-channel-evaluation \
-       -C ./env/guix/gxd/env/guix/channels.scm
+# Guix requires `--unsafe-channel-evaluation' (UCE_FLAG) opt-out flag if the
+# file that provides channels is not a simple list and needs to be evaluated;
+# the older version of Guix does not accept this flag and fails
+GUIX_UCE_FLAG := $(shell \
+                   guix time-machine --help 2>&1 | \
+                   grep -q -- --unsafe-channel-evaluation && \
+                   echo "--unsafe-channel-evaluation" \
+                   )
+
+GUIXTM := guix time-machine $(GUIX_UCE_FLAG) -C ./env/guix/gxd/env/guix/channels.scm
 GUIX=$(GUIXTM) --
+
 DEV_ENV_LOAD_PATH=-L ./env/guix -L ./env/deps
 DEV_ENV=$(GUIX) shell \
        ${DEV_ENV_LOAD_PATH} \
