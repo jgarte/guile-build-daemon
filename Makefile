@@ -3,7 +3,6 @@
 # SPDX-FileCopyrightText: 2026 Andrew Zhurov
 # SPDX-FileCopyrightText: 2026 buttonspresser
 
-
 GUIX_CHANNELS_FILE = ./env/guix/gxd/env/guix/channels.scm
 
 # Guix requires `--unsafe-channel-evaluation' flag (UCE_FLAG) if the file that
@@ -30,6 +29,19 @@ DEV_ENV = $(GUIX) shell ${GLP_DEV_ENV} \
           --pure --preserve=.*LANG.* --
 GUILE_DEV = $(DEV_ENV) guile ${GLP_DEV}
 
+SUDO := $(shell command -v sudo)
+
+# Testbox Disk Paths (writable by unprivileged user)
+TESTBOX_DISK_MOUNT_POINT = ./tmp/.testbox-disk
+TESTBOX_DISK_IMAGE       = ./tmp/.testbox-disk.image
+TESTBOX_DISK_IMAGE_SIZE  = 10G
+
+TESTBOX_DISK_ENV = env \
+       SUDO=${SUDO} \
+       TESTBOX_DISK_MOUNT_POINT=${TESTBOX_DISK_MOUNT_POINT} \
+       TESTBOX_DISK_IMAGE=${TESTBOX_DISK_IMAGE} \
+       TESTBOX_DISK_IMAGE_SIZE=${TESTBOX_DISK_IMAGE_SIZE}
+
 # ----------------------------------------------------------------------------
 
 .PHONY: ares
@@ -39,3 +51,7 @@ ares:
 .PHONY: check
 check:
 	${DEV_ENV} ares-suitbl -- ${GLP_TEST}
+
+.PHONY: testbox-disk/init
+testbox-disk/init:
+	${DEV_ENV} ${TESTBOX_DISK_ENV} sh ./env/testbox-disk/init.sh
