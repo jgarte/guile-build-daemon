@@ -3,6 +3,11 @@
 # SPDX-FileCopyrightText: 2026 Andrew Zhurov
 # SPDX-FileCopyrightText: 2026 buttonspresser
 
+# Block execution if the effective user ID is 0 (root)
+ifeq ($(shell id -u), 0)
+       $(error "These 'make' commands should not be called as root/sudo.")
+endif
+
 GUIX_CHANNELS_FILE = ./env/guix/gxd/env/guix/channels.scm
 
 # Guix requires `--unsafe-channel-evaluation' flag (UCE_FLAG) if the file that
