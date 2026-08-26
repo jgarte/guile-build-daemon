@@ -27,7 +27,8 @@ else
     mkdir -p "$TESTBOX_DISK_MOUNT_POINT"
     $SUDO mount -o loop,rw,nosuid,nodev,noatime,user_subvol_rm_allowed \
           "$TESTBOX_DISK_IMAGE" "$TESTBOX_DISK_MOUNT_POINT"
-    $SUDO chown "$(id -u):$(id -g)" "$TESTBOX_DISK_MOUNT_POINT"
+    USER_ID=$(id -u); GROUP_ID=$(id -g)
+    $SUDO chown "$USER_ID:$GROUP_ID" "$TESTBOX_DISK_MOUNT_POINT"
     echo "'testbox disk' btrfs image is mounted at $TESTBOX_DISK_MOUNT_POINT"
 fi
 
