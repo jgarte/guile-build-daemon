@@ -37,5 +37,8 @@
   (cons* guix-package
          guile-ares-rs-latest
          (map specification->package
-              '("guile"
-                "util-linux"))))
+              '("util-linux"            ; mount, etc. kernel utils
+                "coreutils"             ; env, chown, ect. POSIX utils
+                "btrfs-progs"           ; mkfs.btrfs, etc.
+                "bash-minimal"          ; sh, bash
+                "guile"))))
