@@ -15,26 +15,27 @@ GUIX_UCE_FLAG := $(shell \
                    echo "--unsafe-channel-evaluation" \
                    )
 
-GUIXTM := guix time-machine $(GUIX_UCE_FLAG) --channels=${GUIX_CHANNELS_FILE}
-GUIX=$(GUIXTM) --
+GUIX_TM := guix time-machine $(GUIX_UCE_FLAG) --channels=${GUIX_CHANNELS_FILE}
+GUIX = $(GUIX_TM) --
 
-DEV_ENV_LOAD_PATH=-L ./env/guix -L ./env/deps
-DEV_ENV=$(GUIX) shell \
-       ${DEV_ENV_LOAD_PATH} \
-       -e '(@ (gxd env guix packages) dev-env)' \
-       --pure --preserve=.*LANG.* --
-GUILE=$(DEV_ENV) guile
+# Guile Load Paths (GLP)
+GLP_DEV_ENV = -L ./env/guix \
+              -L ./env/deps
+GLP_GXD     = -L ./src/guile
+GLP_TEST    = -L ./test/guile ${GLP_GXD}
+GLP_DEV     = -L ./dev/guile ${GLP_TEST}
 
-GXD_SRC_LOAD_PATH=-L ./src/guile
-TEST_SRC_LOAD_PATH=${GXD_SRC_LOAD_PATH} -L ./test/guile
-DEV_SRC_LOAD_PATH=${TEST_SRC_LOAD_PATH} -L ./dev/guile
+DEV_ENV = $(GUIX) shell ${GLP_DEV_ENV} \
+          -e '(@ (gxd env guix packages) dev-env)' \
+          --pure --preserve=.*LANG.* --
+GUILE_DEV = $(DEV_ENV) guile ${GLP_DEV}
 
-GUILE_DEV=${GUILE} ${DEV_SRC_LOAD_PATH}
+# ----------------------------------------------------------------------------
 
-.PHONY: ares check
-
+.PHONY: ares
 ares:
 	${GUILE_DEV} -c "((@ (ares server) run-nrepl-server))"
 
+.PHONY: check
 check:
-	${DEV_ENV} ares-suitbl -- ${TEST_SRC_LOAD_PATH}
+	${DEV_ENV} ares-suitbl -- ${GLP_TEST}
