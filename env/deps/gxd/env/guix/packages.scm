@@ -76,4 +76,5 @@
                 "coreutils"             ; env, chown, ect. POSIX utils
                 "btrfs-progs"           ; mkfs.btrfs, etc.
                 "bash-minimal"          ; sh, bash
+                "tar" "gzip"
                 "guile"))))
