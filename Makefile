@@ -1,5 +1,8 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 # SPDX-FileCopyrightText: 2026 Andrew Tropin
+# SPDX-FileCopyrightText: 2026 Andrew Zhurov
+# SPDX-FileCopyrightText: 2026 buttonspresser
+
 
 GUIX_CHANNELS_FILE = ./env/guix/gxd/env/guix/channels.scm
 
