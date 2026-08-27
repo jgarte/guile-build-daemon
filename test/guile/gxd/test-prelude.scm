@@ -2,8 +2,23 @@
 ;; SPDX-FileCopyrightText: 2026 Andrew Zhurov
 
 (define-module (gxd test-prelude)
+  #:use-module ((ice-9 rdelim) #:select (read-string))
   #:export (capture-exception
+            slurp
+            spit
             with-module-binding))
+
+(define (slurp input)
+  "Return all text from INPUT, a file name or seekable port."
+  (if (port? input)
+      (begin
+        (seek input 0 SEEK_SET)
+        (read-string input))
+      (call-with-input-file input read-string)))
+
+(define (spit file content)
+  "Replace FILE with CONTENT."
+  (with-output-to-file file (lambda () (display content))))
 
 (define (with-module-binding module name value proc)
   "Call PROC with NAME bound to VALUE in MODULE, restoring the previous
