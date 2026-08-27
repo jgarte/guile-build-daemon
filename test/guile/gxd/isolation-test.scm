@@ -5,7 +5,6 @@
   #:use-module ((ice-9 match) #:select (match-let))
   #:use-module ((ice-9 atomic)
                 #:select (atomic-box-ref atomic-box-set! make-atomic-box))
-  #:use-module ((ice-9 rdelim) #:select (read-string))
   #:use-module ((srfi srfi-11) #:select (let-values))
 
   #:use-module ((ares suitbl core) #:select (define-suite is test))
@@ -16,11 +15,8 @@
                                           CLONE_NEWUSER
                                           CLONE_NEWNS
                                           CLONE_NEWPID))
-  #:use-module ((gxd prelude)))
-
-(define (slurp file)
-  (seek file 0 SEEK_SET)
-  (read-string file))
+  #:use-module ((gxd prelude))
+  #:use-module ((gxd test-prelude) #:select (slurp)))
 
 (define (call-with-child-proc flags child proc)
   "Call PROC with the pid and the parent-side send and receive procedures of a
