@@ -4,12 +4,47 @@
 (define-module (gxd env guix packages)
   #:use-module (gnu packages)
   #:use-module (gnu packages guile-xyz)
-  #:use-module (gxd env guix channels)
+  #:use-module (gnu packages package-management) ; For the base 'guix' package variable
+  
   #:use-module (guix git-download)
-  #:use-module (guix packages)
-  #:use-module (rde packages guix)
+  #:use-module (guix packages)               ; package, package-version, package-arguments
+  #:use-module (guix channels)               ; channel-name and channel-commit
+  #:use-module (guix git)                    ; git-checkout
+  #:use-module (guix utils)                  ; substitute-keyword-arguments
+  #:use-module (guix gexp)
+  #:use-module (srfi srfi-1)                 ; filter
+  #:use-module (gxd env guix channels)
   #:export (dev-env
             guix-package))
+
+;; from https://git.sr.ht/~abcdw/rde/tree/master/item/src/rde/src/rde/packages/guix.scm@47fb718f
+(define (get-guix-channel channels)
+  (car
+   (filter (lambda (x) (equal? (channel-name x) 'guix)) channels)))
+
+;; from https://git.sr.ht/~abcdw/rde/tree/master/item/src/rde/src/rde/packages/guix.scm@47fb718f
+(define (make-guix-package channels)
+  (let ((commit (channel-commit (get-guix-channel channels))))
+    (package
+      (inherit guix)
+      (version
+       (string-append (car (string-split (package-version guix) #\-))
+                      "-" (string-take commit 7)))
+      (source
+       (git-checkout
+        (url "https://git.guix.gnu.org/guix.git")
+        (commit commit)))
+      (arguments
+       (substitute-keyword-arguments (package-arguments guix)
+         ((#:tests? _)
+          #f)
+         ((#:phases phases)
+          #~(modify-phases #$phases (delete 'check)))
+         ((#:configure-flags flags #~'())
+          #~(append
+             #$flags
+             (list
+              #$(string-append "--with-channel-commit=" commit)))))))))
 
 (define guix-package
   (make-guix-package core-channels))
