@@ -33,17 +33,17 @@ else
     uid=$(id -u); gid=$(id -g)
     $SUDO chown "$uid:$gid" "$TESTBOX_DISK_MOUNT_POINT"
     echo "'testbox disk' btrfs image is mounted at $TESTBOX_DISK_MOUNT_POINT"
-    # prepare testbox init file system
-    init_fs_directory="$TESTBOX_DISK_MOUNT_POINT/init-fs"
-    if ! test -f "$init_fs_directory"
+    # prepare testbox base subvolume
+    base_subvolume="$TESTBOX_DISK_MOUNT_POINT/base"
+    if ! test -f "$base_subvolume"
     then
-        echo "populating 'testbox disk' with init fs..."
-        btrfs subvolume create "$init_fs_directory" >/dev/null
+        echo "populating 'testbox disk' base..."
+        btrfs subvolume create "$base_subvolume" >/dev/null
         tar --extract --file "$TESTBOX_BOOTSTRAP_ARCHIVE" \
-            --directory "$init_fs_directory" \
+            --directory "$base_subvolume" \
             --no-same-owner --same-permissions
-        btrfs property set -t s "$init_fs_directory" ro true
-        echo "'testbox disk' is populated with init fs in $init_fs_directory"
+        btrfs property set -t s "$base_subvolume" ro true
+        echo "'testbox disk' base is populated at $base_subvolume"
     fi
 fi
 
