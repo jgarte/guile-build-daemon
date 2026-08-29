@@ -37,10 +37,11 @@ GUILE_DEV = $(DEV_ENV) guile ${GLP_DEV}
 SUDO := $(shell command -v sudo)
 
 # Testbox Disk Paths (writable by unprivileged user)
-TESTBOX_DISK_MOUNT_POINT = ./tmp/.testbox-disk
-TESTBOX_DISK_IMAGE       = ./tmp/.testbox-disk.image
+TESTBOX_DIRECTORY        = target/testbox
+TESTBOX_DISK_MOUNT_POINT = ${TESTBOX_DIRECTORY}/mnt
+TESTBOX_DISK_IMAGE       = ${TESTBOX_DIRECTORY}/disk.img
 TESTBOX_DISK_IMAGE_SIZE  = 10G
-TESTBOX_INIT_FS_ARCHIVE  = ./tmp/.testbox-init-fs-archive
+TESTBOX_INIT_FS_ARCHIVE  = ${TESTBOX_DIRECTORY}/init-fs.tar.gz
 
 TESTBOX_DISK_ENV = env \
        SUDO=${SUDO} \
