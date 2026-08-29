@@ -40,12 +40,14 @@ SUDO := $(shell command -v sudo)
 TESTBOX_DISK_MOUNT_POINT = ./tmp/.testbox-disk
 TESTBOX_DISK_IMAGE       = ./tmp/.testbox-disk.image
 TESTBOX_DISK_IMAGE_SIZE  = 10G
+TESTBOX_INIT_FS_ARCHIVE  = ./tmp/.testbox-init-fs-archive
 
 TESTBOX_DISK_ENV = env \
        SUDO=${SUDO} \
        TESTBOX_DISK_MOUNT_POINT=${TESTBOX_DISK_MOUNT_POINT} \
        TESTBOX_DISK_IMAGE=${TESTBOX_DISK_IMAGE} \
-       TESTBOX_DISK_IMAGE_SIZE=${TESTBOX_DISK_IMAGE_SIZE}
+       TESTBOX_DISK_IMAGE_SIZE=${TESTBOX_DISK_IMAGE_SIZE} \
+       TESTBOX_INIT_FS_ARCHIVE=${TESTBOX_INIT_FS_ARCHIVE}
 
 # ----------------------------------------------------------------------------
 
@@ -57,8 +59,18 @@ ares:
 check:
 	${DEV_ENV} ares-suitbl -- ${GLP_TEST}
 
+.PHONY: testbox-disk/init-fs-archive
+testbox-disk/init-fs-archive: ${TESTBOX_INIT_FS_ARCHIVE}
+
+${TESTBOX_INIT_FS_ARCHIVE}: ${GUIX_CHANNELS_FILE} ./env/deps/gxd/env/guix/packages.scm
+	mkdir -p "$(dir $@)"
+	rm -f "$@"
+	${GUIX} pack ${GLP_DEV_ENV} \
+	      -e '(@ (gxd env guix packages) guix-package)' \
+	      --localstatedir --root="$@"
+
 .PHONY: testbox-disk/init
-testbox-disk/init:
+testbox-disk/init: testbox-disk/init-fs-archive
 	${DEV_ENV} ${TESTBOX_DISK_ENV} sh ./env/testbox-disk/init.sh
 
 .PHONY: testbox-disk/delete

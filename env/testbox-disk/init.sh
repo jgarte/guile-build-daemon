@@ -9,6 +9,7 @@ set -euo pipefail
 : "${TESTBOX_DISK_MOUNT_POINT:?run with 'make testbox-disk/init'}"
 : "${TESTBOX_DISK_IMAGE:?run with 'make testbox-disk/init'}"
 : "${TESTBOX_DISK_IMAGE_SIZE:?run with 'make testbox-disk/init'}"
+: "${TESTBOX_INIT_FS_ARCHIVE:?run with 'make testbox-disk/init'}"
 : "${SUDO:?run with 'make testbox-disk/init'}"
 
 if findmnt -M "$TESTBOX_DISK_MOUNT_POINT" >/dev/null
@@ -37,13 +38,9 @@ else
     if ! test -f "$init_fs_directory"
     then
         echo "populating 'testbox disk' with init fs..."
-        init_fs_archive=$(guix pack \
-                                   -L ./env/guix \
-                                   -L ./env/deps \
-                                   -e '(@ (gxd env guix packages) guix-package)' \
-                                   --localstatedir)
         btrfs subvolume create "$init_fs_directory" >/dev/null
-        tar --extract --file "$init_fs_archive" --directory "$init_fs_directory" \
+        tar --extract --file "$TESTBOX_INIT_FS_ARCHIVE" \
+            --directory "$init_fs_directory" \
             --no-same-owner --same-permissions
         btrfs property set -t s "$init_fs_directory" ro true
         echo "'testbox disk' is populated with init fs in $init_fs_directory"
