@@ -7,6 +7,7 @@
 set -euo pipefail
 
 : "${TESTBOX_DISK_MOUNT_POINT:?run with 'make testbox-disk/init'}"
+: "${TESTBOX_DISK_BASE_SUBVOLUME_PATH:?run with 'make testbox-disk/init'}"
 : "${TESTBOX_DISK_IMAGE:?run with 'make testbox-disk/init'}"
 : "${TESTBOX_DISK_IMAGE_SIZE:?run with 'make testbox-disk/init'}"
 : "${TESTBOX_BOOTSTRAP_ARCHIVE:?run with 'make testbox-disk/init'}"
@@ -34,16 +35,15 @@ else
     $SUDO chown "$uid:$gid" "$TESTBOX_DISK_MOUNT_POINT"
     echo "'testbox disk' btrfs image is mounted at $TESTBOX_DISK_MOUNT_POINT"
     # prepare testbox base subvolume
-    base_subvolume="$TESTBOX_DISK_MOUNT_POINT/base"
-    if ! test -f "$base_subvolume"
+    if ! test -f "$TESTBOX_DISK_BASE_SUBVOLUME_PATH"
     then
         echo "populating 'testbox disk' base..."
-        btrfs subvolume create "$base_subvolume" >/dev/null
+        btrfs subvolume create "$TESTBOX_DISK_BASE_SUBVOLUME_PATH" >/dev/null
         tar --extract --file "$TESTBOX_BOOTSTRAP_ARCHIVE" \
-            --directory "$base_subvolume" \
+            --directory "$TESTBOX_DISK_BASE_SUBVOLUME_PATH" \
             --no-same-owner --same-permissions
-        btrfs property set -t s "$base_subvolume" ro true
-        echo "'testbox disk' base is populated at $base_subvolume"
+        btrfs property set -t s "$TESTBOX_DISK_BASE_SUBVOLUME_PATH" ro true
+        echo "'testbox disk' base is populated at $TESTBOX_DISK_BASE_SUBVOLUME_PATH"
     fi
 fi
 
