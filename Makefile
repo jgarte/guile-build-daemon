@@ -76,6 +76,9 @@ ${TESTBOX_BOOTSTRAP_ARCHIVE}: ${GUIX_CHANNELS_FILE} ./env/deps/gxd/env/guix/pack
 testbox-disk/init: testbox-disk/bootstrap-archive
 	${DEV_ENV} ${TESTBOX_DISK_ENV} sh ./env/testbox-disk/init.sh
 
+.PHONY: testbox-disk/mount
+testbox-disk/mount: testbox-disk/init
+
 .PHONY: testbox-disk/delete
 testbox-disk/delete:
 	${DEV_ENV} ${TESTBOX_DISK_ENV} sh ./env/testbox-disk/delete.sh
