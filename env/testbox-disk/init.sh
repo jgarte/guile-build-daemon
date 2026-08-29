@@ -15,35 +15,37 @@ set -euo pipefail
 
 if findmnt -M "$TESTBOX_DISK_MOUNT_POINT" >/dev/null
 then
-    echo "'testbox disk' btrfs image is already mounted at $TESTBOX_DISK_MOUNT_POINT"
+    echo "'testbox disk' image is already mounted at $TESTBOX_DISK_MOUNT_POINT"
 else
     # Ensure that btrfs image exists
     if ! test -f "$TESTBOX_DISK_IMAGE"
     then
-        echo "creating 'testbox disk' btrfs image..."
+        echo "creating 'testbox disk' image..."
         mkdir -p "$(dirname "$TESTBOX_DISK_IMAGE")"
         fallocate -l "$TESTBOX_DISK_IMAGE_SIZE" "$TESTBOX_DISK_IMAGE"
+        echo "initializing btrfs filesystem on 'testbox disk' image..."
         $SUDO mkfs.btrfs -q -L testbox-disk "$TESTBOX_DISK_IMAGE"
-        echo "'testbox disk' btrfs image is created at $TESTBOX_DISK_IMAGE"
+        echo "'testbox disk' image with btrfs is created at $TESTBOX_DISK_IMAGE"
     fi
     # mount btrfs image
-    echo "mounting 'testbox disk' btrfs image..."
+    echo "mounting 'testbox disk' image..."
     mkdir -p "$TESTBOX_DISK_MOUNT_POINT"
     $SUDO mount -o loop,rw,nosuid,nodev,noatime,user_subvol_rm_allowed \
           "$TESTBOX_DISK_IMAGE" "$TESTBOX_DISK_MOUNT_POINT"
     uid=$(id -u); gid=$(id -g)
     $SUDO chown "$uid:$gid" "$TESTBOX_DISK_MOUNT_POINT"
-    echo "'testbox disk' btrfs image is mounted at $TESTBOX_DISK_MOUNT_POINT"
+    echo "'testbox disk' image is mounted at $TESTBOX_DISK_MOUNT_POINT"
     # prepare testbox base subvolume
     if ! test -f "$TESTBOX_DISK_BASE_SUBVOLUME_PATH"
     then
-        echo "populating 'testbox disk' base..."
+        echo "populating 'testbox disk' base subvolume..."
         btrfs subvolume create "$TESTBOX_DISK_BASE_SUBVOLUME_PATH" >/dev/null
         tar --extract --file "$TESTBOX_BOOTSTRAP_ARCHIVE" \
             --directory "$TESTBOX_DISK_BASE_SUBVOLUME_PATH" \
             --no-same-owner --same-permissions
         btrfs property set -t s "$TESTBOX_DISK_BASE_SUBVOLUME_PATH" ro true
-        echo "'testbox disk' base is populated at $TESTBOX_DISK_BASE_SUBVOLUME_PATH"
+        echo "'testbox disk' base is populated."
+        echo "base subvolume mount point is: $TESTBOX_DISK_BASE_SUBVOLUME_PATH"
     fi
 fi
 
