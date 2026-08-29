@@ -1,28 +1,46 @@
 ;; SPDX-License-Identifier: GPL-3.0-or-later
 ;; SPDX-FileCopyrightText: 2026 Andrew Tropin
+;; SPDX-FileCopyrightText: 2026 buttonspresser
 
 (define-module (gxd env guix packages)
-  #:use-module (gnu packages)
-  #:use-module (gnu packages guile-xyz)
-  #:use-module (gnu packages package-management) ; For the base 'guix' package variable
-  
-  #:use-module (guix git-download)
-  #:use-module (guix packages)               ; package, package-version, package-arguments
-  #:use-module (guix channels)               ; channel-name and channel-commit
-  #:use-module (guix git)                    ; git-checkout
-  #:use-module (guix utils)                  ; substitute-keyword-arguments
-  #:use-module (guix gexp)
-  #:use-module (srfi srfi-1)                 ; filter
-  #:use-module (gxd env guix channels)
+  #:use-module ((gnu packages)
+                #:select (specification->package))
+  #:use-module ((gnu packages guile-xyz)
+                #:select (guile-ares-rs))
+  #:use-module ((gnu packages package-management)
+                #:select (guix))
+  #:use-module ((guix channels)
+                #:select (channel-commit channel-name))
+  #:use-module ((guix gexp)
+                #:select (gexp))
+  #:use-module ((guix git)
+                #:select (git-checkout))
+  #:use-module ((guix git-download)
+                #:select (git-fetch
+                          git-file-name
+                          git-reference
+                          git-version))
+  #:use-module ((guix packages)
+                #:select (base32
+                          origin
+                          package
+                          package-arguments
+                          package-version))
+  #:use-module ((guix utils)
+                #:select (substitute-keyword-arguments))
+  #:use-module ((srfi srfi-1)
+                #:select (filter))
+  #:use-module ((gxd env guix channels)
+                #:select (core-channels))
   #:export (dev-env
             guix-package))
 
-;; from https://git.sr.ht/~abcdw/rde/tree/master/item/src/rde/src/rde/packages/guix.scm@47fb718f
+;; from https://git.sr.ht/~abcdw/rde/tree/47fb718f/item/src/rde/packages/guix.scm
 (define (get-guix-channel channels)
   (car
    (filter (lambda (x) (equal? (channel-name x) 'guix)) channels)))
 
-;; from https://git.sr.ht/~abcdw/rde/tree/master/item/src/rde/src/rde/packages/guix.scm@47fb718f
+;; from https://git.sr.ht/~abcdw/rde/tree/47fb718f/item/src/rde/packages/guix.scm
 (define (make-guix-package channels)
   (let ((commit (channel-commit (get-guix-channel channels))))
     (package
