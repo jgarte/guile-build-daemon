@@ -41,7 +41,7 @@ else
     $SUDO chown "$uid:$gid" "$TESTBOX_DISK_MOUNT_POINT"
     echo "'testbox disk' image is mounted at $TESTBOX_DISK_MOUNT_POINT"
     # prepare testbox base subvolume
-    if ! test -f "$TESTBOX_DISK_BASE_SUBVOLUME_PATH"
+    if ! test -d "$TESTBOX_DISK_BASE_SUBVOLUME_PATH"
     then
         echo "populating 'testbox disk' base subvolume..."
         btrfs subvolume create "$TESTBOX_DISK_BASE_SUBVOLUME_PATH" >/dev/null
