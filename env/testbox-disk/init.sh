@@ -9,7 +9,7 @@ set -euo pipefail
 : "${TESTBOX_DISK_MOUNT_POINT:?run with 'make testbox-disk/init'}"
 : "${TESTBOX_DISK_IMAGE:?run with 'make testbox-disk/init'}"
 : "${TESTBOX_DISK_IMAGE_SIZE:?run with 'make testbox-disk/init'}"
-: "${TESTBOX_INIT_FS_ARCHIVE:?run with 'make testbox-disk/init'}"
+: "${TESTBOX_BOOTSTRAP_ARCHIVE:?run with 'make testbox-disk/init'}"
 : "${SUDO:?run with 'make testbox-disk/init'}"
 
 if findmnt -M "$TESTBOX_DISK_MOUNT_POINT" >/dev/null
@@ -39,7 +39,7 @@ else
     then
         echo "populating 'testbox disk' with init fs..."
         btrfs subvolume create "$init_fs_directory" >/dev/null
-        tar --extract --file "$TESTBOX_INIT_FS_ARCHIVE" \
+        tar --extract --file "$TESTBOX_BOOTSTRAP_ARCHIVE" \
             --directory "$init_fs_directory" \
             --no-same-owner --same-permissions
         btrfs property set -t s "$init_fs_directory" ro true

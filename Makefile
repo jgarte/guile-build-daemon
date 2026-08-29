@@ -37,18 +37,18 @@ GUILE_DEV = $(DEV_ENV) guile ${GLP_DEV}
 SUDO := $(shell command -v sudo)
 
 # Testbox Disk Paths (writable by unprivileged user)
-TESTBOX_DIRECTORY        = target/testbox
-TESTBOX_DISK_MOUNT_POINT = ${TESTBOX_DIRECTORY}/mnt
-TESTBOX_DISK_IMAGE       = ${TESTBOX_DIRECTORY}/disk.img
-TESTBOX_DISK_IMAGE_SIZE  = 10G
-TESTBOX_INIT_FS_ARCHIVE  = ${TESTBOX_DIRECTORY}/init-fs.tar.gz
+TESTBOX_DIRECTORY         = target/testbox
+TESTBOX_DISK_MOUNT_POINT  = ${TESTBOX_DIRECTORY}/mnt
+TESTBOX_DISK_IMAGE        = ${TESTBOX_DIRECTORY}/disk.img
+TESTBOX_DISK_IMAGE_SIZE   = 10G
+TESTBOX_BOOTSTRAP_ARCHIVE = ${TESTBOX_DIRECTORY}/bootstrap.tar.gz
 
 TESTBOX_DISK_ENV = env \
        SUDO=${SUDO} \
        TESTBOX_DISK_MOUNT_POINT=${TESTBOX_DISK_MOUNT_POINT} \
        TESTBOX_DISK_IMAGE=${TESTBOX_DISK_IMAGE} \
        TESTBOX_DISK_IMAGE_SIZE=${TESTBOX_DISK_IMAGE_SIZE} \
-       TESTBOX_INIT_FS_ARCHIVE=${TESTBOX_INIT_FS_ARCHIVE}
+       TESTBOX_BOOTSTRAP_ARCHIVE=${TESTBOX_BOOTSTRAP_ARCHIVE}
 
 # ----------------------------------------------------------------------------
 
@@ -60,10 +60,10 @@ ares:
 check:
 	${DEV_ENV} ares-suitbl -- ${GLP_TEST}
 
-.PHONY: testbox-disk/init-fs-archive
-testbox-disk/init-fs-archive: ${TESTBOX_INIT_FS_ARCHIVE}
+.PHONY: testbox-disk/bootstrap-archive
+testbox-disk/bootstrap-archive: ${TESTBOX_BOOTSTRAP_ARCHIVE}
 
-${TESTBOX_INIT_FS_ARCHIVE}: ${GUIX_CHANNELS_FILE} ./env/deps/gxd/env/guix/packages.scm
+${TESTBOX_BOOTSTRAP_ARCHIVE}: ${GUIX_CHANNELS_FILE} ./env/deps/gxd/env/guix/packages.scm
 	mkdir -p "$(dir $@)"
 	rm -f "$@"
 	${GUIX} pack ${GLP_DEV_ENV} \
@@ -71,7 +71,7 @@ ${TESTBOX_INIT_FS_ARCHIVE}: ${GUIX_CHANNELS_FILE} ./env/deps/gxd/env/guix/packag
 	      --localstatedir --root="$@"
 
 .PHONY: testbox-disk/init
-testbox-disk/init: testbox-disk/init-fs-archive
+testbox-disk/init: testbox-disk/bootstrap-archive
 	${DEV_ENV} ${TESTBOX_DISK_ENV} sh ./env/testbox-disk/init.sh
 
 .PHONY: testbox-disk/delete
