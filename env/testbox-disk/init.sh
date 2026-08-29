@@ -29,24 +29,24 @@ else
     mkdir -p "$TESTBOX_DISK_MOUNT_POINT"
     $SUDO mount -o loop,rw,nosuid,nodev,noatime,user_subvol_rm_allowed \
           "$TESTBOX_DISK_IMAGE" "$TESTBOX_DISK_MOUNT_POINT"
-    USER_ID=$(id -u); GROUP_ID=$(id -g)
-    $SUDO chown "$USER_ID:$GROUP_ID" "$TESTBOX_DISK_MOUNT_POINT"
+    uid=$(id -u); gid=$(id -g)
+    $SUDO chown "$uid:$gid" "$TESTBOX_DISK_MOUNT_POINT"
     echo "'testbox disk' btrfs image is mounted at $TESTBOX_DISK_MOUNT_POINT"
     # prepare testbox init file system
-    TESTBOX_INIT_FS_PATH="$TESTBOX_DISK_MOUNT_POINT/init-fs"
-    if ! test -f "$TESTBOX_INIT_FS_PATH"
+    init_fs_directory="$TESTBOX_DISK_MOUNT_POINT/init-fs"
+    if ! test -f "$init_fs_directory"
     then
         echo "populating 'testbox disk' with init fs..."
-        TESTBOX_INIT_FS_TAR=$(guix pack \
+        init_fs_archive=$(guix pack \
                                    -L ./env/guix \
                                    -L ./env/deps \
                                    -e '(@ (gxd env guix packages) guix-package)' \
                                    --localstatedir)
-        btrfs subvolume create "$TESTBOX_INIT_FS_PATH" >/dev/null
-        tar --extract --file "$TESTBOX_INIT_FS_TAR" --directory "$TESTBOX_INIT_FS_PATH" \
+        btrfs subvolume create "$init_fs_directory" >/dev/null
+        tar --extract --file "$init_fs_archive" --directory "$init_fs_directory" \
             --no-same-owner --same-permissions
-        btrfs property set -t s "$TESTBOX_INIT_FS_PATH" ro true
-        echo "'testbox disk' is populated with init fs in $TESTBOX_INIT_FS_PATH"
+        btrfs property set -t s "$init_fs_directory" ro true
+        echo "'testbox disk' is populated with init fs in $init_fs_directory"
     fi
 fi
 
