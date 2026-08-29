@@ -17,6 +17,11 @@ if findmnt -M "$TESTBOX_DISK_MOUNT_POINT" >/dev/null
 then
     echo "'testbox disk' image is already mounted at $TESTBOX_DISK_MOUNT_POINT"
 else
+    # Warmup sudo and cache credentials to make sure the following code won't
+    # abort in the middle of operation cause of wrong credentials or
+    # non-interactive environment
+    $SUDO -v
+
     # Ensure that btrfs image exists
     if ! test -f "$TESTBOX_DISK_IMAGE"
     then
