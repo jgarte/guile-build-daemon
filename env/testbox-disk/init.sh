@@ -13,6 +13,11 @@ set -euo pipefail
 : "${TESTBOX_DISK_BOOTSTRAP_ARCHIVE:?run with 'make testbox-disk/init'}"
 : "${SUDO:?run with 'make testbox-disk/init'}"
 
+# Resolve privileged commands before sudo replaces PATH with its secure_path.
+mkfs_btrfs=$(command -v mkfs.btrfs)
+mount=$(command -v mount)
+chown=$(command -v chown)
+
 if findmnt -M "$TESTBOX_DISK_MOUNT_POINT" >/dev/null
 then
     echo "'testbox disk' image is already mounted at $TESTBOX_DISK_MOUNT_POINT"
@@ -20,7 +25,7 @@ else
     # Warmup sudo and cache credentials to make sure the following code won't
     # abort in the middle of operation cause of wrong credentials or
     # non-interactive environment
-    $SUDO -v
+    "$SUDO" -v
 
     # Ensure that btrfs image exists
     if ! test -f "$TESTBOX_DISK_IMAGE"
@@ -29,16 +34,16 @@ else
         mkdir -p "$(dirname "$TESTBOX_DISK_IMAGE")"
         fallocate -l "$TESTBOX_DISK_IMAGE_SIZE" "$TESTBOX_DISK_IMAGE"
         echo "initializing btrfs filesystem on 'testbox disk' image..."
-        $SUDO mkfs.btrfs -q -L testbox-disk "$TESTBOX_DISK_IMAGE"
+        "$SUDO" "$mkfs_btrfs" -q -L testbox-disk "$TESTBOX_DISK_IMAGE"
         echo "'testbox disk' image with btrfs is created at $TESTBOX_DISK_IMAGE"
     fi
     # mount btrfs image
     echo "mounting 'testbox disk' image..."
     mkdir -p "$TESTBOX_DISK_MOUNT_POINT"
-    $SUDO mount -o loop,rw,nosuid,nodev,noatime,user_subvol_rm_allowed \
+    "$SUDO" "$mount" -o loop,rw,nosuid,nodev,noatime,user_subvol_rm_allowed \
           "$TESTBOX_DISK_IMAGE" "$TESTBOX_DISK_MOUNT_POINT"
     uid=$(id -u); gid=$(id -g)
-    $SUDO chown "$uid:$gid" "$TESTBOX_DISK_MOUNT_POINT"
+    "$SUDO" "$chown" "$uid:$gid" "$TESTBOX_DISK_MOUNT_POINT"
     echo "'testbox disk' image is mounted at $TESTBOX_DISK_MOUNT_POINT"
     # prepare testbox base subvolume
     if ! test -d "$TESTBOX_DISK_BASE_SUBVOLUME_PATH"
