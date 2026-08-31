@@ -10,7 +10,7 @@ set -euo pipefail
 : "${TESTBOX_DISK_BASE_SUBVOLUME_PATH:?run with 'make testbox-disk/init'}"
 : "${TESTBOX_DISK_IMAGE:?run with 'make testbox-disk/init'}"
 : "${TESTBOX_DISK_IMAGE_SIZE:?run with 'make testbox-disk/init'}"
-: "${TESTBOX_BOOTSTRAP_ARCHIVE:?run with 'make testbox-disk/init'}"
+: "${TESTBOX_DISK_BOOTSTRAP_ARCHIVE:?run with 'make testbox-disk/init'}"
 : "${SUDO:?run with 'make testbox-disk/init'}"
 
 if findmnt -M "$TESTBOX_DISK_MOUNT_POINT" >/dev/null
@@ -45,7 +45,7 @@ else
     then
         echo "populating 'testbox disk' base subvolume..."
         btrfs subvolume create "$TESTBOX_DISK_BASE_SUBVOLUME_PATH" >/dev/null
-        tar --extract --file "$TESTBOX_BOOTSTRAP_ARCHIVE" \
+        tar --extract --file "$TESTBOX_DISK_BOOTSTRAP_ARCHIVE" \
             --directory "$TESTBOX_DISK_BASE_SUBVOLUME_PATH" \
             --no-same-owner --same-permissions
         btrfs property set -t s "$TESTBOX_DISK_BASE_SUBVOLUME_PATH" ro true

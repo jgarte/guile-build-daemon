@@ -42,7 +42,7 @@ TESTBOX_DISK_MOUNT_POINT         = ${TESTBOX_DIRECTORY}/mnt
 TESTBOX_DISK_BASE_SUBVOLUME_PATH = ${TESTBOX_DISK_MOUNT_POINT}/base
 TESTBOX_DISK_IMAGE               = ${TESTBOX_DIRECTORY}/disk.img
 TESTBOX_DISK_IMAGE_SIZE          = 10G
-TESTBOX_BOOTSTRAP_ARCHIVE        = ${TESTBOX_DIRECTORY}/bootstrap.tar.gz
+TESTBOX_DISK_BOOTSTRAP_ARCHIVE   = ${TESTBOX_DIRECTORY}/bootstrap.tar.gz
 
 TESTBOX_DISK_ENV = env \
        SUDO=${SUDO} \
@@ -50,7 +50,7 @@ TESTBOX_DISK_ENV = env \
        TESTBOX_DISK_BASE_SUBVOLUME_PATH=${TESTBOX_DISK_BASE_SUBVOLUME_PATH} \
        TESTBOX_DISK_IMAGE=${TESTBOX_DISK_IMAGE} \
        TESTBOX_DISK_IMAGE_SIZE=${TESTBOX_DISK_IMAGE_SIZE} \
-       TESTBOX_BOOTSTRAP_ARCHIVE=${TESTBOX_BOOTSTRAP_ARCHIVE}
+       TESTBOX_DISK_BOOTSTRAP_ARCHIVE=${TESTBOX_DISK_BOOTSTRAP_ARCHIVE}
 
 # ----------------------------------------------------------------------------
 
@@ -63,9 +63,9 @@ check:
 	${DEV_ENV} ares-suitbl -- ${GLP_TEST}
 
 .PHONY: testbox-disk/bootstrap-archive
-testbox-disk/bootstrap-archive: ${TESTBOX_BOOTSTRAP_ARCHIVE}
+testbox-disk/bootstrap-archive: ${TESTBOX_DISK_BOOTSTRAP_ARCHIVE}
 
-${TESTBOX_BOOTSTRAP_ARCHIVE}: ${GUIX_CHANNELS_FILE} ./env/deps/gxd/env/guix/packages.scm
+${TESTBOX_DISK_BOOTSTRAP_ARCHIVE}: ${GUIX_CHANNELS_FILE} ./env/deps/gxd/env/guix/packages.scm
 	mkdir -p "$(dir $@)"
 	rm -f "$@"
 	${GUIX} pack ${GLP_DEV_ENV} \
