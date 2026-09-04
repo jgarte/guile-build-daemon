@@ -31,7 +31,7 @@
   (test "a non-Btrfs filesystem is rejected" ()
     (is (throws-exception? (require-testbox-base "/proc"))))
 
-  (test "a base snapshot is writable, isolated, and deletable" ()
+  (test "a testbox root is a writable, isolated, deletable snapshot of the base" ()
     (define base (require-testbox-base))
     (let-values (((testbox-root writable? isolated?)
                   (call-with-testbox-root
@@ -49,7 +49,7 @@
       (is isolated? "the item was not written to the base")
       (is (not (file-exists? testbox-root)))))
 
-  (test "the base is not snapshotted onto an existing root" ()
+  (test "the base is not snapshotted onto an existing testbox root" ()
     (let-values (((testbox-root rejected? preserved?)
                   (call-with-testbox-root
                    (lambda (pid1 testbox-root)
