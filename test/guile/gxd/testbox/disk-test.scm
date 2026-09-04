@@ -60,7 +60,7 @@
       (is preserved?)
       (is (not (file-exists? testbox-root)))))
 
-  (test "a snapshot is deleted when its user raises" ()
+  (test "a testbox root is deleted when its scoped use raises" ()
     (is (throws-exception?
          (call-with-testbox-root (lambda _ (error "expected failure")))))
     (is (call-with-testbox-root (lambda _ #t)))))
