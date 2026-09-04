@@ -33,18 +33,18 @@
 
   (test "a testbox root is a writable, isolated, deletable snapshot of the base" ()
     (define base (require-testbox-base))
+    (define (observe-testbox-root-write _ testbox-root)
+      "Write an item to TESTBOX-ROOT and return the resulting observations."
+      (define item
+        (string-append testbox-root "/gnu/store/disk-test-item"))
+      (spit item "written")
+      (values testbox-root
+              (file-exists? item)
+              (not (file-exists?
+                    (string-append base "/gnu/store/disk-test-item")))))
+
     (let-values (((testbox-root writable? isolated?)
-                  (call-with-testbox-root
-                   (lambda (_ testbox-root)
-                     (define item
-                       (string-append testbox-root
-                                      "/gnu/store/disk-test-item"))
-                     (spit item "written")
-                     (values testbox-root
-                             (file-exists? item)
-                             (not (file-exists?
-                                   (string-append
-                                    base "/gnu/store/disk-test-item"))))))))
+                  (call-with-testbox-root observe-testbox-root-write)))
       (is writable?)
       (is isolated? "the item was not written to the base")
       (is (not (file-exists? testbox-root)))))
