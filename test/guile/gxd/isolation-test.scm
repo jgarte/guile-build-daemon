@@ -189,27 +189,30 @@ afterwards."
        (is (not (string=? (<= 'ns/user) (readlink "/proc/self/ns/user"))))))))
 
 (define (mount-propagation path)
-  "Return the propagation type of the mount at PATH."
-  (define (propagation line)
+  "Return PATH's mount propagation state as `shared', `slave', `shared+slave',
+`unbindable', or `private', or #f when PATH has no mountinfo entry."
+  (define (line->mount-propagation line)
     (match (string-tokenize line)
       ((_ _ _ _ mount-point _ optional ... "-" _ _ _)
        (and (string=? path mount-point)
-            (cond
-             ((any (lambda (field) (string-prefix? "shared:" field))
-                   optional)
-              'shared)
-             ((any (lambda (field)
-                     (or (string-prefix? "master:" field)
-                         (string-prefix? "propagate_from:" field)))
-                   optional)
-              'slave)
-             ((member "unbindable" optional) 'unbindable)
-             (else 'private))))
+            (let ((shared?
+                   (any (lambda (field) (string-prefix? "shared:" field))
+                        optional))
+                  (slave?
+                   (any (lambda (field)
+                          (or (string-prefix? "master:" field)
+                              (string-prefix? "propagate_from:" field)))
+                        optional)))
+              (cond ((and shared? slave?) 'shared+slave)
+                    (shared? 'shared)
+                    (slave? 'slave)
+                    ((member "unbindable" optional) 'unbindable)
+                    (else 'private)))))
       (_ #f)))
   (chain "/proc/self/mountinfo"
          (slurp _)
          (string-split _ #\newline)
-         (any propagation _)))
+         (any line->mount-propagation _)))
 
 (define-suite (make-mounts-private-tests)
   (test "an inherited shared submount is made private" ()
@@ -221,7 +224,7 @@ afterwards."
        (make-mounts-private!)
        (=> 'after (mount-propagation "/proc")))
      (lambda (_ => <=)
-       (is (eq? 'shared (<= 'before)))
+       (is (memq (<= 'before) '(shared shared+slave)))
        (is (eq? 'private (<= 'after)))))))
 
 (define (call-with-root entries proc)
