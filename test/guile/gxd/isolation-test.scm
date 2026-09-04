@@ -284,7 +284,7 @@ afterwards."
     (is (not (get observed 'writable?)))))
 
 (define-suite (pivot-into-tests)
-  (test "a process that pivots is left in the root it was given" ()
+  (test "a pivoted process sees its new root and PID namespace through procfs" ()
     (define entries '(".old-root" "only-here" "proc"))
     (define observed
       (call-with-root entries observe-pivoted-root))
