@@ -287,11 +287,11 @@ afterwards."
 
 (define-suite (pivot-into-tests)
   (test "a pivoted process sees its new root and PID namespace through procfs" ()
-    (define entries '(".old-root" "only-here" "proc"))
     (define observed
-      (call-with-root entries observe-pivoted-root))
+      (call-with-root '(".old-root" "only-here") observe-pivoted-root))
 
-    (is (equal? entries (get observed 'entries)))
+    (is (equal? '(".old-root" "only-here" "proc")
+                (get observed 'entries)))
     (is (string=? "1" (get observed 'pid)))))
 
 (define-suite (write-id-maps-tests)
