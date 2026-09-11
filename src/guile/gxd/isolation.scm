@@ -240,6 +240,8 @@ root, then REQUIRED-COUNT ids drawn from the ranges configured for them."
 (define (pivot-into! root)
   "Make ROOT this process's root, detach the previous root, and mount procfs
 for the current PID namespace."
+  (mkdir-p (string-append root "/proc"))
+
   ;; pivot_root takes a mount point, so bind ROOT onto itself.
   ;; MS_REC preserves its submounts.
   (mount root root #f (logior MS_BIND MS_REC))
