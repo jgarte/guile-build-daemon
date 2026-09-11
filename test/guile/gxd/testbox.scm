@@ -6,19 +6,27 @@
   #:use-module ((srfi srfi-9) #:select (define-record-type))
   #:use-module ((srfi srfi-11) #:select (let-values))
   #:use-module ((guix build syscalls)
-                #:select (CLONE_NEWNS CLONE_NEWPID CLONE_NEWUSER))
+                #:select (restart-on-EINTR
+                          CLONE_NEWNS
+                          CLONE_NEWPID
+                          CLONE_NEWUSER))
   #:use-module ((gxd isolation)
                 #:select (child-proc
+                          make-mounts-private!
+                          pivot-into!
                           read-current-id-map-ranges
                           start-in-namespaces
                           write-id-map-ranges!))
   #:use-module (gxd test-prelude)
+  #:use-module ((gxd testbox disk)
+                #:select (delete-testbox-root! snapshot-base!))
   #:export (make-testbox-manifest
             start-testbox
             start-testbox-process!
             testbox-manifest
             testbox-pid1
             testbox-process-pid
+            testbox-root
             teardown-testbox!
             wait-testbox-process!))
 
@@ -38,9 +46,10 @@
   (status testbox-process-status set-testbox-process-status!))
 
 (define-record-type <testbox>
-  (make-testbox manifest pid1 send! disconnect! active? processes nsenter)
+  (make-testbox manifest root pid1 send! disconnect! active? processes nsenter)
   testbox?
   (manifest testbox-manifest)
+  (root testbox-root)
   (pid1 testbox-pid1)
   (send! testbox-send!)
   (disconnect! testbox-disconnect!)
@@ -49,42 +58,64 @@
   (nsenter testbox-nsenter))
 
 (define (testbox-init => <=)
+  "Enter the root received from the parent, report the result, then await exit."
   ;; As PID 1, this process adopts orphaned descendants.  Explicitly ignoring
   ;; SIGCHLD tells Linux to discard their exit status and reap them
   ;; automatically, so adopted children cannot accumulate as zombies.
   (sigaction SIGCHLD SIG_IGN)
-  (=> 'ready)
+  (with-exception-handler
+      (lambda (exception)
+        (capture-exception
+         (lambda () (=> 'ready (object->string exception))))
+        (raise-exception exception))
+    (lambda ()
+      (let ((root (<= 'setup)))
+        (make-mounts-private!)
+        (pivot-into! root))
+      (=> 'ready #f))
+    #:unwind? #t)
   (<= 'terminate))
 
 (define (make-testbox-manifest)
   "Return the declarative roles available inside a testbox."
   `((testbox/roles . ,roles)))
 
-(define (cleanup-start-failure! child-pid disconnect! exception)
+(define (cleanup-start-failure! child-pid disconnect! root exception)
   "Release CHILD-PID and its channel, then re-raise EXCEPTION.
-Each step is attempted even if an earlier one failed, so one unusable handle
-cannot strand the rest.  Their own failures are discarded: EXCEPTION is what
-stopped startup, and says more than a complaint about a broken handle."
-  (capture-exception disconnect!)
+Delete ROOT only after CHILD-PID has been reaped.  ROOT is #f when startup did
+not acquire one."
+  (capture-exception (lambda () (disconnect!)))
   (capture-exception (lambda () (kill child-pid SIGKILL)))
-  (capture-exception (lambda () (waitpid child-pid 0)))
+  (restart-on-EINTR (waitpid child-pid 0))
+  (when root
+    (capture-exception (lambda () (delete-testbox-root! child-pid))))
   (raise-exception exception))
 
 (define (start-testbox manifest)
   "Start an isolated testbox described by MANIFEST."
-  (match-let (((child-pid => <= disconnect!)
-               (child-proc (logior namespace-flags SIGCHLD) testbox-init)))
-    (with-exception-handler
-        (lambda (exception)
-          (cleanup-start-failure! child-pid disconnect! exception))
-      (lambda ()
-        (let-values (((uid-ranges gid-ranges) (read-current-id-map-ranges 2)))
-          (write-id-map-ranges! child-pid uid-ranges gid-ranges))
-        ;; Do not return until PID 1 has installed its child-reaping policy.
-        (<= 'ready)
-        (make-testbox manifest child-pid => disconnect! #t '()
-                      (require-program "nsenter")))
-      #:unwind? #t)))
+  (let ((nsenter-path (require-program "nsenter"))
+        (root #f))
+    (match-let (((child-pid => <= disconnect!)
+                 (child-proc (logior namespace-flags SIGCHLD) testbox-init)))
+      (with-exception-handler
+          (lambda (exception)
+            (cleanup-start-failure! child-pid disconnect! root exception))
+        (lambda ()
+          ;; Install PID 1's ID mappings before filesystem setup.
+          (let-values (((uid-ranges gid-ranges) (read-current-id-map-ranges 2)))
+            (write-id-map-ranges! child-pid uid-ranges gid-ranges))
+
+          ;; Acquire a private root and tell PID 1 to enter it.
+          (set! root (snapshot-base! child-pid))
+          (=> 'setup root)
+
+          ;; Wait for filesystem setup before returning the live box.
+          (and-let* ((setup-failure (<= 'ready)))
+            (error (format #f "testbox setup failed: ~a" setup-failure)))
+
+          (make-testbox manifest root child-pid => disconnect! #t '()
+                        nsenter-path))
+        #:unwind? #t))))
 
 (define (start-testbox-process! box role program arguments)
   "Start PROGRAM with ARGUMENTS as ROLE inside BOX."
@@ -110,16 +141,15 @@ stopped startup, and says more than a complaint about a broken handle."
   ;; Remember the status: the pid is reaped once, so a later call would
   ;; otherwise fail with ECHILD rather than report what the process did.
   (or (testbox-process-status process)
-      (let ((status (cdr (waitpid (testbox-process-pid process) 0))))
+      (let ((status (cdr (restart-on-EINTR
+                          (waitpid (testbox-process-pid process) 0)))))
         (set-testbox-process-status! process status)
         ((testbox-process-forget! process))
         status)))
 
 (define (teardown-testbox! box)
-  "Stop BOX, releasing every process and channel it owns.
-Raise the first failure encountered, once every step has been attempted: the
-failure that stopped the box is more informative than one caused by the
-half-released state it left behind."
+  "Stop BOX, reap every process it owns, and delete its root.
+Re-raise a channel failure after releasing the remaining resources."
   (when (testbox-active? box)
     (set-testbox-active?! box #f)
     (let ((failure #f))
@@ -129,9 +159,10 @@ half-released state it left behind."
 
       (attempt (lambda () ((testbox-send! box) 'terminate)))
       (attempt (lambda () ((testbox-disconnect! box))))
-      (attempt (lambda () (waitpid (testbox-pid1 box) 0)))
-      (for-each (lambda (process)
-                  (attempt (lambda () (wait-testbox-process! process))))
-                (testbox-processes box))
+      (restart-on-EINTR (waitpid (testbox-pid1 box) 0))
+      ;; PID 1's exit kills namespace members.  These are their outer nsenter
+      ;; monitors in the host PID namespace, which still need reaping.
+      (for-each wait-testbox-process! (testbox-processes box))
+      (attempt (lambda () (delete-testbox-root! (testbox-pid1 box))))
 
       (when failure (raise-exception failure)))))

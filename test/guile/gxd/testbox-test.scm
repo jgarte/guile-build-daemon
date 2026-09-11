@@ -5,10 +5,11 @@
   #:use-module ((ice-9 exceptions)
                 #:select (exception-args
                           exception-kind
-                          exception-message
                           make-exception-with-message))
   #:use-module ((ice-9 match) #:select (match))
+  #:use-module ((ares suitbl checks) #:select (throws-exception?))
   #:use-module ((ares suitbl core) #:select (define-suite is test))
+  #:use-module ((guix store) #:select (direct-store-path))
   #:use-module (gxd test-prelude)
   #:use-module ((gxd testbox)
                 #:select (make-testbox-manifest
@@ -18,7 +19,11 @@
                           testbox-manifest
                           testbox-pid1
                           testbox-process-pid
-                          wait-testbox-process!)))
+                          testbox-root
+                          wait-testbox-process!))
+  #:use-module ((gxd testbox disk)
+                #:select (delete-testbox-root!
+                          snapshot-base!)))
 
 (define guile (readlink "/proc/self/exe"))
 
@@ -65,6 +70,28 @@ fails with ECHILD, which is what distinguishes it from one still running."
       #t)
     #:unwind? #t))
 
+(define (reap-test-child! pid)
+  "Kill and reap PID if this test still owns it."
+  (when pid
+    (with-exception-handler
+        (lambda (exception)
+          (match (cons (exception-kind exception) (exception-args exception))
+            (('system-error _ _ _ (errno))
+             (unless (= errno ECHILD) (raise-exception exception)))
+            (_ (raise-exception exception))))
+      (lambda ()
+        (match (waitpid pid WNOHANG)
+          ((0 . _)
+           (kill pid SIGKILL)
+           (waitpid pid 0))
+          (_ #t)))
+      #:unwind? #t)))
+
+(define (delete-testbox-root-if-present! pid root)
+  "Delete ROOT when it exists and PID identifies its testbox."
+  (when (and pid root (file-exists? root))
+    (delete-testbox-root! pid)))
+
 (define-suite (testbox-tests)
   (test "testbox enters fresh user, mount, and pid namespaces" ()
     (call-with-testbox
@@ -77,33 +104,40 @@ fails with ECHILD, which is what distinguishes it from one still running."
        (is (fresh? 'mnt))
        (is (fresh? 'pid)))))
 
-  (test "teardown preserves its first failure after reaping" ()
-    (let* ((box (start-testbox (make-testbox-manifest)))
-           (pid1 (testbox-pid1 box))
-           (process (start-testbox-process! box 'daemon guile
-                                            '("-c" "(sleep 10)")))
-           (process-pid (testbox-process-pid process))
-           (failing-send
-            (lambda _
-              (raise-exception
-               (make-exception-with-message "expected teardown failure")))))
+  (test "teardown releases resources after notification failure" ()
+    (define expected (make-exception-with-message "expected teardown failure"))
+    (define box (start-testbox (make-testbox-manifest)))
+    (define pid1 (testbox-pid1 box))
+    (define root (testbox-root box))
+    (define process-pid #f)
 
-      (is (alive? process-pid))
+    (dynamic-wind
+      (lambda () #t)
+      (lambda ()
+        (define process
+          (start-testbox-process! box 'daemon guile '("-c" "(sleep 10)")))
+        (set! process-pid (testbox-process-pid process))
+        (define (failing-send . _)
+          (raise-exception expected))
 
-      ;; Reap PID 1 early so a later step fails too, and the first failure has
-      ;; something it could be displaced by.
-      (kill pid1 SIGKILL)
-      (waitpid pid1 0)
+        (is (alive? pid1))
+        (is (alive? process-pid))
+        (is (file-exists? root))
 
-      (define captured
-        (with-module-binding
-         (resolve-module '(gxd isolation)) 'send failing-send
-         (lambda ()
-           (capture-exception (lambda () (teardown-testbox! box))))))
+        (define captured
+          (with-module-binding
+           (resolve-module '(gxd isolation)) 'send failing-send
+           (lambda ()
+             (capture-exception (lambda () (teardown-testbox! box))))))
 
-      (is (string=? "expected teardown failure" (exception-message captured)))
-      (is (reaped? pid1))
-      (is (reaped? process-pid))))
+        (is (eq? expected captured))
+        (is (reaped? pid1))
+        (is (reaped? process-pid))
+        (is (not (file-exists? root))))
+      (lambda ()
+        (reap-test-child! pid1)
+        (reap-test-child! process-pid)
+        (delete-testbox-root-if-present! pid1 root))))
 
   (test "programs run as either declared role" ()
     (call-with-testbox
@@ -122,6 +156,24 @@ fails with ECHILD, which is what distinguishes it from one still running."
        (is (= 0 (report 'daemon '(vector-length (getgroups)))))
        (is (= 0 (report 'user '(vector-length (getgroups))))))))
 
+  (test "a program starts in the box's private root" ()
+    (define host-only-item
+      (direct-store-path (canonicalize-path (require-program "ares-suitbl"))))
+
+    (is (file-exists? host-only-item))
+
+    (define status
+      (call-with-testbox
+       (lambda (box)
+         (role-exit-status
+          box 'daemon
+          `(if (and (string=? (getcwd) "/")
+                    (not (file-exists? ,host-only-item)))
+               0
+               1)))))
+
+    (is (= 0 status)))
+
   (test "process wait status is stable" ()
     (call-with-testbox
      (lambda (box)
@@ -131,28 +183,54 @@ fails with ECHILD, which is what distinguishes it from one still running."
          (is (= 7 (status:exit-val (wait-testbox-process! process))))
          (is (= 7 (status:exit-val (wait-testbox-process! process))))))))
 
-  (test "startup failure releases PID 1 before propagating" ()
-    (define expected (make-exception-with-message "expected mapping failure"))
+  (test "snapshot refusal preserves the existing root" ()
+    (define snapshot! snapshot-base!)
     (define child-pid #f)
     (define child-was-alive? #f)
+    (define root #f)
+    (define sentinel #f)
+    (define (refuse-snapshot pid1)
+      (set! child-pid pid1)
+      (set! child-was-alive? (alive? pid1))
+      (set! root (snapshot! pid1))
+      (set! sentinel (string-append root "/sentinel"))
+      (with-output-to-file sentinel (lambda () (display "preserved")))
+      (snapshot! pid1))
 
-    ;; Fail the first step after the child exists, so startup has something to
-    ;; roll back.  Liveness is recorded here because by the time the assertions
-    ;; run the child is expected to be gone.
-    (define (failing-write-id-maps pid uid-ranges gid-ranges)
-      (set! child-pid pid)
-      (set! child-was-alive? (alive? pid))
-      (raise-exception expected))
+    (dynamic-wind
+      (lambda () #t)
+      (lambda ()
+        (is (throws-exception?
+             (with-module-binding
+              (resolve-module '(gxd testbox)) 'snapshot-base! refuse-snapshot
+              (lambda () (start-testbox (make-testbox-manifest))))))
+        (is child-was-alive?)
+        (is (reaped? child-pid))
+        (is (string=? "preserved" (slurp sentinel))))
+      (lambda ()
+        (reap-test-child! child-pid)
+        (delete-testbox-root-if-present! child-pid root))))
 
-    (define captured
-      (with-module-binding
-       (resolve-module '(gxd testbox)) 'write-id-map-ranges!
-       failing-write-id-maps
-       (lambda ()
-         (capture-exception
-          (lambda () (start-testbox (make-testbox-manifest)))))))
+  (test "filesystem setup failure releases the acquired root" ()
+    (define snapshot! snapshot-base!)
+    (define child-pid #f)
+    (define root #f)
+    (define (snapshot-with-blocked-proc pid1)
+      (set! child-pid pid1)
+      (set! root (snapshot! pid1))
+      (with-output-to-file (string-append root "/proc") (lambda () #t))
+      root)
 
-    (is (eq? expected captured))
-    (is (integer? child-pid))
-    (is child-was-alive?)
-    (is (reaped? child-pid))))
+    (dynamic-wind
+      (lambda () #t)
+      (lambda ()
+        (is (throws-exception?
+             (with-module-binding
+              (resolve-module '(gxd testbox)) 'snapshot-base!
+              snapshot-with-blocked-proc
+              (lambda () (start-testbox (make-testbox-manifest))))))
+        (is (reaped? child-pid))
+        (is (not (file-exists? root))))
+      (lambda ()
+        (reap-test-child! child-pid)
+        (delete-testbox-root-if-present! child-pid root)))))
