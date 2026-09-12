@@ -3,10 +3,15 @@
 
 (define-module (gxd test-prelude)
   #:use-module ((ice-9 rdelim) #:select (read-string))
+  #:use-module (gxd prelude)
   #:export (capture-exception
             slurp
             spit
             with-module-binding))
+
+(eval-when (eval load compile)
+  (module-use! (module-public-interface (current-module))
+               (resolve-interface '(gxd prelude))))
 
 (define (slurp input)
   "Return all text from INPUT, a file name or seekable port."
