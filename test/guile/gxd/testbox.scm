@@ -60,10 +60,6 @@
   "Return the declarative roles available inside a testbox."
   `((testbox/roles . ,roles)))
 
-(define (nsenter)
-  (or (search-path (string-split (or (getenv "PATH") "") #\:) "nsenter")
-      (error "unable to find nsenter")))
-
 (define (cleanup-start-failure! child-pid disconnect! exception)
   "Release CHILD-PID and its channel, then re-raise EXCEPTION.
 Each step is attempted even if an earlier one failed, so one unusable handle
@@ -86,7 +82,8 @@ stopped startup, and says more than a complaint about a broken handle."
           (write-id-map-ranges! child-pid uid-ranges gid-ranges))
         ;; Do not return until PID 1 has installed its child-reaping policy.
         (<= 'ready)
-        (make-testbox manifest child-pid => disconnect! #t '() (nsenter)))
+        (make-testbox manifest child-pid => disconnect! #t '()
+                      (require-program "nsenter")))
       #:unwind? #t)))
 
 (define (start-testbox-process! box role program arguments)
