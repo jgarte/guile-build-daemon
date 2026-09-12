@@ -26,8 +26,7 @@
                                           CLONE_NEWUSER
                                           CLONE_NEWNS
                                           CLONE_NEWPID))
-  #:use-module ((gxd prelude))
-  #:use-module ((gxd test-prelude) #:select (slurp spit)))
+  #:use-module (gxd test-prelude))
 
 (define (call-with-child-proc flags child proc)
   "Call PROC with the pid and the parent-side send and receive procedures of a

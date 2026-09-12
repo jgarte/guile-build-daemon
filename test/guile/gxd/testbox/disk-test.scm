@@ -7,7 +7,7 @@
   #:use-module ((srfi srfi-11) #:select (let-values))
   #:use-module ((ares suitbl core) #:select (define-suite is test))
   #:use-module ((ares suitbl checks) #:select (throws-exception?))
-  #:use-module ((gxd test-prelude) #:select (spit))
+  #:use-module (gxd test-prelude)
   #:use-module ((gxd testbox disk)
                 #:select (delete-testbox-root!
                           require-testbox-base

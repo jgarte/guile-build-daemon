@@ -3,7 +3,7 @@
 
 (define-module (gxd prelude-test)
   #:use-module ((ares suitbl core) #:select (define-suite is test))
-  #:use-module (gxd prelude))
+  #:use-module (gxd test-prelude))
 
 (define nested
   '((a . 1)

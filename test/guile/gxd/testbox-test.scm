@@ -9,8 +9,7 @@
                           make-exception-with-message))
   #:use-module ((ice-9 match) #:select (match))
   #:use-module ((ares suitbl core) #:select (define-suite is test))
-  #:use-module ((gxd test-prelude)
-                #:select (capture-exception with-module-binding))
+  #:use-module (gxd test-prelude)
   #:use-module ((gxd testbox)
                 #:select (make-testbox-manifest
                           start-testbox
@@ -19,8 +18,7 @@
                           testbox-manifest
                           testbox-pid1
                           testbox-process-pid
-                          wait-testbox-process!))
-  #:use-module (gxd prelude))
+                          wait-testbox-process!)))
 
 (define guile (readlink "/proc/self/exe"))
 
