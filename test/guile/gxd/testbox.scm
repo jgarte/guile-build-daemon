@@ -12,8 +12,7 @@
                           read-current-id-map-ranges
                           start-in-namespaces
                           write-id-map-ranges!))
-  #:use-module ((gxd test-prelude) #:select (capture-exception))
-  #:use-module (gxd prelude)
+  #:use-module (gxd test-prelude)
   #:export (make-testbox-manifest
             start-testbox
             start-testbox-process!
