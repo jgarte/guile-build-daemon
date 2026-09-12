@@ -3,8 +3,10 @@
 
 (define-module (gxd test-prelude)
   #:use-module ((ice-9 rdelim) #:select (read-string))
+  #:use-module ((guix build utils) #:select (which))
   #:use-module (gxd prelude)
   #:export (capture-exception
+            require-program
             slurp
             spit
             with-module-binding))
@@ -12,6 +14,11 @@
 (eval-when (eval load compile)
   (module-use! (module-public-interface (current-module))
                (resolve-interface '(gxd prelude))))
+
+(define (require-program program)
+  "Return the complete file name of PROGRAM on $PATH, or raise an error."
+  (or (which program)
+      (error "unable to find program" program)))
 
 (define (slurp input)
   "Return all text from INPUT, a file name or seekable port."

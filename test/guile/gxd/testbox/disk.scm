@@ -6,6 +6,7 @@
 (define-module (gxd testbox disk)
   #:use-module ((guix build syscalls) #:select (file-system-type statfs))
   #:use-module ((guix build utils) #:select (invoke mkdir-p))
+  #:use-module ((gxd test-prelude) #:select (require-program))
   #:export (delete-testbox-root!
             require-testbox-base
             snapshot-base!))
@@ -25,10 +26,6 @@
     (error "testbox disk base is unavailable" base))
   base)
 
-(define (btrfs)
-  (or (search-path (string-split (or (getenv "PATH") "") #\:) "btrfs")
-      (error "unable to find btrfs")))
-
 (define (testbox-root-path pid1)
   "Return the testbox root path for PID1."
   (string-append (getenv "TESTBOX_DISK_MOUNT_POINT")
@@ -37,7 +34,7 @@
 
 (define (delete-testbox-root! pid1)
   "Delete the testbox root owned by PID1."
-  (invoke (btrfs) "--quiet" "subvolume" "delete"
+  (invoke (require-program "btrfs") "--quiet" "subvolume" "delete"
           (testbox-root-path pid1)))
 
 (define (snapshot-base! pid1)
@@ -47,5 +44,6 @@
     (when (file-exists? destination)
       (error "testbox root already exists" destination))
     (mkdir-p (dirname destination))
-    (invoke (btrfs) "--quiet" "subvolume" "snapshot" base destination)
+    (invoke (require-program "btrfs") "--quiet" "subvolume" "snapshot"
+            base destination)
     destination))
