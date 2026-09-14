@@ -174,6 +174,44 @@ fails with ECHILD, which is what distinguishes it from one still running."
 
     (is (= 0 status)))
 
+  (test "gxd source is exposed read-only at its host path" ()
+    (define source (canonicalize-path "src/guile/gxd/prelude.scm"))
+    (define attempted
+      (string-append (canonicalize-path "src") "/"
+                     (symbol->string (gensym ".testbox-write-"))))
+
+    (dynamic-wind
+      (lambda () #t)
+      (lambda ()
+        (is (file-exists? source))
+
+        (define status
+          (call-with-testbox
+           (lambda (box)
+             (role-exit-status
+              box 'daemon
+              `(begin
+                 (use-modules (ice-9 exceptions))
+                 (if (and (file-exists? ,source)
+                          (with-exception-handler
+                              (lambda (exception)
+                                (= EROFS
+                                   (system-error-errno
+                                    (cons (exception-kind exception)
+                                          (exception-args exception)))))
+                            (lambda ()
+                              (with-output-to-file ,attempted
+                                (lambda () (display "written")))
+                              #f)
+                            #:unwind? #t))
+                     0
+                     1))))))
+
+        (is (= 0 status))
+        (is (not (file-exists? attempted))))
+      (lambda ()
+        (when (file-exists? attempted) (delete-file attempted)))))
+
   (test "process wait status is stable" ()
     (call-with-testbox
      (lambda (box)
