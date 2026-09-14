@@ -7,7 +7,6 @@
                           make-bytevector
                           string->utf8))
   #:use-module ((srfi srfi-1) #:select (append-map find))
-  #:use-module ((srfi srfi-11) #:select (let-values))
   #:use-module ((srfi srfi-197) #:select (chain))
   #:use-module ((gnu build accounts)
                 #:select (read-subgid
@@ -49,7 +48,6 @@
             bind-mount-read-only!
             pivot-into!
             read-current-id-facts
-            read-current-id-map-ranges
             start-in-namespaces
             write-id-map-ranges!))
 
@@ -190,15 +188,6 @@ GID start.  Each start covers at least REQUIRED-COUNT contiguous ids."
          (gid-entry (subid-entry user (read-subgid) required-count)))
     (values (getuid) (subid-entry-start uid-entry)
             (getgid) (subid-entry-start gid-entry))))
-
-(define (read-current-id-map-ranges required-count)
-  "Return UID and GID map ranges covering REQUIRED-COUNT subordinate ids.
-Each is a list of (INSIDE OUTSIDE COUNT) ranges mapping the current user to
-root, then REQUIRED-COUNT ids drawn from the ranges configured for them."
-  (let-values (((uid uid-start gid gid-start)
-                (read-current-id-facts required-count)))
-    (values `((0 ,uid 1) (1 ,uid-start ,required-count))
-            `((0 ,gid 1) (1 ,gid-start ,required-count)))))
 
 (define (id-map-arguments ranges)
   (append-map (lambda (range) (map number->string range)) ranges))
