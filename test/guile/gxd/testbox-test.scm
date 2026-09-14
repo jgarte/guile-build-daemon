@@ -184,6 +184,20 @@ fails with ECHILD, which is what distinguishes it from one still running."
        (is (= 0 (report 'daemon '(vector-length (getgroups)))))
        (is (= 0 (report 'user '(vector-length (getgroups))))))))
 
+  (test "the daemon role owns the store" ()
+    (define uid-is-store-owner
+      '(= (getuid) (stat:uid (stat "/gnu/store"))))
+
+    (define gid-is-store-group
+      '(= (getgid) (stat:gid (stat "/gnu/store"))))
+
+    (call-with-testbox
+     (lambda (box)
+       (is (daemon-observes? box uid-is-store-owner))
+       (is (daemon-observes? box gid-is-store-group))
+       (is (not (user-observes? box uid-is-store-owner)))
+       (is (not (user-observes? box gid-is-store-group))))))
+
   (test "the daemon starts in the box's private root" ()
     (define host-only-item
       (direct-store-path (canonicalize-path (require-program "ares-suitbl"))))

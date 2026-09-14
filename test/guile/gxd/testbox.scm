@@ -15,7 +15,7 @@
                           child-proc
                           make-mounts-private!
                           pivot-into!
-                          read-current-id-map-ranges
+                          read-current-id-facts
                           start-in-namespaces
                           write-id-map-ranges!))
   #:use-module (gxd test-prelude)
@@ -83,6 +83,11 @@
   `((testbox/roles . ,roles)
     (testbox/gxd-src . ,(canonicalize-path "src"))))
 
+(define (role-id-map-ranges daemon-id user-id current-id subordinate-start)
+  "Map CURRENT-ID to DAEMON-ID and SUBORDINATE-START to USER-ID."
+  `((,daemon-id ,current-id 1)
+    (,user-id ,subordinate-start 1)))
+
 (define (cleanup-start-failure! child-pid disconnect! root exception)
   "Release CHILD-PID and its channel, then re-raise EXCEPTION.
 Delete ROOT only after CHILD-PID has been reaped.  ROOT is #f when startup did
@@ -105,8 +110,16 @@ not acquire one."
             (cleanup-start-failure! child-pid disconnect! root exception))
         (lambda ()
           ;; Install PID 1's ID mappings before filesystem setup.
-          (let-values (((uid-ranges gid-ranges) (read-current-id-map-ranges 2)))
-            (write-id-map-ranges! child-pid uid-ranges gid-ranges))
+          (let-values (((uid uid-start gid gid-start)
+                        (read-current-id-facts 1)))
+            (define daemon (get-in manifest '(testbox/roles daemon)))
+            (define user (get-in manifest '(testbox/roles user)))
+            (write-id-map-ranges!
+             child-pid
+             (role-id-map-ranges (get daemon 'role/uid)
+                                 (get user 'role/uid) uid uid-start)
+             (role-id-map-ranges (get daemon 'role/gid)
+                                 (get user 'role/gid) gid gid-start)))
 
           ;; Acquire a private root and tell PID 1 to enter it.
           (set! root (snapshot-base! child-pid))
