@@ -11,7 +11,8 @@
                           CLONE_NEWPID
                           CLONE_NEWUSER))
   #:use-module ((gxd isolation)
-                #:select (child-proc
+                #:select (bind-mount-read-only!
+                          child-proc
                           make-mounts-private!
                           pivot-into!
                           read-current-id-map-ranges
@@ -58,7 +59,7 @@
   (nsenter testbox-nsenter))
 
 (define (testbox-init => <=)
-  "Enter the root received from the parent, report the result, then await exit."
+  "Expose the gxd source, enter the root, report readiness, then await exit."
   ;; As PID 1, this process adopts orphaned descendants.  Explicitly ignoring
   ;; SIGCHLD tells Linux to discard their exit status and reap them
   ;; automatically, so adopted children cannot accumulate as zombies.
@@ -69,16 +70,18 @@
          (lambda () (=> 'ready (object->string exception))))
         (raise-exception exception))
     (lambda ()
-      (let ((root (<= 'setup)))
+      (match-let (((root source) (<= 'setup)))
         (make-mounts-private!)
+        (bind-mount-read-only! source (string-append root source))
         (pivot-into! root))
       (=> 'ready #f))
     #:unwind? #t)
   (<= 'terminate))
 
 (define (make-testbox-manifest)
-  "Return the declarative roles available inside a testbox."
-  `((testbox/roles . ,roles)))
+  "Return the roles and canonical gxd source directory for a testbox."
+  `((testbox/roles . ,roles)
+    (testbox/gxd-src . ,(canonicalize-path "src"))))
 
 (define (cleanup-start-failure! child-pid disconnect! root exception)
   "Release CHILD-PID and its channel, then re-raise EXCEPTION.
@@ -107,7 +110,7 @@ not acquire one."
 
           ;; Acquire a private root and tell PID 1 to enter it.
           (set! root (snapshot-base! child-pid))
-          (=> 'setup root)
+          (=> 'setup (list root (get manifest 'testbox/gxd-src)))
 
           ;; Wait for filesystem setup before returning the live box.
           (and-let* ((setup-failure (<= 'ready)))
