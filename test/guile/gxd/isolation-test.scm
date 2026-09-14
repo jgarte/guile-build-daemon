@@ -21,7 +21,7 @@
                                           make-mounts-private!
                                           bind-mount-read-only!
                                           pivot-into!
-                                          read-current-id-map-ranges
+                                          read-current-id-facts
                                           write-id-map-ranges!
                                           CLONE_NEWUSER
                                           CLONE_NEWNS
@@ -50,6 +50,14 @@ afterwards."
       (kill pid 0)
       #t)
     #:unwind? #t))
+
+(define (current-root-id-map-ranges required-count)
+  "Map the current UID and GID to root, followed by REQUIRED-COUNT subordinate
+IDs."
+  (let-values (((uid uid-start gid gid-start)
+                (read-current-id-facts required-count)))
+    (values `((0 ,uid 1) (1 ,uid-start ,required-count))
+            `((0 ,gid 1) (1 ,gid-start ,required-count)))))
 
 (define-suite (call-with-child-proc-tests)
   (test "a scope reaps the child it started" ()
@@ -90,7 +98,7 @@ afterwards."
      (setuid id)
      (=> 'ids (list (getuid) (getgid))))
    (lambda (child-pid => <=)
-     (let-values (((uid-ranges gid-ranges) (read-current-id-map-ranges 2)))
+     (let-values (((uid-ranges gid-ranges) (current-root-id-map-ranges 2)))
        (write-id-map-ranges! child-pid uid-ranges gid-ranges))
      (=> 'ids-mapped)
      (<= 'ids))))
@@ -265,7 +273,7 @@ afterwards."
                                (spit (string-append target "/written")
                                      "written")))))))
    (lambda (child-pid => <=)
-     (let-values (((uid-ranges gid-ranges) (read-current-id-map-ranges 1)))
+     (let-values (((uid-ranges gid-ranges) (current-root-id-map-ranges 1)))
        (write-id-map-ranges! child-pid uid-ranges gid-ranges))
      (=> 'ids-mapped)
      (<= 'observed))))
@@ -294,13 +302,13 @@ afterwards."
                 (get observed 'entries)))
     (is (string=? "1" (get observed 'pid)))))
 
-(define-suite (write-id-maps-tests)
-  (test "mapping exposes only the requested number of subordinate ids" ()
-    (let-values (((uid-ranges gid-ranges) (read-current-id-map-ranges 2)))
-      (match-let ((((_ _ _) (_ _ uid-count)) uid-ranges)
-                  (((_ _ _) (_ _ gid-count)) gid-ranges))
-        (is (= 2 uid-count))
-        (is (= 2 gid-count)))))
+(define-suite (read-current-id-facts-tests)
+  (test "current uid and gid are reported" ()
+    (define-values (uid uid-start gid gid-start) (read-current-id-facts 2))
 
+    (is (= (getuid) uid))
+    (is (= (getgid) gid))))
+
+(define-suite (write-id-maps-tests)
   (test "setuid helpers map multiple ids" ()
     (is (equal? '((1 1) (2 2)) (map mapped-ids '(1 2))))))
