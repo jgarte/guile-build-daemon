@@ -198,6 +198,51 @@ fails with ECHILD, which is what distinguishes it from one still running."
        (is (not (user-observes? box uid-is-store-owner)))
        (is (not (user-observes? box gid-is-store-group))))))
 
+  (test "only the daemon role writes to the store" ()
+    (define daemon-item-path
+      (string-append "/gnu/store/"
+                     (symbol->string (gensym ".testbox-daemon-write-"))))
+
+    (define user-item-path
+      (string-append "/gnu/store/"
+                     (symbol->string (gensym ".testbox-user-write-"))))
+
+    (define store-item-write-succeeds
+      `(begin
+         (with-output-to-file ,daemon-item-path (lambda () #t))
+         #t))
+
+    (define store-item-write-fails-with-EACCES
+      `(begin
+         (use-modules (ice-9 exceptions))
+         (with-exception-handler
+             (lambda (exception)
+               (= EACCES
+                  (system-error-errno
+                   (cons (exception-kind exception)
+                         (exception-args exception)))))
+           (lambda ()
+             (with-output-to-file ,user-item-path (lambda () #t))
+             #f)
+           #:unwind? #t)))
+
+    (call-with-testbox
+     (lambda (box)
+       (define daemon-item-on-host
+         (string-append (testbox-root box) daemon-item-path))
+
+       (define user-item-on-host
+         (string-append (testbox-root box) user-item-path))
+
+       ;; Both paths are absent before either role writes.
+       (is (not (file-exists? daemon-item-on-host)))
+       (is (not (file-exists? user-item-on-host)))
+
+       ;; The daemon writes; the user gets EACCES and leaves no item.
+       (is (daemon-observes? box store-item-write-succeeds))
+       (is (user-observes? box store-item-write-fails-with-EACCES))
+       (is (not (file-exists? user-item-on-host))))))
+
   (test "the daemon starts in the box's private root" ()
     (define host-only-item
       (direct-store-path (canonicalize-path (require-program "ares-suitbl"))))
