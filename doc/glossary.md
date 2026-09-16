@@ -34,6 +34,10 @@ clean filesystem for inspecting changes in daemon's artifacts and guix
 state without modifying the state of host system. The user namespace
 emulates daemon and client users.
 
+`testbox-disk` - an image with btrfs filesystem (`testbox-disk-image`) mounted at `testbox-directory`. It has the following directory structure:
+- `/roots` contains root directories of isolated `testbox` filesystems named by its host PID
+- `/base` contains initial content for a fresh `testbox` filesystem (e.g., `/gnu/store`, `etc/guix`, etc.) that is 'snapshoted' (copy on write btrfs snapshot) to `/roots` on every `testbox` creation
+
 `nixd-testbox` - an isolated environment with running `nixd` that communicates
 with the `client` via logging `relay`
 
@@ -43,3 +47,4 @@ with the `client` via logging `relay`
 `differential-test` (`diff-test`) - test suites based on comparing logs
 and artifacts of `nixd-testbox` and `gxd-testbox` to ensure the backward
 compatibility of new implementation of guix daemon (`gxd`)
+
