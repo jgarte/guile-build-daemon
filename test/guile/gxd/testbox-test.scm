@@ -48,6 +48,24 @@ by exiting with it, which limits what EXPRESSION can report to a byte."
     (start-testbox-process! box role guile
                             (list "-c" (format #f "(exit ~s)" expression))))))
 
+(define (role-observes? box role expression)
+  "Return whether EXPRESSION holds for ROLE in BOX.
+Raise an error when the role process does not report true or false."
+  (match (role-exit-status box role `(if ,expression 0 42))
+    (0 #t)
+    (42 #f) ;; Guile exits with 1 on an uncaught exception, so false uses 42.
+    (status
+     (error "role expression did not report true or false"
+            role expression status))))
+
+(define (daemon-observes? box expression)
+  "Return whether EXPRESSION holds for the daemon role in BOX."
+  (role-observes? box 'daemon expression))
+
+(define (user-observes? box expression)
+  "Return whether EXPRESSION holds for the user role in BOX."
+  (role-observes? box 'user expression))
+
 (define (reaped? pid)
   "Return #t when PID has been collected already.  Waiting on such a pid
 fails with ECHILD, which is what distinguishes it from one still running."
@@ -106,38 +124,48 @@ fails with ECHILD, which is what distinguishes it from one still running."
 
   (test "teardown releases resources after notification failure" ()
     (define expected (make-exception-with-message "expected teardown failure"))
+    (define (failing-send . _)
+      (raise-exception expected))
+
     (define box (start-testbox (make-testbox-manifest)))
     (define pid1 (testbox-pid1 box))
     (define root (testbox-root box))
     (define process-pid #f)
 
+    (define (run-teardown-with-failing-send)
+      (with-module-binding
+       (resolve-module '(gxd isolation)) 'send failing-send
+       (lambda ()
+         (capture-exception (lambda () (teardown-testbox! box))))))
+
+    (define (recover-resources!)
+      (reap-test-child! pid1)
+      (reap-test-child! process-pid)
+      (delete-testbox-root-if-present! pid1 root))
+
+    (define (check-teardown)
+      (define process
+        (start-testbox-process! box 'daemon guile '("-c" "(sleep 10)")))
+      (set! process-pid (testbox-process-pid process))
+
+      ;; Establish the resources teardown must release.
+      (is (alive? pid1))
+      (is (alive? process-pid))
+      (is (file-exists? root))
+
+      (define teardown-failure (run-teardown-with-failing-send))
+
+      ;; Notification failure propagates after every resource is released.
+      (is (eq? expected teardown-failure))
+      (is (reaped? pid1))
+      (is (reaped? process-pid))
+      (is (not (file-exists? root))))
+
+    ;; Teardown is the subject, so recover independently on an uncaught error.
     (dynamic-wind
       (lambda () #t)
-      (lambda ()
-        (define process
-          (start-testbox-process! box 'daemon guile '("-c" "(sleep 10)")))
-        (set! process-pid (testbox-process-pid process))
-        (define (failing-send . _)
-          (raise-exception expected))
-
-        (is (alive? pid1))
-        (is (alive? process-pid))
-        (is (file-exists? root))
-
-        (define captured
-          (with-module-binding
-           (resolve-module '(gxd isolation)) 'send failing-send
-           (lambda ()
-             (capture-exception (lambda () (teardown-testbox! box))))))
-
-        (is (eq? expected captured))
-        (is (reaped? pid1))
-        (is (reaped? process-pid))
-        (is (not (file-exists? root))))
-      (lambda ()
-        (reap-test-child! pid1)
-        (reap-test-child! process-pid)
-        (delete-testbox-root-if-present! pid1 root))))
+      check-teardown
+      recover-resources!))
 
   (test "programs run as either declared role" ()
     (call-with-testbox
@@ -156,23 +184,15 @@ fails with ECHILD, which is what distinguishes it from one still running."
        (is (= 0 (report 'daemon '(vector-length (getgroups)))))
        (is (= 0 (report 'user '(vector-length (getgroups))))))))
 
-  (test "a program starts in the box's private root" ()
+  (test "the daemon starts in the box's private root" ()
     (define host-only-item
       (direct-store-path (canonicalize-path (require-program "ares-suitbl"))))
 
-    (is (file-exists? host-only-item))
-
-    (define status
-      (call-with-testbox
-       (lambda (box)
-         (role-exit-status
-          box 'daemon
-          `(if (and (string=? (getcwd) "/")
-                    (not (file-exists? ,host-only-item)))
-               0
-               1)))))
-
-    (is (= 0 status)))
+    (call-with-testbox
+     (lambda (box)
+       (is (file-exists? host-only-item))
+       (is (daemon-observes? box '(string=? (getcwd) "/")))
+       (is (daemon-observes? box `(not (file-exists? ,host-only-item)))))))
 
   (test "gxd source is exposed read-only at its host path" ()
     (define source (canonicalize-path "src/guile/gxd/prelude.scm"))
@@ -180,37 +200,29 @@ fails with ECHILD, which is what distinguishes it from one still running."
       (string-append (canonicalize-path "src") "/"
                      (symbol->string (gensym ".testbox-write-"))))
 
-    (dynamic-wind
-      (lambda () #t)
-      (lambda ()
-        (is (file-exists? source))
+    (define write-to-source-fails-with-EROFS
+      `(begin
+         (use-modules (ice-9 exceptions))
+         (with-exception-handler
+             (lambda (exception)
+               (= EROFS
+                  (system-error-errno
+                   (cons (exception-kind exception)
+                         (exception-args exception)))))
+           (lambda ()
+             (with-output-to-file ,attempted
+               (lambda () (display "written")))
+             #f)
+           #:unwind? #t)))
 
-        (define status
-          (call-with-testbox
-           (lambda (box)
-             (role-exit-status
-              box 'daemon
-              `(begin
-                 (use-modules (ice-9 exceptions))
-                 (if (and (file-exists? ,source)
-                          (with-exception-handler
-                              (lambda (exception)
-                                (= EROFS
-                                   (system-error-errno
-                                    (cons (exception-kind exception)
-                                          (exception-args exception)))))
-                            (lambda ()
-                              (with-output-to-file ,attempted
-                                (lambda () (display "written")))
-                              #f)
-                            #:unwind? #t))
-                     0
-                     1))))))
+    (call-with-testbox
+     (lambda (box)
+       (is (file-exists? source))
+       (is (daemon-observes? box `(file-exists? ,source)))
+       (is (daemon-observes? box write-to-source-fails-with-EROFS))
+       (is (not (file-exists? attempted)))))
 
-        (is (= 0 status))
-        (is (not (file-exists? attempted))))
-      (lambda ()
-        (when (file-exists? attempted) (delete-file attempted)))))
+    (when (file-exists? attempted) (delete-file attempted)))
 
   (test "process wait status is stable" ()
     (call-with-testbox
@@ -235,19 +247,18 @@ fails with ECHILD, which is what distinguishes it from one still running."
       (with-output-to-file sentinel (lambda () (display "preserved")))
       (snapshot! pid1))
 
-    (dynamic-wind
-      (lambda () #t)
-      (lambda ()
-        (is (throws-exception?
-             (with-module-binding
-              (resolve-module '(gxd testbox)) 'snapshot-base! refuse-snapshot
-              (lambda () (start-testbox (make-testbox-manifest))))))
-        (is child-was-alive?)
-        (is (reaped? child-pid))
-        (is (string=? "preserved" (slurp sentinel))))
-      (lambda ()
-        (reap-test-child! child-pid)
-        (delete-testbox-root-if-present! child-pid root))))
+    (define (start-with-refused-snapshot)
+      (with-module-binding
+       (resolve-module '(gxd testbox)) 'snapshot-base! refuse-snapshot
+       (lambda () (start-testbox (make-testbox-manifest)))))
+
+    (is (throws-exception? (start-with-refused-snapshot)))
+    (is child-was-alive?)
+    (is (reaped? child-pid))
+    (is (string=? "preserved" (slurp sentinel)))
+
+    (reap-test-child! child-pid)
+    (delete-testbox-root-if-present! child-pid root))
 
   (test "filesystem setup failure releases the acquired root" ()
     (define snapshot! snapshot-base!)
@@ -259,16 +270,15 @@ fails with ECHILD, which is what distinguishes it from one still running."
       (with-output-to-file (string-append root "/proc") (lambda () #t))
       root)
 
-    (dynamic-wind
-      (lambda () #t)
-      (lambda ()
-        (is (throws-exception?
-             (with-module-binding
-              (resolve-module '(gxd testbox)) 'snapshot-base!
-              snapshot-with-blocked-proc
-              (lambda () (start-testbox (make-testbox-manifest))))))
-        (is (reaped? child-pid))
-        (is (not (file-exists? root))))
-      (lambda ()
-        (reap-test-child! child-pid)
-        (delete-testbox-root-if-present! child-pid root)))))
+    (define (start-with-blocked-proc)
+      (with-module-binding
+       (resolve-module '(gxd testbox)) 'snapshot-base!
+       snapshot-with-blocked-proc
+       (lambda () (start-testbox (make-testbox-manifest)))))
+
+    (is (throws-exception? (start-with-blocked-proc)))
+    (is (reaped? child-pid))
+    (is (not (file-exists? root)))
+
+    (reap-test-child! child-pid)
+    (delete-testbox-root-if-present! child-pid root)))
