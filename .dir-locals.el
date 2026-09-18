@@ -29,6 +29,9 @@
      (eval . (put 'call-with-input-file 'scheme-indent-function 1))
      (eval . (put 'call-with-output-file 'scheme-indent-function 1))
      (eval . (put 'with-output-to-file 'scheme-indent-function 1))
+     (eval . (put 'role-observes? 'scheme-indent-function 2))
+     (eval . (put 'daemon-observes? 'scheme-indent-function 1))
+     (eval . (put 'user-observes? 'scheme-indent-function 1))
 
      ;; Guix data forms used by the development manifests/packages.
      (eval . (put 'channel 'scheme-indent-function 0))
