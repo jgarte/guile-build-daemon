@@ -32,12 +32,18 @@
 exactly when they are in the same one."
   (readlink (format #f "/proc/~a/ns/~a" pid name)))
 
-(define (call-with-testbox proc)
-  (let ((box (start-testbox (make-testbox-manifest))))
+(define (call-with-testbox manifest proc)
+  (let ((box (start-testbox manifest)))
     (dynamic-wind
       (lambda () #t)
       (lambda () (proc box))
       (lambda () (teardown-testbox! box)))))
+
+(define (call-with-rootless-testbox proc)
+  (call-with-testbox (make-testbox-manifest 'rootless) proc))
+
+(define (call-with-rootful-testbox proc)
+  (call-with-testbox (make-testbox-manifest 'rootful) proc))
 
 (define (role-exit-status box role expression)
   "Run EXPRESSION as ROLE in BOX and return the status it exited with.
@@ -112,7 +118,7 @@ fails with ECHILD, which is what distinguishes it from one still running."
 
 (define-suite (testbox-tests)
   (test "testbox enters fresh user, mount, and pid namespaces" ()
-    (call-with-testbox
+    (call-with-rootless-testbox
      (lambda (box)
        (define (fresh? name)
          (not (string=? (namespace-id (testbox-pid1 box) name)
@@ -127,7 +133,7 @@ fails with ECHILD, which is what distinguishes it from one still running."
     (define (failing-send . _)
       (raise-exception expected))
 
-    (define box (start-testbox (make-testbox-manifest)))
+    (define box (start-testbox (make-testbox-manifest 'rootless)))
     (define pid1 (testbox-pid1 box))
     (define root (testbox-root box))
     (define process-pid #f)
@@ -167,22 +173,70 @@ fails with ECHILD, which is what distinguishes it from one still running."
       check-teardown
       recover-resources!))
 
-  (test "programs run as either declared role" ()
-    (call-with-testbox
+  (test "rootless daemon and user use distinct nonroot identities" ()
+    (call-with-rootless-testbox
      (lambda (box)
-       (define (declared role key)
-         (get-in (testbox-manifest box) (list 'testbox/roles role key)))
-       (define (report role expression)
-         (role-exit-status box role expression))
+       (define roles (get (testbox-manifest box) 'testbox/roles))
+       (define daemon (get roles 'daemon))
+       (define user (get roles 'user))
 
-       (is (= (declared 'daemon 'role/uid) (report 'daemon '(getuid))))
-       (is (= (declared 'daemon 'role/gid) (report 'daemon '(getgid))))
-       (is (= (declared 'user 'role/uid) (report 'user '(getuid))))
-       (is (= (declared 'user 'role/gid) (report 'user '(getgid))))
+       (is (daemon-observes? box `(= ,(get daemon 'role/uid) (getuid))))
+       (is (daemon-observes? box `(= ,(get daemon 'role/gid) (getgid))))
+       (is (user-observes? box `(= ,(get user 'role/uid) (getuid))))
+       (is (user-observes? box `(= ,(get user 'role/gid) (getgid))))
 
        ;; A role must not keep the groups of whoever started the box.
-       (is (= 0 (report 'daemon '(vector-length (getgroups)))))
-       (is (= 0 (report 'user '(vector-length (getgroups))))))))
+       (is (daemon-observes? box '(= 0 (vector-length (getgroups)))))
+       (is (user-observes? box '(= 0 (vector-length (getgroups)))))
+
+       (is (not (= 0 (get daemon 'role/uid))))
+       (is (not (= 0 (get user 'role/uid))))
+       (is (not (= (get daemon 'role/uid) (get user 'role/uid)))))))
+
+  (test "rootful daemon is root and user is not" ()
+    (call-with-rootful-testbox
+     (lambda (box)
+       (define user
+         (get-in (testbox-manifest box) '(testbox/roles user)))
+
+       (is (daemon-observes? box '(= 0 (getuid))))
+       (is (daemon-observes? box '(= 0 (getgid))))
+       (is (not (= 0 (get user 'role/uid))))
+       (is (user-observes? box
+             `(and (= ,(get user 'role/uid) (getuid))
+                   (= ,(get user 'role/gid) (getgid))))))))
+
+  (test "rootful build group names a distinct role a daemon process can become" ()
+    (define daemon-becomes-build-role
+      '(let ((account (getpwnam "gxdbuild01"))
+             (group (getgrnam "gxdbuild")))
+         (setgroups (vector (group:gid group)))
+         (setgid (passwd:gid account))
+         (setuid (passwd:uid account))
+         (and (= (getuid) (passwd:uid account))
+              (= (getgid) (passwd:gid account))
+              (equal? (getgroups) (vector (group:gid group))))))
+
+    (call-with-rootful-testbox
+     (lambda (box)
+       (define manifest (testbox-manifest box))
+       (define (role-id role key)
+         (get-in manifest (list 'testbox/roles role key)))
+
+       (define build-group-names-distinct-role
+         `(let ((account (getpwnam "gxdbuild01"))
+                (group (getgrnam "gxdbuild")))
+            (and (= (passwd:gid account) (group:gid group))
+                 (member (passwd:name account) (group:mem group))
+                 (not (member (passwd:uid account)
+                              '(,(role-id 'daemon 'role/uid)
+                                ,(role-id 'user 'role/uid))))
+                 (not (member (passwd:gid account)
+                              '(,(role-id 'daemon 'role/gid)
+                                ,(role-id 'user 'role/gid)))))))
+
+       (is (daemon-observes? box build-group-names-distinct-role))
+       (is (daemon-observes? box daemon-becomes-build-role)))))
 
   (test "the daemon role owns the store" ()
     (define uid-is-store-owner
@@ -191,7 +245,7 @@ fails with ECHILD, which is what distinguishes it from one still running."
     (define gid-is-store-group
       '(= (getgid) (stat:gid (stat "/gnu/store"))))
 
-    (call-with-testbox
+    (call-with-rootless-testbox
      (lambda (box)
        (is (daemon-observes? box uid-is-store-owner))
        (is (daemon-observes? box gid-is-store-group))
@@ -228,7 +282,7 @@ fails with ECHILD, which is what distinguishes it from one still running."
              #f)
            #:unwind? #t)))
 
-    (call-with-testbox
+    (call-with-rootless-testbox
      (lambda (box)
        (define daemon-item-on-host
          (string-append (testbox-root box) daemon-item-path))
@@ -249,7 +303,7 @@ fails with ECHILD, which is what distinguishes it from one still running."
     (define host-only-item
       (direct-store-path (canonicalize-path (require-program "ares-suitbl"))))
 
-    (call-with-testbox
+    (call-with-rootless-testbox
      (lambda (box)
        (is (file-exists? host-only-item))
        (is (daemon-observes? box '(string=? (getcwd) "/")))
@@ -276,7 +330,7 @@ fails with ECHILD, which is what distinguishes it from one still running."
              #f)
            #:unwind? #t)))
 
-    (call-with-testbox
+    (call-with-rootless-testbox
      (lambda (box)
        (is (file-exists? source))
        (is (daemon-observes? box `(file-exists? ,source)))
@@ -286,7 +340,7 @@ fails with ECHILD, which is what distinguishes it from one still running."
     (when (file-exists? attempted) (delete-file attempted)))
 
   (test "process wait status is stable" ()
-    (call-with-testbox
+    (call-with-rootless-testbox
      (lambda (box)
        (let ((process
               (start-testbox-process! box 'daemon guile
@@ -311,7 +365,7 @@ fails with ECHILD, which is what distinguishes it from one still running."
     (define (start-with-refused-snapshot)
       (with-module-binding
        (resolve-module '(gxd testbox)) 'snapshot-base! refuse-snapshot
-       (lambda () (start-testbox (make-testbox-manifest)))))
+       (lambda () (start-testbox (make-testbox-manifest 'rootless)))))
 
     (is (throws-exception? (start-with-refused-snapshot)))
     (is child-was-alive?)
@@ -335,7 +389,7 @@ fails with ECHILD, which is what distinguishes it from one still running."
       (with-module-binding
        (resolve-module '(gxd testbox)) 'snapshot-base!
        snapshot-with-blocked-proc
-       (lambda () (start-testbox (make-testbox-manifest)))))
+       (lambda () (start-testbox (make-testbox-manifest 'rootless)))))
 
     (is (throws-exception? (start-with-blocked-proc)))
     (is (reaped? child-pid))
