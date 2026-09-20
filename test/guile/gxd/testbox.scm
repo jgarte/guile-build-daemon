@@ -2,9 +2,16 @@
 ;; SPDX-FileCopyrightText: 2026 Andrew Zhurov
 
 (define-module (gxd testbox)
+  #:use-module ((gnu build accounts)
+                #:select (group-entry
+                          password-entry
+                          write-group
+                          write-passwd))
   #:use-module ((ice-9 match) #:select (match-let))
+  #:use-module ((srfi srfi-1) #:select (append-map delete-duplicates iota))
+  #:use-module ((srfi srfi-197) #:select (chain))
   #:use-module ((srfi srfi-9) #:select (define-record-type))
-  #:use-module ((srfi srfi-11) #:select (let-values))
+  #:use-module ((guix build utils) #:select (mkdir-p))
   #:use-module ((guix build syscalls)
                 #:select (restart-on-EINTR
                           CLONE_NEWNS
@@ -35,9 +42,24 @@
 ;; namespace yet, so it shares the host's.
 (define namespace-flags (logior CLONE_NEWUSER CLONE_NEWNS CLONE_NEWPID))
 
-(define roles
-  '((daemon . ((role/uid . 1) (role/gid . 1)))
-    (user . ((role/uid . 2) (role/gid . 2)))))
+(define daemon-modes
+  '((rootless
+     (testbox/roles
+      . ((daemon . ((role/uid . 1)
+                    (role/gid . 1)))
+         (user . ((role/uid . 2)
+                  (role/gid . 2))))))
+    (rootful
+     (testbox/roles
+      . ((daemon . ((role/uid . 0)
+                    (role/gid . 0)))
+         (user . ((role/uid . 2)
+                  (role/gid . 2)))
+         (gxdbuild01 . ((role/uid . 3)
+                        (role/gid . 3)))))
+     (testbox/groups
+      . ((gxdbuild . ((group/gid . 3)
+                      (group/members . (gxdbuild01)))))))))
 
 (define-record-type <testbox-process>
   (make-testbox-process pid forget!)
@@ -58,6 +80,54 @@
   (processes testbox-processes set-testbox-processes!)
   (nsenter testbox-nsenter))
 
+(define (mode-configuration daemon-mode)
+  "Return the testbox configuration selected by DAEMON-MODE."
+  (or (assq-ref daemon-modes daemon-mode)
+      (error "unknown daemon mode" daemon-mode)))
+
+(define (role->password-entry role)
+  (password-entry
+   (name (symbol->string (car role)))
+   (uid (get (cdr role) 'role/uid))
+   (gid (get (cdr role) 'role/gid))
+   (directory "/")))
+
+(define (group->entry group)
+  (group-entry
+   (name (symbol->string (car group)))
+   (gid (get (cdr group) 'group/gid))
+   (members (map symbol->string (get (cdr group) 'group/members)))))
+
+(define (group-member-roles roles groups)
+  "Return the distinct ROLES named as members of GROUPS.
+Raise an error when a group names an unknown role."
+  (define (group-member-names group)
+    (get (cdr group) 'group/members))
+
+  (define (require-role name)
+    (or (assq name roles) (error "unknown group member" name)))
+
+  (chain groups
+         (append-map group-member-names _)
+         (delete-duplicates _)
+         (map require-role _)))
+
+(define (install-group-accounts! root manifest)
+  "Install MANIFEST's named groups and member accounts beneath ROOT."
+  (define groups (get manifest 'testbox/groups))
+
+  (when (pair? groups)
+    (let ((etc (string-append root "/etc"))
+          (roles (get manifest 'testbox/roles)))
+      (mkdir-p etc)
+      (chain groups
+             (group-member-roles roles _)
+             (map role->password-entry _)
+             (write-passwd _ (string-append etc "/passwd")))
+      (chain groups
+             (map group->entry _)
+             (write-group _ (string-append etc "/group"))))))
+
 (define (testbox-init => <=)
   "Expose the gxd source, enter the root, report readiness, then await exit."
   ;; As PID 1, this process adopts orphaned descendants.  Explicitly ignoring
@@ -70,23 +140,34 @@
          (lambda () (=> 'ready (object->string exception))))
         (raise-exception exception))
     (lambda ()
-      (match-let (((root source) (<= 'setup)))
+      (match-let (((root manifest) (<= 'setup)))
         (make-mounts-private!)
-        (bind-mount-read-only! source (string-append root source))
+        (install-group-accounts! root manifest)
+        (let ((source (get manifest 'testbox/gxd-src)))
+          (bind-mount-read-only! source (string-append root source)))
         (pivot-into! root))
       (=> 'ready #f))
     #:unwind? #t)
   (<= 'terminate))
 
-(define (make-testbox-manifest)
-  "Return the roles and canonical gxd source directory for a testbox."
-  `((testbox/roles . ,roles)
-    (testbox/gxd-src . ,(canonicalize-path "src"))))
+(define (make-testbox-manifest daemon-mode)
+  "Return DAEMON-MODE's roles, groups and canonical gxd source."
+  (acons 'testbox/gxd-src (canonicalize-path "src")
+         (mode-configuration daemon-mode)))
 
-(define (role-id-map-ranges daemon-id user-id current-id subordinate-start)
-  "Map CURRENT-ID to DAEMON-ID and SUBORDINATE-START to USER-ID."
-  `((,daemon-id ,current-id 1)
-    (,user-id ,subordinate-start 1)))
+(define (role-id-map-ranges manifest id-key current-id subordinate-start)
+  "Return MANIFEST's ID-KEY ranges, mapping CURRENT-ID to the daemon and the
+remaining identities consecutively from SUBORDINATE-START."
+  (define roles (get manifest 'testbox/roles))
+  (define daemon (get roles 'daemon))
+  (define identities
+    (map cdr (delq (assq 'daemon roles) roles)))
+
+  (cons `(,(get daemon id-key) ,current-id 1)
+        (map (lambda (identity outside)
+               `(,(get identity id-key) ,outside 1))
+             identities
+             (iota (length identities) subordinate-start))))
 
 (define (cleanup-start-failure! child-pid disconnect! root exception)
   "Release CHILD-PID and its channel, then re-raise EXCEPTION.
@@ -110,20 +191,19 @@ not acquire one."
             (cleanup-start-failure! child-pid disconnect! root exception))
         (lambda ()
           ;; Install PID 1's ID mappings before filesystem setup.
-          (let-values (((uid uid-start gid gid-start)
-                        (read-current-id-facts 1)))
-            (define daemon (get-in manifest '(testbox/roles daemon)))
-            (define user (get-in manifest '(testbox/roles user)))
+          (let* ((roles (get manifest 'testbox/roles))
+                 (required-count (1- (length roles))))
+            (define-values (uid uid-start gid gid-start)
+              (read-current-id-facts required-count))
+
             (write-id-map-ranges!
              child-pid
-             (role-id-map-ranges (get daemon 'role/uid)
-                                 (get user 'role/uid) uid uid-start)
-             (role-id-map-ranges (get daemon 'role/gid)
-                                 (get user 'role/gid) gid gid-start)))
+             (role-id-map-ranges manifest 'role/uid uid uid-start)
+             (role-id-map-ranges manifest 'role/gid gid gid-start)))
 
           ;; Acquire a private root and tell PID 1 to enter it.
           (set! root (snapshot-base! child-pid))
-          (=> 'setup (list root (get manifest 'testbox/gxd-src)))
+          (=> 'setup (list root manifest))
 
           ;; Wait for filesystem setup before returning the live box.
           (and-let* ((setup-failure (<= 'ready)))
