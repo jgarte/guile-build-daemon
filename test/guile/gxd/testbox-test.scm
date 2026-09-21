@@ -209,7 +209,8 @@ fails with ECHILD, which is what distinguishes it from one still running."
 
     (define store-item-write-succeeds
       `(begin
-         (with-output-to-file ,daemon-item-path (lambda () #t))
+         (with-output-to-file ,daemon-item-path
+           (lambda () (display "written by daemon")))
          #t))
 
     (define store-item-write-fails-with-EACCES
@@ -222,7 +223,8 @@ fails with ECHILD, which is what distinguishes it from one still running."
                    (cons (exception-kind exception)
                          (exception-args exception)))))
            (lambda ()
-             (with-output-to-file ,user-item-path (lambda () #t))
+             (with-output-to-file ,user-item-path
+               (lambda () (display "written by user")))
              #f)
            #:unwind? #t)))
 
