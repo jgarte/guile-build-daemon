@@ -12,7 +12,8 @@
   #:use-module ((guix store) #:select (direct-store-path))
   #:use-module (gxd test-prelude)
   #:use-module ((gxd testbox)
-                #:select (make-testbox-manifest
+                #:select (call-with-testbox
+                          make-testbox-manifest
                           start-testbox
                           start-testbox-process!
                           teardown-testbox!
@@ -31,13 +32,6 @@
   "Return the identifier of PID's NAME namespace, which two processes share
 exactly when they are in the same one."
   (readlink (format #f "/proc/~a/ns/~a" pid name)))
-
-(define (call-with-testbox manifest proc)
-  (let ((box (start-testbox manifest)))
-    (dynamic-wind
-      (lambda () #t)
-      (lambda () (proc box))
-      (lambda () (teardown-testbox! box)))))
 
 (define (call-with-rootless-testbox proc)
   (call-with-testbox (make-testbox-manifest 'rootless) proc))

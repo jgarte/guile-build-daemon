@@ -28,7 +28,8 @@
   #:use-module (gxd test-prelude)
   #:use-module ((gxd testbox disk)
                 #:select (delete-testbox-root! snapshot-base!))
-  #:export (make-testbox-manifest
+  #:export (call-with-testbox
+            make-testbox-manifest
             start-nix-daemon!
             start-testbox
             start-testbox-process!
@@ -247,6 +248,14 @@ not acquire one."
                  (eq? 'regular (stat:type (stat in-box-program))))
       (error "Guix daemon is not executable in testbox" program))
     (start-testbox-process! box 'daemon program arguments)))
+
+(define (call-with-testbox manifest proc)
+  "Call PROC with a box described by MANIFEST, tearing it down before return."
+  (let ((box (start-testbox manifest)))
+    (dynamic-wind
+      (lambda () #t)
+      (lambda () (proc box))
+      (lambda () (teardown-testbox! box)))))
 
 (define (wait-testbox-process! process)
   "Wait for PROCESS and return its raw wait status."
