@@ -11,7 +11,7 @@
   #:use-module ((srfi srfi-1) #:select (append-map delete-duplicates iota))
   #:use-module ((srfi srfi-197) #:select (chain))
   #:use-module ((srfi srfi-9) #:select (define-record-type))
-  #:use-module ((guix build utils) #:select (mkdir-p))
+  #:use-module ((guix build utils) #:select (executable-file? mkdir-p))
   #:use-module ((guix build syscalls)
                 #:select (restart-on-EINTR
                           CLONE_NEWNS
@@ -29,6 +29,7 @@
   #:use-module ((gxd testbox disk)
                 #:select (delete-testbox-root! snapshot-base!))
   #:export (make-testbox-manifest
+            start-nix-daemon!
             start-testbox
             start-testbox-process!
             testbox-manifest
@@ -152,8 +153,9 @@ Raise an error when a group names an unknown role."
 
 (define (make-testbox-manifest daemon-mode)
   "Return DAEMON-MODE's roles, groups and canonical gxd source."
-  (acons 'testbox/gxd-src (canonicalize-path "src")
-         (mode-configuration daemon-mode)))
+  `((testbox/daemon-mode . ,daemon-mode)
+    (testbox/gxd-src . ,(canonicalize-path "src"))
+    ,@(mode-configuration daemon-mode)))
 
 (define (role-id-map-ranges manifest id-key current-id subordinate-start)
   "Return MANIFEST's ID-KEY ranges, mapping CURRENT-ID to the daemon and the
@@ -231,6 +233,20 @@ not acquire one."
                   box (delq process (testbox-processes box)))))))
       (set-testbox-processes! box (cons process (testbox-processes box)))
       process)))
+
+(define (start-nix-daemon! box)
+  "Start the selected Guix daemon mode inside BOX and return its process."
+  (let* ((program (canonicalize-path (require-program "guix-daemon")))
+         (arguments
+          (case (get (testbox-manifest box) 'testbox/daemon-mode)
+            ((rootless) '("--disable-chroot" "--build-users-group="))
+            ((rootful) '("--disable-chroot"
+                         "--build-users-group=gxdbuild"))))
+         (in-box-program (string-append (testbox-root box) program)))
+    (unless (and (executable-file? in-box-program)
+                 (eq? 'regular (stat:type (stat in-box-program))))
+      (error "Guix daemon is not executable in testbox" program))
+    (start-testbox-process! box 'daemon program arguments)))
 
 (define (wait-testbox-process! process)
   "Wait for PROCESS and return its raw wait status."
