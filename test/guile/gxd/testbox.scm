@@ -30,6 +30,7 @@
                 #:select (delete-testbox-root! snapshot-base!))
   #:export (call-with-testbox
             make-testbox-manifest
+            paired-daemon-testboxes-fixture
             start-nix-daemon!
             start-testbox
             start-testbox-process!
@@ -256,6 +257,39 @@ not acquire one."
       (lambda () #t)
       (lambda () (proc box))
       (lambda () (teardown-testbox! box)))))
+
+(define (resolve-daemon-launcher daemon-kind)
+  "Return DAEMON-KIND's implemented launcher, or raise an error."
+  (case daemon-kind
+    ((nixd) start-nix-daemon!)
+    ((gxd) (error "gxd launcher is not implemented"))
+    (else (error "unknown daemon" daemon-kind))))
+
+(define (paired-daemon-testboxes-fixture daemon-mode
+                                         left-daemon-kind right-daemon-kind)
+  "Return a fixture that starts LEFT-DAEMON-KIND and RIGHT-DAEMON-KIND in
+separately scoped DAEMON-MODE boxes.  Preserve context and add the boxes under
+`testbox/left' and `testbox/right'."
+  (let ((left-launcher (resolve-daemon-launcher left-daemon-kind))
+        (right-launcher (resolve-daemon-launcher right-daemon-kind)))
+    (lambda (ctx proceed)
+      (define manifest (make-testbox-manifest daemon-mode))
+
+      (call-with-testbox
+       manifest
+       (lambda (left-box)
+         (left-launcher left-box)
+
+         (call-with-testbox
+          manifest
+          (lambda (right-box)
+            (right-launcher right-box)
+
+            (proceed
+             `((testbox/left . ,left-box)
+               (testbox/right . ,right-box)
+               ,@ctx)
+             (lambda () #t)))))))))
 
 (define (wait-testbox-process! process)
   "Wait for PROCESS and return its raw wait status."
