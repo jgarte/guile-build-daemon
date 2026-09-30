@@ -29,6 +29,33 @@ user needs at least two subordinate IDs delegated in `/etc/subuid` and
 Mapping more than a single ID also needs the setuid-root `newuidmap` and
 `newgidmap` helpers, which the `shadow` package provides.
 
+If you are on Guix system you can add the following to your guix system config
+to add subordinate IDs:
+
+``` scheme
+(use-modules
+ (gnu)
+ (gnu system shadow)     ; Provides 'subids-service-type'
+ (gnu system accounts)  ; Provides 'subid-range'
+ ...)
+
+(operating-system
+ ...
+ (services
+  (list
+   (service subids-service-type
+            (subids-configuration
+             ;; user ranges
+             (subuids (list (subid-range (name "user")
+                                         (start 100000)
+                                         (count 65536))))
+             ;; group ranges
+             (subgids (list (subid-range (name "user")
+                                         (start 100000)
+                                         (count 65536)))))))))
+```
+
+
 Initialize and mount the testbox disk before running `make check` or starting
 Ares:
 
