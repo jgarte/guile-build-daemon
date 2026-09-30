@@ -14,13 +14,9 @@ The rationale for `gxd` namespace:
 - distinct - does not collide with other Guix/Linux namespaces
 - 'rhymes' with the C++ `nix` daemon, but sounds native
 
-## Getting Started
+## Prerequisites
 
-Start the nREPL server:
-
-  make ares
-
-### Prerequisites
+### User and group subordinate IDs
 
 The tests run programs under several identities inside a user namespace, so your
 user needs at least two subordinate IDs delegated in `/etc/subuid` and
@@ -56,10 +52,19 @@ to add subordinate IDs:
 ```
 
 
+### Testbox disk
+
 Initialize and mount the testbox disk before running `make check` or starting
 Ares:
 
   make testbox-disk/init
+
+
+## Getting Started
+
+Start the nREPL server:
+
+  make ares
 
 ## Contributing
 
