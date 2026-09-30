@@ -14,6 +14,9 @@ The rationale for `gxd` namespace:
 - distinct - does not collide with other Guix/Linux namespaces
 - 'rhymes' with the C++ `nix` daemon, but sounds native
 
+The core concepts and terminology are described in
+[./doc/glossary.md](./doc/glossary.md).
+
 ## Prerequisites
 
 ### User and group subordinate IDs
