@@ -57,8 +57,8 @@ to add subordinate IDs:
 
 ### Testbox disk
 
-Initialize and mount the testbox disk before running `make check` or starting
-Ares:
+The tests need 'testbox disk' for filesystem isolation so before running `make
+check` you need to initialize and mount it once with:
 
   make testbox-disk/init
 
