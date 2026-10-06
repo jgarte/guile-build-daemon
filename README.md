@@ -60,14 +60,17 @@ to add subordinate IDs:
 The tests need 'testbox disk' for filesystem isolation so before running `make
 check` you need to initialize and mount it once with:
 
-  make testbox-disk/init
-
+```sh
+make testbox-disk/init
+```
 
 ## Getting Started
 
 Start the nREPL server:
 
-  make ares
+```sh
+make ares
+```
 
 ## Contributing
 
