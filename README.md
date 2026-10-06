@@ -57,12 +57,14 @@ to add subordinate IDs:
 
 ### Testbox disk
 
-The tests need 'testbox disk' for filesystem isolation so before running `make
-check` you need to initialize and mount it once with:
+Some tests uses testboxes and testbox requires 'testbox disk' for operation,
+so before running `make check` you need to initialize and mount it with:
 
 ```sh
 make testbox-disk/init
 ```
+
+You can use the same command to mount it again after reboot.
 
 ## Getting Started
 
