@@ -15,14 +15,14 @@
                 #:prefix observation:)
   #:export (run-relay))
 
-(define (serve-client! client daemon-socket-path)
+(define (serve-client! client daemon-socket-path connection-id observation)
   "Relay CLIENT through DAEMON-SOCKET-PATH, then close both connected sockets."
   (let ((daemon #f))
     (dynamic-wind
       (lambda () #t)
       (lambda ()
         (set! daemon (connect-unix daemon-socket-path))
-        (exchange! client daemon))
+        (exchange! client daemon connection-id observation))
       (lambda ()
         (close-safely daemon)
         (close-safely client)))))
@@ -39,13 +39,16 @@ and relay each independently through DAEMON-SOCKET-PATH."
       (lambda ()
         (observation:write-accepted observation connection-id)
         (call-with-new-thread
-         (lambda () (serve-client! client daemon-socket-path))))
+         (lambda ()
+           (serve-client! client daemon-socket-path connection-id
+                          observation))))
       #:unwind? #t)
     (loop (+ connection-id 1))))
 
 (define (run-relay relay-socket-path daemon-socket-path observation-socket-path)
   "Relay clients at RELAY-SOCKET-PATH independently through DAEMON-SOCKET-PATH.
-Report accepted connections over the socket at OBSERVATION-SOCKET-PATH.
+Report accepted connections and forwarded bytes over the socket at
+OBSERVATION-SOCKET-PATH.
 Run in a dedicated process; process exit releases outstanding workers."
   ;; Socket writes must raise EPIPE rather than terminate the relay.
   (sigaction SIGPIPE SIG_IGN)
