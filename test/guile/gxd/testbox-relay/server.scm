@@ -7,11 +7,14 @@
   #:use-module ((guix build syscalls) #:select (restart-on-EINTR))
   #:use-module ((gxd testbox-relay socket)
                 #:select (close-safely connect-unix listen-unix))
+  #:use-module ((gxd testbox-relay connection) #:select (exchange!))
   #:export (run-relay))
 
 (define (run-relay relay-socket-path daemon-socket-path)
-  "Accept one client at RELAY-SOCKET-PATH and connect to DAEMON-SOCKET-PATH,
-then return."
+  "Relay one client at RELAY-SOCKET-PATH through DAEMON-SOCKET-PATH until EOF.
+Run in a dedicated process."
+  ;; Socket writes must raise EPIPE rather than terminate the relay.
+  (sigaction SIGPIPE SIG_IGN)
   (let ((listener (listen-unix relay-socket-path))
         (client #f)
         (daemon #f))
@@ -19,7 +22,8 @@ then return."
       (lambda () #t)
       (lambda ()
         (set! client (car (restart-on-EINTR (accept listener))))
-        (set! daemon (connect-unix daemon-socket-path)))
+        (set! daemon (connect-unix daemon-socket-path))
+        (exchange! client daemon))
       (lambda ()
         (close-safely daemon)
         (close-safely client)
