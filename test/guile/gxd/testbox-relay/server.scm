@@ -11,12 +11,13 @@
                 #:select (close-safely connect-unix listen-unix))
   #:use-module ((gxd testbox-relay connection) #:select (exchange!))
   #:use-module ((gxd testbox-relay observation-protocol)
-                #:select (write-accepted)
+                #:select (write-accepted write-terminated)
                 #:prefix observation:)
   #:export (run-relay))
 
 (define (serve-client! client daemon-socket-path connection-id observation)
-  "Relay CLIENT through DAEMON-SOCKET-PATH, then close both connected sockets."
+  "Relay CLIENT through DAEMON-SOCKET-PATH, then close both connected sockets
+and report CONNECTION-ID's completion over OBSERVATION."
   (let ((daemon #f))
     (dynamic-wind
       (lambda () #t)
@@ -25,7 +26,8 @@
         (exchange! client daemon connection-id observation))
       (lambda ()
         (close-safely daemon)
-        (close-safely client)))))
+        (close-safely client))))
+  (observation:write-terminated observation connection-id))
 
 (define (accept-clients! listener daemon-socket-path observation)
   "Report clients accepted on LISTENER to OBSERVATION with acceptance-order IDs,
@@ -47,7 +49,7 @@ and relay each independently through DAEMON-SOCKET-PATH."
 
 (define (run-relay relay-socket-path daemon-socket-path observation-socket-path)
   "Relay clients at RELAY-SOCKET-PATH independently through DAEMON-SOCKET-PATH.
-Report accepted connections and forwarded bytes over the socket at
+Report accepted connections, forwarded bytes and completion over the socket at
 OBSERVATION-SOCKET-PATH.
 Run in a dedicated process; process exit releases outstanding workers."
   ;; Socket writes must raise EPIPE rather than terminate the relay.
