@@ -7,14 +7,18 @@
   #:use-module ((rnrs bytevectors) #:select (bytevector-length))
   #:use-module ((rnrs io ports) #:select (put-bytevector))
   #:use-module ((guix serialization) #:select (write-long-long))
-  #:export (frame-accepted frame-data write-accepted write-data))
+  #:export (frame-accepted frame-data frame-terminated
+                           write-accepted write-data write-terminated))
 
 ;; Scalars are unsigned little-endian 64-bit integers; byte payloads are unpadded.
-;; ACCEPTED CONNECTION-ID
-;; DATA     CONNECTION-ID FROM LENGTH <BYTES>
+;; ACCEPTED   CONNECTION-ID
+;; DATA       CONNECTION-ID FROM LENGTH <BYTES>
+;; TERMINATED CONNECTION-ID STATUS
+;; STATUS: 1 = complete.
 ;; FROM: 1 = client, 2 = daemon.
 (define frame-accepted 1)
 (define frame-data 2)
+(define frame-terminated 3)
 
 (define (put-scalars port values)
   (for-each (lambda (value) (write-long-long value port)) values))
@@ -37,4 +41,9 @@ carrying BYTES."
                (list frame-data connection-id (from->integer from)
                      (bytevector-length bytes)))
   (put-bytevector port bytes)
+  (force-output port))
+
+(define (write-terminated port connection-id)
+  "Write to PORT a completed-connection frame for CONNECTION-ID."
+  (put-scalars port (list frame-terminated connection-id 1))
   (force-output port))
