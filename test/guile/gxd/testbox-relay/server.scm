@@ -10,6 +10,9 @@
   #:use-module ((gxd testbox-relay socket)
                 #:select (close-safely connect-unix listen-unix))
   #:use-module ((gxd testbox-relay connection) #:select (exchange!))
+  #:use-module ((gxd testbox-relay observation-protocol)
+                #:select (write-accepted)
+                #:prefix observation:)
   #:export (run-relay))
 
 (define (serve-client! client daemon-socket-path)
@@ -24,27 +27,34 @@
         (close-safely daemon)
         (close-safely client)))))
 
-(define (accept-clients! listener daemon-socket-path)
-  "Accept clients on LISTENER and relay each independently through DAEMON-SOCKET-PATH."
-  (let loop ()
+(define (accept-clients! listener daemon-socket-path observation)
+  "Report clients accepted on LISTENER to OBSERVATION with acceptance-order IDs,
+and relay each independently through DAEMON-SOCKET-PATH."
+  (let loop ((connection-id 1))
     (define client (car (restart-on-EINTR (accept listener))))
     (with-exception-handler
         (lambda (exception)
           (close-safely client)
           (raise-exception exception))
       (lambda ()
+        (observation:write-accepted observation connection-id)
         (call-with-new-thread
          (lambda () (serve-client! client daemon-socket-path))))
       #:unwind? #t)
-    (loop)))
+    (loop (+ connection-id 1))))
 
-(define (run-relay relay-socket-path daemon-socket-path)
+(define (run-relay relay-socket-path daemon-socket-path observation-socket-path)
   "Relay clients at RELAY-SOCKET-PATH independently through DAEMON-SOCKET-PATH.
+Report accepted connections over the socket at OBSERVATION-SOCKET-PATH.
 Run in a dedicated process; process exit releases outstanding workers."
   ;; Socket writes must raise EPIPE rather than terminate the relay.
   (sigaction SIGPIPE SIG_IGN)
-  (let ((listener (listen-unix relay-socket-path)))
+  ;; Connecting observation announces that the relay is already listening.
+  (let* ((listener (listen-unix relay-socket-path))
+         (observation (connect-unix observation-socket-path)))
     (dynamic-wind
       (lambda () #t)
-      (lambda () (accept-clients! listener daemon-socket-path))
-      (lambda () (close-safely listener)))))
+      (lambda () (accept-clients! listener daemon-socket-path observation))
+      (lambda ()
+        (close-safely observation)
+        (close-safely listener)))))
