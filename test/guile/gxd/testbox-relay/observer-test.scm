@@ -14,9 +14,9 @@
                           observed-connection-status
                           relay-observer-observed-connections))
   #:use-module ((gxd testbox-relay observation-protocol)
-                #:select (write-accepted
-                          write-data
-                          write-terminated)
+                #:select (make-observation-output write-accepted
+                                                  write-data
+                                                  write-terminated)
                 #:prefix observation:))
 
 (define (call-with-observer proc)
@@ -27,7 +27,7 @@
          (observer (make-relay-observer input)))
     (dynamic-wind
       (lambda () #t)
-      (lambda () (proc observer output))
+      (lambda () (proc observer (observation:make-observation-output output)))
       (lambda ()
         (false-if-exception (close-relay-input! observer))
         (false-if-exception (close-port output))))))
