@@ -114,20 +114,8 @@ SIDE is 'left or 'right; require its testbox and client/trusted? in context."
       (let ((box (require-context ctx box-key))
             (role (if (require-context ctx 'client/trusted?) 'daemon 'user)))
         (match-let (((endpoint observer release!) (start-testbox-relay box role)))
-          (define active? #t)
-          (define (teardown!)
-            (when active?
-              (set! active? #f)
-              (release!)))
-
-          (with-exception-handler
-              (lambda (exception)
-                (false-if-exception (teardown!))
-                (raise-exception exception))
-            (lambda ()
-              (proceed (acons endpoint-key endpoint (acons observer-key observer ctx))
-                       teardown!))
-            #:unwind? #t))))))
+          (proceed (acons endpoint-key endpoint (acons observer-key observer ctx))
+                   release!))))))
 
 (define (paired-observations-fixture ctx proceed)
   "Add observe-bytes! over CTX's two observers, sharing a 20-second deadline."
