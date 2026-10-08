@@ -2,10 +2,15 @@
 ;; SPDX-FileCopyrightText: 2026 Andrew Zhurov
 
 (define-module (gxd test-prelude)
+  #:use-module ((ice-9 exceptions)
+                #:select (raise-exception with-exception-handler))
+  #:use-module ((ice-9 match) #:select (match match-let))
   #:use-module ((ice-9 rdelim) #:select (read-string))
   #:use-module ((guix build utils) #:select (which))
+  #:use-module ((gxd isolation) #:select (child-proc))
   #:use-module (gxd prelude)
-  #:export (capture-exception
+  #:export (call-with-process-deadline
+            capture-exception
             require-program
             slurp
             spit
@@ -48,3 +53,37 @@ imported, so a test can make a procedure fail where no seam exists."
       (lambda (exception) exception)
     (lambda () (thunk) #f)
     #:unwind? #t))
+
+(define (call-with-process-deadline seconds thunk)
+  "Call THUNK in a child, returning its small readable value.
+Raise on child failure or after SECONDS; disconnect and reap before returning.
+The value must fit in the child channel's buffer without a concurrent reader."
+  (match-let (((pid _ <= disconnect!)
+               (child-proc SIGCHLD (lambda (=> _) (=> 'result (thunk))))))
+    (let ((deadline (+ seconds (current-time)))
+          (reaped? #f))
+      (dynamic-wind
+        (lambda () #t)
+        (lambda ()
+          (let wait ()
+            (match (waitpid pid WNOHANG)
+              ((0 . _)
+               (when (>= (current-time) deadline)
+                 (error "process deadline exceeded"))
+               (usleep 10000)
+               (wait))
+              ((_ . status)
+               (set! reaped? #t)
+               (unless (equal? 0 (status:exit-val status))
+                 (error "process failed" status))
+               (<= 'result)))))
+        (lambda ()
+          (let* ((disconnect-error (capture-exception (lambda () (disconnect!))))
+                 (reap-error
+                  (capture-exception
+                   (lambda ()
+                     (unless reaped?
+                       (kill pid SIGKILL)
+                       (waitpid pid))))))
+            (when (or disconnect-error reap-error)
+              (raise-exception (or disconnect-error reap-error)))))))))
