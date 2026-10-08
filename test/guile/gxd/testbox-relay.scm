@@ -4,7 +4,7 @@
 ;; SPDX-FileCopyrightText: 2026 buttonspresser
 
 (define-module (gxd testbox-relay)
-  #:use-module ((ares suitbl fixture) #:select ((compose . compose-fixtures)))
+  #:use-module ((ares suitbl fixture) #:select (compose) #:prefix fixtures:)
   #:use-module ((ice-9 exceptions) #:select (raise-exception with-exception-handler))
   #:use-module ((ice-9 match) #:select (match-let match-let*))
   #:use-module ((srfi srfi-197) #:select (chain))
@@ -134,5 +134,5 @@ SIDE is 'left or 'right; require its testbox and client/trusted? in context."
 
 (define paired-relay-observers-fixture
   (chain (relay-observer-fixture 'left)
-         (compose-fixtures _ (relay-observer-fixture 'right))
-         (compose-fixtures _ paired-observations-fixture)))
+         (fixtures:compose _ (relay-observer-fixture 'right))
+         (fixtures:compose _ paired-observations-fixture)))
