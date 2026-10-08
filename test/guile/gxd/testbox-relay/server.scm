@@ -5,17 +5,17 @@
 
 (define-module (gxd testbox-relay server)
   #:use-module ((ice-9 exceptions) #:select (raise-exception with-exception-handler))
-  #:use-module ((ice-9 threads) #:select (call-with-new-thread make-mutex with-mutex))
+  #:use-module ((ice-9 threads) #:select (call-with-new-thread))
   #:use-module ((guix build syscalls) #:select (restart-on-EINTR))
   #:use-module ((gxd testbox-relay socket)
                 #:select (close-safely connect-unix listen-unix))
   #:use-module ((gxd testbox-relay connection) #:select (exchange!))
   #:use-module ((gxd testbox-relay observation-protocol)
-                #:select (write-accepted write-terminated)
+                #:select (make-observation-output write-accepted write-terminated)
                 #:prefix observation:)
   #:export (run-relay))
 
-(define (serve-client! client daemon-socket-path connection-id observation report-lock)
+(define (serve-client! client daemon-socket-path connection-id observation)
   "Relay CLIENT through DAEMON-SOCKET-PATH, then close both connected sockets
 and report CONNECTION-ID's completion over OBSERVATION."
   (let ((daemon #f))
@@ -23,14 +23,13 @@ and report CONNECTION-ID's completion over OBSERVATION."
       (lambda () #t)
       (lambda ()
         (set! daemon (connect-unix daemon-socket-path))
-        (exchange! client daemon connection-id observation report-lock))
+        (exchange! client daemon connection-id observation))
       (lambda ()
         (close-safely daemon)
         (close-safely client))))
-  (with-mutex report-lock
-              (observation:write-terminated observation connection-id)))
+  (observation:write-terminated observation connection-id))
 
-(define (accept-clients! listener daemon-socket-path observation report-lock)
+(define (accept-clients! listener daemon-socket-path observation)
   "Report clients accepted on LISTENER to OBSERVATION with acceptance-order IDs,
 and relay each independently through DAEMON-SOCKET-PATH."
   (let loop ((connection-id 1))
@@ -40,12 +39,11 @@ and relay each independently through DAEMON-SOCKET-PATH."
           (close-safely client)
           (raise-exception exception))
       (lambda ()
-        (with-mutex report-lock
-                    (observation:write-accepted observation connection-id))
+        (observation:write-accepted observation connection-id)
         (call-with-new-thread
          (lambda ()
            (serve-client! client daemon-socket-path connection-id
-                          observation report-lock))))
+                          observation))))
       #:unwind? #t)
     (loop (+ connection-id 1))))
 
@@ -58,12 +56,11 @@ Run in a dedicated process; process exit releases outstanding workers."
   (sigaction SIGPIPE SIG_IGN)
   ;; Connecting observation announces that the relay is already listening.
   (let* ((listener (listen-unix relay-socket-path))
-         (observation (connect-unix observation-socket-path))
-         ;; Every writer shares this lock so headers and payloads stay together.
-         (report-lock (make-mutex)))
+         (port (connect-unix observation-socket-path))
+         (observation (observation:make-observation-output port)))
     (dynamic-wind
       (lambda () #t)
-      (lambda () (accept-clients! listener daemon-socket-path observation report-lock))
+      (lambda () (accept-clients! listener daemon-socket-path observation))
       (lambda ()
-        (close-safely observation)
+        (close-safely port)
         (close-safely listener)))))
