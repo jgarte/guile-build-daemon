@@ -15,8 +15,8 @@
                 #:select (make-relay-observer read-next-connection-bytes!))
   #:export (client-trust-fixture relay-observer-fixture paired-relay-observers-fixture))
 
-;; The box owns the relay process.  This fixture owns its host-side sockets;
-;; only the client endpoint and the existing observer cross the scope boundary.
+;; The box owns the relay process.  This fixture owns its host-side sockets and
+;; root descriptor; only the client endpoint and observer cross the boundary.
 
 (define daemon-socket "/var/guix/daemon-socket/socket")
 (define relay-socket "/tmp/gxd-relay.sock")
@@ -34,14 +34,14 @@
 
 (define (start-testbox-relay box role)
   "Return (ENDPOINT OBSERVER TEARDOWN!) for BOX's relay running as ROLE.
-BOX owns and reaps the relay process; TEARDOWN! releases host sockets."
-  (let* ((source (get (testbox-manifest box) 'testbox/relay-src))
-         (endpoint (string-append (testbox-root box) relay-socket))
-         (observation-path (string-append (testbox-root box) observation-socket))
-         (bound? #f)
-         (observation #f))
-    (define listener (socket AF_UNIX (logior SOCK_STREAM SOCK_CLOEXEC) 0))
-
+BOX owns and reaps the relay process; TEARDOWN! releases host resources."
+  (let ((source (get (testbox-manifest box) 'testbox/relay-src))
+        (root-fd #f)
+        (endpoint #f)
+        (observation-path #f)
+        (listener #f)
+        (bound? #f)
+        (observation #f))
     (define (teardown!)
       ;; Release every acquired resource, even when an earlier close fails.
       (let ((failure #f))
@@ -49,11 +49,15 @@ BOX owns and reaps the relay process; TEARDOWN! releases host sockets."
           (let ((raised (capture-exception thunk)))
             (unless failure (set! failure raised))))
 
-        (attempt (lambda () (when observation (close-port observation))))
         (attempt (lambda ()
-                   (unless (port-closed? listener) (close-port listener))))
+                   (when (and observation (not (port-closed? observation)))
+                     (close-port observation))))
+        (attempt (lambda ()
+                   (when (and listener (not (port-closed? listener)))
+                     (close-port listener))))
         ;; A failed bind does not give us ownership of an existing pathname.
         (attempt (lambda () (when bound? (delete-file observation-path))))
+        (attempt (lambda () (when root-fd (close-fdes root-fd))))
         (when failure (raise-exception failure))))
 
     (with-exception-handler
@@ -61,6 +65,19 @@ BOX owns and reaps the relay process; TEARDOWN! releases host sockets."
           (false-if-exception (teardown!))
           (raise-exception exception))
       (lambda ()
+        ;; AF_UNIX limits pathname length.  A directory FD gives the host a
+        ;; short path to the same socket nodes that the relay sees under /tmp.
+        (set! root-fd
+              (open-fdes (testbox-root box)
+                         (logior O_RDONLY O_DIRECTORY O_CLOEXEC)))
+        (let ((host-root
+               (string-append "/proc/self/fd/" (number->string root-fd))))
+          (set! endpoint (string-append host-root relay-socket))
+          (set! observation-path
+                (string-append host-root observation-socket)))
+        (set! listener
+              (socket AF_UNIX (logior SOCK_STREAM SOCK_CLOEXEC) 0))
+
         ;; The selected nonroot role must reach the host's observation socket.
         (let ((parent (dirname observation-path)))
           (unless (file-exists? parent) (mkdir parent))
