@@ -6,7 +6,7 @@
 (define-module (gxd testbox-relay)
   #:use-module ((ares suitbl fixture) #:select ((compose . compose-fixtures)))
   #:use-module ((ice-9 exceptions) #:select (raise-exception with-exception-handler))
-  #:use-module ((ice-9 match) #:select (match-let))
+  #:use-module ((ice-9 match) #:select (match-let match-let*))
   #:use-module ((srfi srfi-197) #:select (chain))
   #:use-module ((gxd testbox)
                 #:select (start-testbox-process! testbox-manifest testbox-root))
@@ -111,13 +111,14 @@ SIDE is 'left or 'right; require its testbox and client/trusted? in context."
                  ((right) '(testbox/right relay/right-endpoint relay/right-observer))
                  (else (error "unknown relay side" side)))))
     (lambda (ctx proceed)
-      (let ((box (require-context ctx box-key))
-            (role (if (require-context ctx 'client/trusted?) 'daemon 'user)))
-        (match-let (((endpoint observer release!) (start-testbox-relay box role)))
-          (chain ctx
-            (acons observer-key observer _)
-            (acons endpoint-key endpoint _)
-            (proceed _ release!)))))))
+      (match-let* ((box (require-context ctx box-key))
+                   (role (if (require-context ctx 'client/trusted?) 'daemon 'user))
+                   ((endpoint observer release!)
+                    (start-testbox-relay box role)))
+        (chain ctx
+          (acons observer-key observer _)
+          (acons endpoint-key endpoint _)
+          (proceed _ release!))))))
 
 (define (paired-observations-fixture ctx proceed)
   "Add observe-bytes! over CTX's two observers, sharing a 20-second deadline."
