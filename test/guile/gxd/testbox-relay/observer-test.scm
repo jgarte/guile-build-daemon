@@ -5,6 +5,7 @@
 
 (define-module (gxd testbox-relay observer-test)
   #:use-module ((ares suitbl core) #:select (define-suite is test))
+  #:use-module ((ice-9 exceptions) #:select (raise-exception with-exception-handler))
   #:use-module ((gxd testbox-relay observer)
                 #:select (close-relay-input!
                           make-relay-observer
@@ -25,12 +26,18 @@
          (input (car ports))
          (output (cdr ports))
          (observer (make-relay-observer input)))
-    (dynamic-wind
-      (lambda () #t)
-      (lambda () (proc observer (observation:make-observation-output output)))
-      (lambda ()
-        (false-if-exception (close-relay-input! observer))
-        (false-if-exception (close-port output))))))
+    (define (close!)
+      (false-if-exception (close-relay-input! observer))
+      (false-if-exception (close-port output)))
+
+    (define result
+      (with-exception-handler
+          (lambda (exception) (close!) (raise-exception exception))
+        (lambda () (proc observer (observation:make-observation-output output)))
+        #:unwind? #t))
+
+    (close!)
+    result))
 
 (define (connection-facts connection)
   (list (observed-connection-id connection)
