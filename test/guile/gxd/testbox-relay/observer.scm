@@ -4,6 +4,7 @@
 ;; SPDX-FileCopyrightText: 2026 buttonspresser
 
 (define-module (gxd testbox-relay observer)
+  #:use-module ((scheme base) #:select (bytevector-append))
   #:use-module ((rnrs bytevectors)
                 #:select (bytevector-copy!
                           bytevector-u64-ref
@@ -18,6 +19,7 @@
                           frame-terminated)
                 #:prefix observation:)
   #:export (close-relay-input!
+            read-next-connection-bytes!
             make-observed-connection
             make-relay-observer
             read-next-completed-connection!
@@ -175,3 +177,11 @@ observation fails or no connection completes by DEADLINE."
 
 (define (close-relay-input! observer)
   (close-port (relay-observer-relay-input observer)))
+
+(define (read-next-connection-bytes! observer deadline)
+  "Return concatenated bytes of OBSERVER's next completed connection by DEADLINE.
+Preserve observation order, discarding source labels and chunk boundaries.  This
+projection is suitable for equality only when both directions alternate."
+  (let ((connection (read-next-completed-connection! observer deadline)))
+    (apply bytevector-append
+           (map cdr (observed-connection-observations connection)))))
