@@ -14,6 +14,7 @@
      (eval . (put 'define* 'scheme-indent-function 'defun))
      (eval . (put 'define-public 'scheme-indent-function 'defun))
      (eval . (put 'lambda* 'scheme-indent-function 1))
+     (eval . (put 'chain 'scheme-indent-function 1))
      (eval . (put 'match 'scheme-indent-function 1))
      (eval . (put 'match-lambda 'scheme-indent-function 0))
      (eval . (put 'match-lambda* 'scheme-indent-function 0))
