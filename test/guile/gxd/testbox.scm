@@ -132,7 +132,7 @@ Raise an error when a group names an unknown role."
              (write-group _ (string-append etc "/group"))))))
 
 (define (testbox-init => <=)
-  "Expose the gxd source, enter the root, report readiness, then await exit."
+  "Expose the selected sources, enter the root, report readiness, then await exit."
   ;; As PID 1, this process adopts orphaned descendants.  Explicitly ignoring
   ;; SIGCHLD tells Linux to discard their exit status and reap them
   ;; automatically, so adopted children cannot accumulate as zombies.
@@ -148,15 +148,19 @@ Raise an error when a group names an unknown role."
         (install-group-accounts! root manifest)
         (let ((source (get manifest 'testbox/gxd-src)))
           (bind-mount-read-only! source (string-append root source)))
+        (let ((source (get manifest 'testbox/relay-src)))
+          (bind-mount-read-only! source (string-append root source)))
         (pivot-into! root))
       (=> 'ready #f))
     #:unwind? #t)
   (<= 'terminate))
 
 (define (make-testbox-manifest daemon-mode)
-  "Return DAEMON-MODE's roles, groups and canonical gxd source."
+  "Return DAEMON-MODE's roles, groups and canonical harness sources."
   `((testbox/daemon-mode . ,daemon-mode)
     (testbox/gxd-src . ,(canonicalize-path "src"))
+    (testbox/relay-src
+     . ,(canonicalize-path "test/guile/gxd/testbox-relay"))
     ,@(mode-configuration daemon-mode)))
 
 (define (role-id-map-ranges manifest id-key current-id subordinate-start)
