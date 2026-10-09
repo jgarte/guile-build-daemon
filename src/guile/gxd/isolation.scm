@@ -260,11 +260,13 @@ for the current PID namespace."
     ("mount" . "mnt")
     ("pid" . "pid")))
 
-(define (start-in-namespaces nsenter pid uid gid program arguments)
+(define* (start-in-namespaces nsenter pid uid gid program arguments
+                              #:key (environment '()))
   "Start PROGRAM with ARGUMENTS in the user, mount and pid namespaces of PID.
 UID and GID name the identity inside that user namespace, not on the host.
 Return the pid of the process monitoring PROGRAM, whose wait status is
-PROGRAM's own."
+PROGRAM's own.  ENVIRONMENT is an alist of string name/value overrides to the
+inherited environment; the caller's environment is unchanged."
   (let ((command
          (append (list "nsenter")
                  (map (match-lambda
@@ -281,6 +283,10 @@ PROGRAM's own."
                 (lambda ()
                   (with-exception-handler
                     (lambda (_) (primitive-_exit 127))
-                    (lambda () (apply execl nsenter command))
+                    (lambda ()
+                      (for-each (match-lambda
+                                  ((name . value) (setenv name value)))
+                                environment)
+                      (apply execl nsenter command))
                     #:unwind? #t))
                 (lambda (monitor-pid) monitor-pid))))

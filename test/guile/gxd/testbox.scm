@@ -221,8 +221,10 @@ not acquire one."
                         nsenter-path))
         #:unwind? #t))))
 
-(define (start-testbox-process! box role program arguments)
-  "Start PROGRAM with ARGUMENTS as ROLE inside BOX."
+(define* (start-testbox-process! box role program arguments
+                                 #:key (environment '()))
+  "Start PROGRAM with ARGUMENTS as ROLE inside BOX.
+ENVIRONMENT overrides inherited string name/value pairs in the child only."
   (unless (testbox-active? box)
     (error "testbox has been torn down"))
   (let ((ids (get-in (testbox-manifest box) (list 'testbox/roles role))))
@@ -233,7 +235,7 @@ not acquire one."
                (start-in-namespaces (testbox-nsenter box) (testbox-pid1 box)
                                     (get ids 'role/uid)
                                     (get ids 'role/gid)
-                                    program arguments)
+                                    program arguments #:environment environment)
                (lambda ()
                  (set-testbox-processes!
                   box (delq process (testbox-processes box)))))))
