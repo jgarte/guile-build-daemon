@@ -32,6 +32,7 @@
             make-testbox-manifest
             paired-daemon-testboxes-fixture
             start-nix-daemon!
+            start-guix-command!
             start-testbox
             start-testbox-process!
             testbox-manifest
@@ -255,6 +256,14 @@ ENVIRONMENT overrides inherited string name/value pairs in the child only."
                  (eq? 'regular (stat:type (stat in-box-program))))
       (error "Guix daemon is not executable in testbox" program))
     (start-testbox-process! box 'daemon program arguments)))
+
+(define (start-guix-command! box role arguments)
+  "Start Guix with ARGUMENTS as ROLE against BOX's daemon; return its process.
+Standard output and error are inherited.  BOX owns the process."
+  (let ((guix (canonicalize-path (require-program "guix"))))
+    (start-testbox-process!
+     box role guix arguments
+     #:environment '(("GUIX_DAEMON_SOCKET" . "/var/guix/daemon-socket/socket")))))
 
 (define (call-with-testbox manifest proc)
   "Call PROC with a box described by MANIFEST, tearing it down before return."
