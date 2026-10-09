@@ -306,16 +306,29 @@ separately scoped DAEMON-MODE boxes.  Preserve context and add the boxes under
                ,@ctx)
              (lambda () #t)))))))))
 
-(define (wait-testbox-process! process)
-  "Wait for PROCESS and return its raw wait status."
+(define* (wait-testbox-process! process #:key deadline)
+  "Wait for PROCESS and return its raw wait status.
+If absolute DEADLINE is supplied, raise when it expires before completion.
+On timeout, PROCESS remains owned by its box; the caller must end that scope."
   ;; Remember the status: the pid is reaped once, so a later call would
   ;; otherwise fail with ECHILD rather than report what the process did.
   (or (testbox-process-status process)
-      (let ((status (cdr (restart-on-EINTR
-                          (waitpid (testbox-process-pid process) 0)))))
-        (set-testbox-process-status! process status)
-        ((testbox-process-forget! process))
-        status)))
+      (match-let (((pid . status)
+                   (restart-on-EINTR
+                    (waitpid (testbox-process-pid process)
+                             (if deadline WNOHANG 0)))))
+        ;; WNOHANG returns PID 0 while running, the child's pid when reaped.
+        (if (zero? pid)
+            (begin
+              (when (>= (current-time) deadline)
+                (error "testbox process deadline exceeded"
+                       (testbox-process-pid process)))
+              (usleep 10000)
+              (wait-testbox-process! process #:deadline deadline))
+            (begin
+              (set-testbox-process-status! process status)
+              ((testbox-process-forget! process))
+              status)))))
 
 (define (teardown-testbox! box)
   "Stop BOX, reap every process it owns, and delete its root.
