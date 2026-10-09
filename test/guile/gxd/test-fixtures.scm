@@ -6,6 +6,7 @@
 (define-module (gxd test-fixtures)
   #:use-module ((gxd checked-steps) #:select (checked-steps-fixture))
   #:use-module ((gxd direct-steps) #:select (direct-steps-fixture))
+  #:use-module ((gxd guix-command) #:select (guix-command-fixture))
   #:use-module ((gxd testbox) #:select (paired-daemon-testboxes-fixture))
   #:use-module ((gxd testbox-relay)
                 #:select (client-trust-fixture paired-relay-observers-fixture))
@@ -13,11 +14,12 @@
 
 (define* (paired-testbox-fixtures daemon-mode left-kind right-kind
                                   #:key (trusted-client? #f))
-  "Return fixtures for checked direct steps on paired DAEMON-MODE subjects.
+  "Return fixtures for checked steps and Guix commands on paired DAEMON-MODE subjects.
 LEFT-KIND and RIGHT-KIND select daemons; TRUSTED-CLIENT? selects client trust.
 E.g., (paired-testbox-fixtures 'rootless 'nixd 'nixd #:trusted-client? #t)."
   (list (client-trust-fixture trusted-client?)
         (paired-daemon-testboxes-fixture daemon-mode left-kind right-kind)
         paired-relay-observers-fixture
         direct-steps-fixture
-        checked-steps-fixture))
+        checked-steps-fixture
+        guix-command-fixture))
