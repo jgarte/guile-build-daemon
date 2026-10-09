@@ -8,7 +8,7 @@
   #:use-module ((ares suitbl core) #:select (define-suite is test))
   #:use-module ((guix store) #:select (direct-store-path))
   #:use-module ((gxd direct-steps) #:select (direct-steps-fixture))
-  #:use-module ((gxd checked-steps) #:select (checked-steps-fixture))
+  #:use-module ((gxd test-fixtures) #:select (paired-testbox-fixtures))
   #:use-module (gxd test-prelude)
   #:use-module ((gxd testbox) #:select (paired-daemon-testboxes-fixture))
   #:use-module ((gxd testbox-relay)
@@ -20,12 +20,9 @@
         paired-relay-observers-fixture
         direct-steps-fixture))
 
-(define checked-relay-fixtures
-  (append paired-relay-fixtures (list checked-steps-fixture)))
-
 (define-suite (testbox-relay-tests)
   (test "checked valid-path steps agree for present and absent store items" (ctx)
-    'metadata `((test/fixtures . ,checked-relay-fixtures))
+    'metadata `((test/fixtures . ,(paired-testbox-fixtures 'rootless 'nixd 'nixd)))
     (let* ((step! (get ctx 'step!))
            (present (direct-store-path
                      (canonicalize-path (require-program "guix-daemon"))))
