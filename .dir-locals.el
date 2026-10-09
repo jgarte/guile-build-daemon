@@ -36,6 +36,7 @@
      (eval . (put 'user-observes? 'scheme-indent-function 1))
 
      ;; Guix data forms used by the development manifests/packages.
+     (eval . (put 'substitute-keyword-arguments 'scheme-indent-function 1))
      (eval . (put 'channel 'scheme-indent-function 0))
      (eval . (put 'git-reference 'scheme-indent-function 0))
      (eval . (put 'origin 'scheme-indent-function 0))
