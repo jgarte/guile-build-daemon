@@ -217,9 +217,9 @@ IDs."
                     (else 'private)))))
       (_ #f)))
   (chain "/proc/self/mountinfo"
-         (slurp _)
-         (string-split _ #\newline)
-         (any line->mount-propagation _)))
+    (slurp _)
+    (string-split _ #\newline)
+    (any line->mount-propagation _)))
 
 (define-suite (make-mounts-private-tests)
   (test "an inherited shared submount is made private" ()

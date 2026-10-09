@@ -82,9 +82,9 @@
   (lambda* (id #:optional payload #:key print)
     (when print (msg-display "send " id payload as))
     (chain (list id payload)
-           (object->string _)
-           (string->utf8 _)
-           (send-all port _))))
+      (object->string _)
+      (string->utf8 _)
+      (send-all port _))))
 
 (define* (msg-recv port #:key as)
   (set-port-encoding! port "UTF-8")
@@ -194,9 +194,9 @@ GID start.  Each start covers at least REQUIRED-COUNT contiguous ids."
 
 (define (id-map-helper name)
   (or (chain '("/run/privileged/bin" "/usr/bin")
-             (map (lambda (directory)
-                    (string-append directory "/" name)) _)
-             (find (lambda (path) (access? path X_OK)) _))
+        (map (lambda (directory)
+               (string-append directory "/" name)) _)
+        (find (lambda (path) (access? path X_OK)) _))
       (error "id map helper not found" name)))
 
 (define (write-id-map-ranges helper pid ranges)

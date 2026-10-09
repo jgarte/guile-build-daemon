@@ -111,9 +111,9 @@ Raise an error when a group names an unknown role."
     (or (assq name roles) (error "unknown group member" name)))
 
   (chain groups
-         (append-map group-member-names _)
-         (delete-duplicates _)
-         (map require-role _)))
+    (append-map group-member-names _)
+    (delete-duplicates _)
+    (map require-role _)))
 
 (define (install-group-accounts! root manifest)
   "Install MANIFEST's named groups and member accounts beneath ROOT."
@@ -124,12 +124,12 @@ Raise an error when a group names an unknown role."
           (roles (get manifest 'testbox/roles)))
       (mkdir-p etc)
       (chain groups
-             (group-member-roles roles _)
-             (map role->password-entry _)
-             (write-passwd _ (string-append etc "/passwd")))
+        (group-member-roles roles _)
+        (map role->password-entry _)
+        (write-passwd _ (string-append etc "/passwd")))
       (chain groups
-             (map group->entry _)
-             (write-group _ (string-append etc "/group"))))))
+        (map group->entry _)
+        (write-group _ (string-append etc "/group"))))))
 
 (define (testbox-init => <=)
   "Expose the selected sources, enter the root, report readiness, then await exit."

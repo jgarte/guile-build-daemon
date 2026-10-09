@@ -134,5 +134,5 @@ SIDE is 'left or 'right; require its testbox and client/trusted? in context."
 
 (define paired-relay-observers-fixture
   (chain (relay-observer-fixture 'left)
-         (fixtures:compose _ (relay-observer-fixture 'right))
-         (fixtures:compose _ paired-observations-fixture)))
+    (fixtures:compose _ (relay-observer-fixture 'right))
+    (fixtures:compose _ paired-observations-fixture)))
