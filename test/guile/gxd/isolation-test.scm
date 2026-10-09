@@ -45,7 +45,7 @@ afterwards."
 (define (alive? pid)
   "Return #t when PID can be signalled, and so has not been reaped."
   (with-exception-handler
-      (lambda (_) #f)
+    (lambda (_) #f)
     (lambda ()
       (kill pid 0)
       #t)

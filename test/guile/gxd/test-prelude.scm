@@ -50,7 +50,7 @@ imported, so a test can make a procedure fail where no seam exists."
 (define (capture-exception thunk)
   "Return the exception THUNK raises, or #f when it returns normally."
   (with-exception-handler
-      (lambda (exception) exception)
+    (lambda (exception) exception)
     (lambda () (thunk) #f)
     #:unwind? #t))
 

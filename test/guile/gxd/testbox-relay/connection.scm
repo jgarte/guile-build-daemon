@@ -47,7 +47,7 @@ The caller owns both sockets and must ignore SIGPIPE."
     (call-with-new-thread
      (lambda ()
        (with-exception-handler
-           (lambda (exception) (stop!) exception)
+         (lambda (exception) (stop!) exception)
          (lambda ()
            (forward! daemon client connection-id 'daemon observation)
            #f)

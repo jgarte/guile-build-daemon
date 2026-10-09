@@ -16,9 +16,9 @@
   "Return a connected Unix-domain socket for PATH, or raise on failure."
   (let ((port (socket AF_UNIX (logior SOCK_STREAM SOCK_CLOEXEC) 0)))
     (with-exception-handler
-        (lambda (exception)
-          (close-safely port)
-          (raise-exception exception))
+      (lambda (exception)
+        (close-safely port)
+        (raise-exception exception))
       (lambda ()
         (restart-on-EINTR (connect port AF_UNIX path))
         port)
@@ -28,9 +28,9 @@
   "Return a listening Unix-domain socket at PATH, or raise on failure."
   (let ((listener (socket AF_UNIX (logior SOCK_STREAM SOCK_CLOEXEC) 0)))
     (with-exception-handler
-        (lambda (exception)
-          (close-safely listener)
-          (raise-exception exception))
+      (lambda (exception)
+        (close-safely listener)
+        (raise-exception exception))
       (lambda ()
         (restart-on-EINTR (bind listener AF_UNIX path))
         ;; Allow the host harness to connect even when the socket is created
