@@ -6,7 +6,7 @@
 (define-module (gxd direct-steps)
   #:use-module ((ice-9 match) #:select (match))
   #:use-module ((guix store)
-                #:select (close-connection open-connection valid-path?))
+                #:select (add-text-to-store close-connection open-connection valid-path?))
   #:use-module (gxd test-prelude)
   #:export (direct-steps-fixture))
 
@@ -25,6 +25,8 @@ Close both clients and return their common result; raise on failure or mismatch.
     (match expression
       (('valid-path? (? string? path))
        (lambda (store) (valid-path? store path)))
+      (('add-text-to-store (? string? name) (? string? text) . arguments)
+       (lambda (store) (apply add-text-to-store store name text arguments)))
       (_ (error "unsupported direct step" expression))))
 
   (define results
