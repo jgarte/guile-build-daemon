@@ -70,10 +70,10 @@ Raise an error when the role process does not report true or false."
   "Return #t when PID has been collected already.  Waiting on such a pid
 fails with ECHILD, which is what distinguishes it from one still running."
   (with-exception-handler
-      (lambda (exception)
-        (match (cons (exception-kind exception) (exception-args exception))
-          (('system-error _ _ _ (errno)) (= errno ECHILD))
-          (_ #f)))
+    (lambda (exception)
+      (match (cons (exception-kind exception) (exception-args exception))
+        (('system-error _ _ _ (errno)) (= errno ECHILD))
+        (_ #f)))
     (lambda ()
       (waitpid pid WNOHANG)
       #f)
@@ -82,7 +82,7 @@ fails with ECHILD, which is what distinguishes it from one still running."
 (define (alive? pid)
   "Return #t when PID can be signalled, and so has not been reaped."
   (with-exception-handler
-      (lambda (_) #f)
+    (lambda (_) #f)
     (lambda ()
       (kill pid 0)
       #t)
@@ -92,11 +92,11 @@ fails with ECHILD, which is what distinguishes it from one still running."
   "Kill and reap PID if this test still owns it."
   (when pid
     (with-exception-handler
-        (lambda (exception)
-          (match (cons (exception-kind exception) (exception-args exception))
-            (('system-error _ _ _ (errno))
-             (unless (= errno ECHILD) (raise-exception exception)))
-            (_ (raise-exception exception))))
+      (lambda (exception)
+        (match (cons (exception-kind exception) (exception-args exception))
+          (('system-error _ _ _ (errno))
+           (unless (= errno ECHILD) (raise-exception exception)))
+          (_ (raise-exception exception))))
       (lambda ()
         (match (waitpid pid WNOHANG)
           ((0 . _)
@@ -265,11 +265,11 @@ fails with ECHILD, which is what distinguishes it from one still running."
       `(begin
          (use-modules (ice-9 exceptions))
          (with-exception-handler
-             (lambda (exception)
-               (= EACCES
-                  (system-error-errno
-                   (cons (exception-kind exception)
-                         (exception-args exception)))))
+           (lambda (exception)
+             (= EACCES
+                (system-error-errno
+                 (cons (exception-kind exception)
+                       (exception-args exception)))))
            (lambda ()
              (with-output-to-file ,user-item-path
                (lambda () (display "written by user")))
@@ -313,11 +313,11 @@ fails with ECHILD, which is what distinguishes it from one still running."
       `(begin
          (use-modules (ice-9 exceptions))
          (with-exception-handler
-             (lambda (exception)
-               (= EROFS
-                  (system-error-errno
-                   (cons (exception-kind exception)
-                         (exception-args exception)))))
+           (lambda (exception)
+             (= EROFS
+                (system-error-errno
+                 (cons (exception-kind exception)
+                       (exception-args exception)))))
            (lambda ()
              (with-output-to-file ,attempted
                (lambda () (display "written")))

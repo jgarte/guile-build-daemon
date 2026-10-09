@@ -61,9 +61,9 @@ BOX owns and reaps the relay process; TEARDOWN! releases host resources."
         (when failure (raise-exception failure))))
 
     (with-exception-handler
-        (lambda (exception)
-          (false-if-exception (teardown!))
-          (raise-exception exception))
+      (lambda (exception)
+        (false-if-exception (teardown!))
+        (raise-exception exception))
       (lambda ()
         ;; AF_UNIX limits pathname length.  A directory FD gives the host a
         ;; short path to the same socket nodes that the relay sees under /tmp.

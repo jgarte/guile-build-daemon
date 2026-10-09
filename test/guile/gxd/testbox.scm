@@ -138,10 +138,10 @@ Raise an error when a group names an unknown role."
   ;; automatically, so adopted children cannot accumulate as zombies.
   (sigaction SIGCHLD SIG_IGN)
   (with-exception-handler
-      (lambda (exception)
-        (capture-exception
-         (lambda () (=> 'ready (object->string exception))))
-        (raise-exception exception))
+    (lambda (exception)
+      (capture-exception
+       (lambda () (=> 'ready (object->string exception))))
+      (raise-exception exception))
     (lambda ()
       (match-let (((root manifest) (<= 'setup)))
         (make-mounts-private!)
@@ -195,8 +195,8 @@ not acquire one."
     (match-let (((child-pid => <= disconnect!)
                  (child-proc (logior namespace-flags SIGCHLD) testbox-init)))
       (with-exception-handler
-          (lambda (exception)
-            (cleanup-start-failure! child-pid disconnect! root exception))
+        (lambda (exception)
+          (cleanup-start-failure! child-pid disconnect! root exception))
         (lambda ()
           ;; Install PID 1's ID mappings before filesystem setup.
           (let* ((roles (get manifest 'testbox/roles))

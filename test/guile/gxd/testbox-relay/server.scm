@@ -35,9 +35,9 @@ and relay each independently through DAEMON-SOCKET-PATH."
   (let loop ((connection-id 1))
     (define client (car (restart-on-EINTR (accept listener))))
     (with-exception-handler
-        (lambda (exception)
-          (close-safely client)
-          (raise-exception exception))
+      (lambda (exception)
+        (close-safely client)
+        (raise-exception exception))
       (lambda ()
         (observation:write-accepted observation connection-id)
         (call-with-new-thread

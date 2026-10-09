@@ -18,10 +18,10 @@
 
 (define (reaped? pid)
   (with-exception-handler
-      (lambda (exception)
-        (match (cons (exception-kind exception) (exception-args exception))
-          (('system-error _ _ _ (errno)) (= errno ECHILD))
-          (_ #f)))
+    (lambda (exception)
+      (match (cons (exception-kind exception) (exception-args exception))
+        (('system-error _ _ _ (errno)) (= errno ECHILD))
+        (_ #f)))
     (lambda () (waitpid pid WNOHANG) #f)
     #:unwind? #t))
 

@@ -143,10 +143,10 @@ idempotent procedure that closes the parent endpoint."
             (lambda ()
               (close-port parent-port)
               (with-exception-handler
-                  (lambda (exn)
-                    (backtrace)
-                    (flush-all-ports)
-                    (primitive-_exit 1))
+                (lambda (exn)
+                  (backtrace)
+                  (flush-all-ports)
+                  (primitive-_exit 1))
                 (lambda ()
                   (child (msg-send child-port #:as 'child)
                          (msg-recv child-port #:as 'child))
@@ -280,7 +280,7 @@ PROGRAM's own."
     (safe-clone SIGCHLD
                 (lambda ()
                   (with-exception-handler
-                      (lambda (_) (primitive-_exit 127))
+                    (lambda (_) (primitive-_exit 127))
                     (lambda () (apply execl nsenter command))
                     #:unwind? #t))
                 (lambda (monitor-pid) monitor-pid))))

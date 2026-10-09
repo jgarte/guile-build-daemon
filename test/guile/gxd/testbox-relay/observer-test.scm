@@ -32,7 +32,7 @@
 
     (define result
       (with-exception-handler
-          (lambda (exception) (close!) (raise-exception exception))
+        (lambda (exception) (close!) (raise-exception exception))
         (lambda () (proc observer (observation:make-observation-output output)))
         #:unwind? #t))
 

@@ -25,6 +25,7 @@
      (eval . (put 'let-values 'scheme-indent-function 1))
      (eval . (put 'parameterize 'scheme-indent-function 1))
      (eval . (put 'with-fluids 'scheme-indent-function 2))
+     (eval . (put 'with-exception-handler 'scheme-indent-function 0))
      (eval . (put 'dynamic-wind 'scheme-indent-function 0))
      (eval . (put 'call-with-input-string 'scheme-indent-function 1))
      (eval . (put 'call-with-input-file 'scheme-indent-function 1))
