@@ -32,6 +32,7 @@
             make-testbox-manifest
             paired-daemon-testboxes-fixture
             start-nix-daemon!
+            start-gxd!
             start-guix-command!
             start-testbox
             start-testbox-process!
@@ -257,6 +258,14 @@ ENVIRONMENT overrides inherited string name/value pairs in the child only."
       (error "Guix daemon is not executable in testbox" program))
     (start-testbox-process! box 'daemon program arguments)))
 
+(define (start-gxd! box)
+  "Start gxd inside BOX as the daemon role and return its process."
+  (let* ((guix (canonicalize-path (require-program "guix")))
+         (source (string-append (get (testbox-manifest box) 'testbox/gxd-src)
+                                "/guile")))
+    (start-testbox-process! box 'daemon guix
+                            (list "repl" "-L" source "--" (string-append source "/gxd/main.scm")))))
+
 (define (start-guix-command! box role arguments)
   "Start Guix with ARGUMENTS as ROLE against BOX's daemon; return its process.
 Standard output and error are inherited.  BOX owns the process."
@@ -277,7 +286,7 @@ Standard output and error are inherited.  BOX owns the process."
   "Return DAEMON-KIND's implemented launcher, or raise an error."
   (case daemon-kind
     ((nixd) start-nix-daemon!)
-    ((gxd) (error "gxd launcher is not implemented"))
+    ((gxd) start-gxd!)
     (else (error "unknown daemon" daemon-kind))))
 
 (define (paired-daemon-testboxes-fixture daemon-mode
