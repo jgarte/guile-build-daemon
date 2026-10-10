@@ -6,7 +6,11 @@
 (define-module (gxd direct-steps)
   #:use-module ((ice-9 match) #:select (match))
   #:use-module ((guix store)
-                #:select (add-text-to-store close-connection open-connection valid-path?))
+                #:select (add-text-to-store close-connection open-connection
+                                            &store-protocol-error store-protocol-error-message
+                                            store-protocol-error-status
+                                            valid-path?))
+  #:use-module ((ice-9 exceptions) #:select (with-exception-handler))
   #:use-module (gxd test-prelude)
   #:export (direct-steps-fixture))
 
@@ -18,16 +22,33 @@
       (lambda () (proc store))
       (lambda () (close-connection store)))))
 
+(define (expression->procedure expression)
+  (match expression
+    (('valid-path? (? string? path))
+     (lambda (store) (valid-path? store path)))
+    (('add-text-to-store (? string? name) (? string? text) . arguments)
+     (lambda (store) (apply add-text-to-store store name text arguments)))
+    (_ (error "unsupported direct step" expression))))
+
+(define (call-with-protocol-outcome proc store)
+  "Return PROC's result on STORE or its protocol error as type/message/status data.
+Propagate other exceptions."
+  (with-exception-handler
+    (lambda (exception)
+      `((error/type . store-protocol-error)
+        (error/message . ,(store-protocol-error-message exception))
+        (error/status . ,(store-protocol-error-status exception))))
+    (lambda () (proc store))
+    #:unwind? #t
+    #:unwind-for-type &store-protocol-error))
+
 (define (paired-step! left right expression)
   "Execute EXPRESSION on fresh clients at LEFT and RIGHT within five seconds.
-Close both clients and return their common result; raise on failure or mismatch."
+Return their common result or protocol-error type/message/status data.
+Raise on other exceptions or mismatch."
   (define store-proc
-    (match expression
-      (('valid-path? (? string? path))
-       (lambda (store) (valid-path? store path)))
-      (('add-text-to-store (? string? name) (? string? text) . arguments)
-       (lambda (store) (apply add-text-to-store store name text arguments)))
-      (_ (error "unsupported direct step" expression))))
+    (let ((proc (expression->procedure expression)))
+      (lambda (store) (call-with-protocol-outcome proc store))))
 
   (define results
     (call-with-process-deadline
@@ -44,9 +65,10 @@ Close both clients and return their common result; raise on failure or mismatch.
      left-result)))
 
 (define (direct-steps-fixture ctx proceed)
-  "Preserve CTX and add step!, accepting Guix client operations as data with the
+  "Preserve CTX and add step!, accepting client operations as data with the
 store argument omitted, for example (valid-path? PATH).  Return the operation's
-result if it agrees across both testboxes; raise otherwise."
+result or protocol-error type/message/status data if equal across both boxes.
+Raise on other exceptions or differing outcomes."
   (let ((left (get ctx 'relay/left-endpoint))
         (right (get ctx 'relay/right-endpoint)))
     (unless (and (string? left) (string? right))
