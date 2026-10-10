@@ -1,4 +1,28 @@
 ;; SPDX-License-Identifier: GPL-3.0-or-later
 ;; SPDX-FileCopyrightText: 2026 Andrew Tropin
 
-(define-module (gxd server-test))
+(define-module (gxd server-test)
+  #:use-module ((ares suitbl core) #:select (define-suite is test))
+  #:use-module ((guix store) #:select (direct-store-path))
+  #:use-module ((gxd test-fixtures) #:select (paired-testbox-fixtures))
+  #:use-module (gxd test-prelude))
+
+(define-suite (server-tests)
+  'metadata `((test/fixtures . ,(paired-testbox-fixtures 'rootless 'nixd 'gxd)))
+
+  (test "registered path is valid on nixd and gxd" (ctx)
+    (let ((step! (get ctx 'step!))
+          (path (direct-store-path
+                 (canonicalize-path (require-program "guix-daemon")))))
+      (is (eq? #t (step! `(valid-path? ,path))))))
+
+  (test "unregistered path is invalid on nixd and gxd" (ctx)
+    (let ((step! (get ctx 'step!)))
+      (is (eq? #f (step! '(valid-path? "/gnu/store/00000000000000000000000000000000-gxd-absent"))))))
+
+  (test "outside-store path has the same protocol error on nixd and gxd" (ctx)
+    (let ((step! (get ctx 'step!)))
+      (is (equal? '((error/type . store-protocol-error)
+                    (error/message . "path `/outside' is not in the store")
+                    (error/status . 1))
+                  (step! '(valid-path? "/outside")))))))
