@@ -4,13 +4,27 @@
 ;; SPDX-FileCopyrightText: 2026 buttonspresser
 
 (define-module (gxd worker-protocol)
-  #:use-module ((guix serialization) #:select (long-long read-value))
+  #:use-module ((guix serialization) #:select (integer long-long utf8-string
+                                                       read-value write-value))
   #:use-module ((rnrs bytevectors) #:select (bytevector-length
                                              bytevector-u8-ref
                                              bytevector-copy!
                                              make-bytevector utf8->string))
   #:use-module ((rnrs io ports) #:select (get-bytevector-n))
-  #:export (read-integer read-string))
+  #:export (read-integer read-string write-completion write-error))
+
+(define STDERR_LAST #x616c7473)
+(define STDERR_ERROR #x63787470)
+
+(define (write-completion port)
+  "Write the work-completion marker to PORT."
+  (write-value integer STDERR_LAST port))
+
+(define (write-error message status port)
+  "Write a worker-protocol error with MESSAGE and STATUS to PORT."
+  (write-value integer STDERR_ERROR port)
+  (write-value utf8-string message port)
+  (write-value integer status port))
 
 (define (read-integer port)
   "Read a worker-protocol integer from PORT, rejecting values above 32 bits."
