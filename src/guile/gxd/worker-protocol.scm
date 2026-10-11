@@ -11,10 +11,16 @@
                                              bytevector-copy!
                                              make-bytevector utf8->string))
   #:use-module ((rnrs io ports) #:select (get-bytevector-n))
-  #:export (read-integer read-string write-completion write-error))
+  #:export (read-integer read-string write-completion write-error write-log))
 
 (define STDERR_LAST #x616c7473)
 (define STDERR_ERROR #x63787470)
+(define STDERR_NEXT #x6f6c6d67)
+
+(define (write-log message port)
+  "Write MESSAGE as a worker-protocol log frame to PORT."
+  (write-value integer STDERR_NEXT port)
+  (write-value utf8-string message port))
 
 (define (write-completion port)
   "Write the work-completion marker to PORT."
