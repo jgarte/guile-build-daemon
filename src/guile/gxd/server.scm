@@ -4,10 +4,12 @@
 ;; SPDX-FileCopyrightText: 2026 buttonspresser
 
 (define-module (gxd server)
+  #:use-module ((gxd accounts) #:select (user-exists?))
+  #:use-module ((gxd socket) #:select (peer-uid))
   #:use-module ((gxd database) #:select (call-with-database valid-path?)
                 #:prefix database:)
   #:use-module ((gxd worker-protocol) #:select (read-integer read-string
-                                                             write-completion write-error)
+                                                             write-completion write-error write-log)
                 #:prefix protocol:)
   #:use-module ((guix config) #:select (%store-directory
                                         %store-database-directory))
@@ -44,6 +46,11 @@
   (greet-client connection)
   (database:call-with-database database-file
     (lambda (db)
+      (define uid (peer-uid connection))
+      (unless (user-exists? uid)
+        (protocol:write-log (format #f "user with UID ~a not found~%" uid)
+                            connection))
+
       (protocol:write-completion connection)
       (force-output connection)
 
