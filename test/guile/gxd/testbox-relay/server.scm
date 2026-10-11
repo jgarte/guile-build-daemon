@@ -15,6 +15,30 @@
                 #:prefix observation:)
   #:export (run-relay))
 
+(define (connect-daemon path)
+  "Connect to PATH, waiting up to five seconds for a missing or unlistening socket."
+  (define deadline (+ (current-time) 5))
+  (let loop ()
+    (define connected
+      (with-exception-handler
+        (lambda (exception)
+          (let ((errno (system-error-errno
+                        (cons (exception-kind exception)
+                              (exception-args exception)))))
+            (if (and (memv errno (list ENOENT ECONNREFUSED))
+                     (< (current-time) deadline))
+                #f
+                (raise-exception exception))))
+        (lambda () (connect-unix path))
+        #:unwind? #t
+        #:unwind-for-type 'system-error))
+
+    (if connected
+        connected
+        (begin
+          (usleep 10000)
+          (loop)))))
+
 (define (serve-client! client daemon-socket-path connection-id observation)
   "Relay CLIENT through DAEMON-SOCKET-PATH, then close both connected sockets
 and report CONNECTION-ID's completion over OBSERVATION."
@@ -22,7 +46,7 @@ and report CONNECTION-ID's completion over OBSERVATION."
     (dynamic-wind
       (lambda () #t)
       (lambda ()
-        (set! daemon (connect-unix daemon-socket-path))
+        (set! daemon (connect-daemon daemon-socket-path))
         (exchange! client daemon connection-id observation))
       (lambda ()
         (close-safely daemon)
