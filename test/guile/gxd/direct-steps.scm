@@ -42,6 +42,11 @@ Propagate other exceptions."
     #:unwind? #t
     #:unwind-for-type &store-protocol-error))
 
+(define (common-outcome expression left-result right-result)
+  (unless (equal? left-result right-result)
+    (error "direct step responses differ" expression left-result right-result))
+  left-result)
+
 (define (paired-step! left right expression)
   "Execute EXPRESSION on fresh clients at LEFT and RIGHT within five seconds.
 Return their common result or protocol-error type/message/status data.
@@ -60,9 +65,7 @@ Raise on other exceptions or mismatch."
 
   (match results
     ((left-result right-result)
-     (unless (equal? left-result right-result)
-       (error "direct step responses differ" expression left-result right-result))
-     left-result)))
+     (common-outcome expression left-result right-result))))
 
 (define (direct-steps-fixture ctx proceed)
   "Preserve CTX and add step!, accepting client operations as data with the
