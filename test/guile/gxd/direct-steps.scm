@@ -60,7 +60,8 @@ Raise on other exceptions or differing outcomes.  The caller owns both clients."
 store argument omitted, for example (valid-path? PATH).  Return the operation's
 result or protocol-error type/message/status data if equal across both boxes.
 Raise on other exceptions or differing outcomes.  With #:connection NAME,
-reuse one named client pair until fixture teardown; only one name is supported.
+reuse one named client pair until a #:terminal #t call or fixture teardown.
+Only one name can be open at a time; a call after closure opens a new pair.
 Named calls execute in the caller without a per-operation deadline."
   (let ((left (get ctx 'relay/left-endpoint))
         (right (get ctx 'relay/right-endpoint))
@@ -84,7 +85,7 @@ Named calls execute in the caller without a per-operation deadline."
       (when (or left-error right-error)
         (raise-exception (or left-error right-error))))
 
-    (define* (step! expression #:key connection)
+    (define* (step! expression #:key connection (terminal #f))
       (if (not connection)
           (call-with-process-deadline
            5
@@ -109,6 +110,8 @@ Named calls execute in the caller without a per-operation deadline."
                   (set! right-store (open-connection right)))
                 #:unwind? #t)
               (set! name connection))
-            (paired-step! left-store right-store expression))))
+            (let ((outcome (paired-step! left-store right-store expression)))
+              (when terminal (close-clients!))
+              outcome))))
 
     (proceed (acons 'step! step! ctx) close-clients!)))
