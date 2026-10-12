@@ -10,7 +10,7 @@
                                             &store-protocol-error store-protocol-error-message
                                             store-protocol-error-status
                                             valid-path?))
-  #:use-module ((ice-9 exceptions) #:select (with-exception-handler))
+  #:use-module ((ice-9 exceptions) #:select (raise-exception with-exception-handler))
   #:use-module (gxd test-prelude)
   #:export (direct-steps-fixture))
 
@@ -59,20 +59,56 @@ Raise on other exceptions or differing outcomes.  The caller owns both clients."
   "Preserve CTX and add step!, accepting client operations as data with the
 store argument omitted, for example (valid-path? PATH).  Return the operation's
 result or protocol-error type/message/status data if equal across both boxes.
-Raise on other exceptions or differing outcomes."
+Raise on other exceptions or differing outcomes.  With #:connection NAME,
+reuse one named client pair until fixture teardown; only one name is supported.
+Named calls execute in the caller without a per-operation deadline."
   (let ((left (get ctx 'relay/left-endpoint))
-        (right (get ctx 'relay/right-endpoint)))
+        (right (get ctx 'relay/right-endpoint))
+        (name #f)
+        (left-store #f)
+        (right-store #f))
     (unless (and (string? left) (string? right))
       (error "direct steps require two relay endpoints" left right))
-    (define (step! expression)
-      (call-with-process-deadline
-       5
-       (lambda ()
-         (call-with-client left
-           (lambda (left-store)
-             (call-with-client right
-               (lambda (right-store)
-                 (paired-step! left-store right-store expression))))))))
+    (define (close-clients!)
+      (define left-error
+        (capture-exception
+         (lambda () (when left-store (close-connection left-store)))))
 
-    (proceed (acons 'step! step! ctx)
-             (lambda () #t))))
+      (define right-error
+        (capture-exception
+         (lambda () (when right-store (close-connection right-store)))))
+
+      (set! left-store #f)
+      (set! right-store #f)
+      (set! name #f)
+      (when (or left-error right-error)
+        (raise-exception (or left-error right-error))))
+
+    (define* (step! expression #:key connection)
+      (if (not connection)
+          (call-with-process-deadline
+           5
+           (lambda ()
+             (call-with-client left
+               (lambda (left-store)
+                 (call-with-client right
+                   (lambda (right-store)
+                     (paired-step! left-store right-store expression)))))))
+          (begin
+            (unless (symbol? connection)
+              (error "connection name must be a symbol" connection))
+            (when (and name (not (eq? name connection)))
+              (error "only one named connection is supported" name connection))
+            (unless name
+              (with-exception-handler
+                (lambda (exception)
+                  (capture-exception close-clients!)
+                  (raise-exception exception))
+                (lambda ()
+                  (set! left-store (open-connection left))
+                  (set! right-store (open-connection right)))
+                #:unwind? #t)
+              (set! name connection))
+            (paired-step! left-store right-store expression))))
+
+    (proceed (acons 'step! step! ctx) close-clients!)))
