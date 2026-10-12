@@ -21,6 +21,31 @@
         direct-steps-fixture))
 
 (define-suite (testbox-relay-tests)
+  (test "two named queries change the stable single-query capture" (ctx)
+    'metadata `((test/fixtures . ,paired-relay-fixtures))
+    (let* ((step! (get ctx 'step!))
+           (observe-bytes! (get ctx 'observe-bytes!))
+           (present (direct-store-path
+                     (canonicalize-path (require-program "guix-daemon"))))
+           (op `(valid-path? ,present)))
+
+      (is (eq? #t (step! op)))
+
+      (define first (observe-bytes!))
+      (is (bytevector=? (car first) (cadr first)))
+
+      (is (eq? #t (step! op)))
+
+      (define second (observe-bytes!))
+      (is (equal? first second))
+
+      (is (eq? #t (step! op #:connection 'a)))
+      (is (eq? #t (step! op #:connection 'a #:terminal #t)))
+
+      (define session (observe-bytes!))
+      (is (bytevector=? (car session) (cadr session)))
+      (is (not (bytevector=? (car first) (car session))))))
+
   (test "checked valid-path steps agree for present and absent store items" (ctx)
     'metadata `((test/fixtures . ,(paired-testbox-fixtures 'rootless 'nixd 'nixd)))
     (let* ((step! (get ctx 'step!))
