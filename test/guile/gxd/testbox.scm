@@ -261,10 +261,10 @@ ENVIRONMENT overrides inherited string name/value pairs in the child only."
 (define (start-gxd! box)
   "Start gxd inside BOX as the daemon role and return its process."
   (let* ((guix (canonicalize-path (require-program "guix")))
-         (source (string-append (get (testbox-manifest box) 'testbox/gxd-src)
-                                "/guile")))
+         (source (get (testbox-manifest box) 'testbox/gxd-src)))
     (start-testbox-process! box 'daemon guix
-                            (list "repl" "-L" source "--" (string-append source "/gxd/main.scm")))))
+                            (list "repl" "-L" (string-append source "/guile")
+                                  "--" (string-append source "/main.scm")))))
 
 (define (start-guix-command! box role arguments)
   "Start Guix with ARGUMENTS as ROLE against BOX's daemon; return its process.
