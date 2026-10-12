@@ -12,7 +12,7 @@
 
 (define (checked-steps-fixture ctx proceed)
   "Wrap CTX's step! with a check of its two completed connection captures.
-Require step! and observe-bytes!.  Check unnamed calls and named #:terminal #t
+Require step! and observe-bytes!.  Check unnamed calls and named #:terminal? #t
 calls before returning; other named calls return without draining observations.
 On mismatch raise with the expression, response and both captures.
 Remove observe-bytes!, relay/left-observer and relay/right-observer downstream:
@@ -21,11 +21,11 @@ the wrapped step! owns observation consumption.  Preserve other context."
         (observe-bytes! (get ctx 'observe-bytes!)))
     (unless (and (procedure? step!) (procedure? observe-bytes!))
       (error "checked steps require step! and observe-bytes!"))
-    (define* (checked-step! expression #:key connection (terminal #f))
+    (define* (checked-step! expression #:key connection (terminal? #f))
       (define response
-        (step! expression #:connection connection #:terminal terminal))
+        (step! expression #:connection connection #:terminal? terminal?))
 
-      (when (or (not connection) terminal)
+      (when (or (not connection) terminal?)
         (match (observe-bytes!)
           ((left right)
            (unless (bytevector=? left right)

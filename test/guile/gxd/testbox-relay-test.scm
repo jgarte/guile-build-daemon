@@ -40,7 +40,7 @@
       (is (equal? first second))
 
       (is (eq? #t (step! op #:connection 'a)))
-      (is (eq? #t (step! op #:connection 'a #:terminal #t)))
+      (is (eq? #t (step! op #:connection 'a #:terminal? #t)))
 
       (define session (observe-bytes!))
       (is (bytevector=? (car session) (cadr session)))
