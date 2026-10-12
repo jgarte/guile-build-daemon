@@ -48,24 +48,12 @@ Propagate other exceptions."
   left-result)
 
 (define (paired-step! left right expression)
-  "Execute EXPRESSION on fresh clients at LEFT and RIGHT within five seconds.
-Return their common result or protocol-error type/message/status data.
-Raise on other exceptions or mismatch."
-  (define store-proc
-    (let ((proc (expression->procedure expression)))
-      (lambda (store) (call-with-protocol-outcome proc store))))
-
-  (define results
-    (call-with-process-deadline
-     5
-     (lambda ()
-       (define left-result (call-with-client left store-proc))
-       (define right-result (call-with-client right store-proc))
-       (list left-result right-result))))
-
-  (match results
-    ((left-result right-result)
-     (common-outcome expression left-result right-result))))
+  "Execute EXPRESSION on open clients LEFT and RIGHT; return their common outcome.
+Raise on other exceptions or differing outcomes.  The caller owns both clients."
+  (let* ((proc (expression->procedure expression))
+         (left-result (call-with-protocol-outcome proc left))
+         (right-result (call-with-protocol-outcome proc right)))
+    (common-outcome expression left-result right-result)))
 
 (define (direct-steps-fixture ctx proceed)
   "Preserve CTX and add step!, accepting client operations as data with the
@@ -76,6 +64,15 @@ Raise on other exceptions or differing outcomes."
         (right (get ctx 'relay/right-endpoint)))
     (unless (and (string? left) (string? right))
       (error "direct steps require two relay endpoints" left right))
-    (proceed (acons 'step! (lambda (expression) (paired-step! left right expression))
-                    ctx)
+    (define (step! expression)
+      (call-with-process-deadline
+       5
+       (lambda ()
+         (call-with-client left
+           (lambda (left-store)
+             (call-with-client right
+               (lambda (right-store)
+                 (paired-step! left-store right-store expression))))))))
+
+    (proceed (acons 'step! step! ctx)
              (lambda () #t))))
