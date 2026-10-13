@@ -23,6 +23,7 @@
                                              with-exception-handler))
   #:use-module ((ice-9 match) #:select (match))
   #:use-module ((ice-9 format) #:select (format))
+  #:use-module ((rnrs io ports) #:select (lookahead-u8))
   #:export (run-server))
 
 (define (greet-client connection)
@@ -64,7 +65,7 @@
   (force-output connection))
 
 (define (serve-client connection store-directory database-file)
-  "Serve one validity query on CONNECTION using STORE-DIRECTORY and DATABASE-FILE."
+  "Serve supported requests until CONNECTION ends, using STORE-DIRECTORY and DATABASE-FILE."
   (greet-client connection)
   (database:call-with-database database-file
     (lambda (db)
@@ -76,10 +77,11 @@
       (protocol:write-completion connection)
       (force-output connection)
 
-      (serve-request connection store-directory db))))
+      (while (not (eof-object? (lookahead-u8 connection)))
+             (serve-request connection store-directory db)))))
 
 (define (run-server socket-path)
-  "Serve one validity query at SOCKET-PATH against the configured store."
+  "Serve one client session at SOCKET-PATH against the configured store."
   (define listener (socket AF_UNIX SOCK_STREAM 0))
 
   (with-exception-handler
