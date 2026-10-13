@@ -4,7 +4,8 @@
 
 (define-module (gxd prelude)
   #:use-module ((srfi srfi-2) #:select (and-let*))
-  #:re-export (and-let*)
+  #:use-module ((srfi srfi-197) #:select (chain))
+  #:re-export (and-let* chain)
   #:export (comment get get-in))
 
 ;; taken from guile-ares-rs/src/guile/ares/guile/prelude.scm

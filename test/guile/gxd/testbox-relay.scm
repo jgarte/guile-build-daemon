@@ -7,7 +7,6 @@
   #:use-module ((ares suitbl fixture) #:select (compose) #:prefix fixtures:)
   #:use-module ((ice-9 exceptions) #:select (raise-exception with-exception-handler))
   #:use-module ((ice-9 match) #:select (match-let match-let*))
-  #:use-module ((srfi srfi-197) #:select (chain))
   #:use-module ((gxd testbox)
                 #:select (start-testbox-process! testbox-manifest testbox-root))
   #:use-module (gxd test-prelude)
