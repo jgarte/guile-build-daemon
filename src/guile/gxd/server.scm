@@ -41,6 +41,13 @@
     (protocol:read-integer connection)
     version))
 
+(define (store-path? store-directory path)
+  "Return whether PATH names an immediate item beneath STORE-DIRECTORY."
+  (let ((prefix (string-append store-directory "/")))
+    (and (string-prefix? prefix path)
+         (> (string-length path) (string-length prefix))
+         (not (string-index path #\/ (string-length prefix))))))
+
 (define (serve-request connection store-directory db)
   "Serve one validity query on CONNECTION against STORE-DIRECTORY and open DB."
   (unless (= (protocol:read-integer connection)
@@ -48,15 +55,12 @@
     (error "unsupported operation"))
 
   (define path (protocol:read-string connection))
-  (define prefix (string-append store-directory "/"))
-  (if (and (string-prefix? prefix path)
-           (> (string-length path) (string-length prefix))
-           (not (string-index path #\/ (string-length prefix))))
+  (if (not (store-path? store-directory path))
+      (protocol:write-error
+       (format #f "path `~a' is not in the store" path) 1 connection)
       (let ((valid? (database:valid-path? db path)))
         (protocol:write-completion connection)
-        (write-value boolean valid? connection))
-      (protocol:write-error
-       (format #f "path `~a' is not in the store" path) 1 connection))
+        (write-value boolean valid? connection)))
   (force-output connection))
 
 (define (serve-client connection store-directory database-file)
