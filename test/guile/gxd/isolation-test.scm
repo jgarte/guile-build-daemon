@@ -10,7 +10,6 @@
   #:use-module ((srfi srfi-11) #:select (let-values))
   #:use-module ((srfi srfi-13)
                 #:select (string-prefix? string-tokenize))
-  #:use-module ((srfi srfi-197) #:select (chain))
 
   #:use-module ((ares suitbl core) #:select (define-suite is test))
   #:use-module ((ares suitbl checks) #:select (throws-exception?))

@@ -9,7 +9,6 @@
                           write-passwd))
   #:use-module ((ice-9 match) #:select (match-let))
   #:use-module ((srfi srfi-1) #:select (append-map delete-duplicates iota))
-  #:use-module ((srfi srfi-197) #:select (chain))
   #:use-module ((srfi srfi-9) #:select (define-record-type))
   #:use-module ((guix build utils) #:select (executable-file? mkdir-p))
   #:use-module ((guix build syscalls)
