@@ -10,6 +10,27 @@
 (define-suite (server-tests)
   'metadata `((test/fixtures . ,(paired-testbox-fixtures 'rootless 'nixd 'gxd)))
 
+  (test "validity queries continue after an outside-store error on one connection" (ctx)
+    (let* ((step! (get ctx 'step!))
+           (present (direct-store-path
+                     (canonicalize-path (require-program "guix-daemon"))))
+           (absent "/gnu/store/00000000000000000000000000000000-gxd-absent"))
+
+      (is (chain `(valid-path? ,present)
+            (step! _ #:connection 'a)
+            (eq? #t _)))
+
+      (is (chain '(valid-path? "/outside")
+            (step! _ #:connection 'a)
+            (equal? '((error/type . store-protocol-error)
+                      (error/message . "path `/outside' is not in the store")
+                      (error/status . 1))
+                    _)))
+
+      (is (chain `(valid-path? ,absent)
+            (step! _ #:connection 'a #:terminal? #t)
+            (eq? #f _)))))
+
   (test "registered path is valid on nixd and gxd" (ctx)
     (let ((step! (get ctx 'step!))
           (path (direct-store-path
