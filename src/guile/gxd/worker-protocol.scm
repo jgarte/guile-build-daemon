@@ -11,7 +11,7 @@
                                              bytevector-copy!
                                              make-bytevector utf8->string))
   #:use-module ((rnrs io ports) #:select (get-bytevector-n))
-  #:export (read-integer read-boolean read-string read-string-pairs
+  #:export (read-integer read-boolean read-string read-string-pairs read-options
                          write-completion write-error write-log))
 
 (define STDERR_LAST #x616c7473)
@@ -45,6 +45,32 @@
 (define (read-boolean port)
   "Read a worker-protocol Boolean from PORT; zero is false, nonzero is true."
   (not (zero? (read-integer port))))
+
+(define (read-options port)
+  "Read a pinned-protocol set-options payload from PORT as keyed data.
+Boolean fields use zero/nonzero truthiness; SETTINGS preserves wire pair order.
+The operation number is already consumed."
+  ;; Sequence port reads explicitly; quasiquote does not guarantee their order.
+  (let* ((keep-failed? (read-boolean port))
+         (keep-going? (read-boolean port))
+         (fallback? (read-boolean port))
+         (verbosity (read-integer port))
+         (offload? (read-boolean port))
+         (build-verbosity (read-integer port))
+         (log-type (read-integer port))
+         (print-build-trace? (read-boolean port))
+         (use-substitutes? (read-boolean port))
+         (settings (read-string-pairs port)))
+    `((keep-failed? . ,keep-failed?)
+      (keep-going? . ,keep-going?)
+      (fallback? . ,fallback?)
+      (verbosity . ,verbosity)
+      (offload? . ,offload?)
+      (build-verbosity . ,build-verbosity)
+      (log-type . ,log-type)
+      (print-build-trace? . ,print-build-trace?)
+      (use-substitutes? . ,use-substitutes?)
+      (settings . ,settings))))
 
 (define (read-string-pairs port)
   "Read ordered UTF-8 string pairs from PORT, preserving duplicate keys."
