@@ -37,13 +37,19 @@
   (invoke (require-program "btrfs") "--quiet" "subvolume" "delete"
           (testbox-root-path pid1)))
 
+(define* (snapshot-dir! target destination
+                        #:optional
+                        (destination-exists-error "DESTINATION already exists:"))
+  "Snapshot the TARGET into DESTINATION its path."
+  (when (file-exists? destination)
+    (error destination-exists-error destination))
+  (mkdir-p (dirname destination))
+  (invoke (require-program "btrfs") "--quiet" "subvolume" "snapshot"
+          target destination)
+  destination)
+
 (define (snapshot-base! pid1)
   "Snapshot the base into the testbox root owned by PID1 and return its path."
   (let ((base (require-testbox-base))
         (destination (testbox-root-path pid1)))
-    (when (file-exists? destination)
-      (error "testbox root already exists" destination))
-    (mkdir-p (dirname destination))
-    (invoke (require-program "btrfs") "--quiet" "subvolume" "snapshot"
-            base destination)
-    destination))
+    (snapshot-dir! base destination "testbox root (PID1) already exists:")))
