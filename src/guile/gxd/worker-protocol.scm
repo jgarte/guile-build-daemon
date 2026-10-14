@@ -11,7 +11,7 @@
                                              bytevector-copy!
                                              make-bytevector utf8->string))
   #:use-module ((rnrs io ports) #:select (get-bytevector-n))
-  #:export (read-integer read-string read-string-pairs
+  #:export (read-integer read-boolean read-string read-string-pairs
                          write-completion write-error write-log))
 
 (define STDERR_LAST #x616c7473)
@@ -41,6 +41,10 @@
     (when (> value #xffffffff)
       (error "implementation cannot deal with > 32-bit integers"))
     value))
+
+(define (read-boolean port)
+  "Read a worker-protocol Boolean from PORT; zero is false, nonzero is true."
+  (not (zero? (read-integer port))))
 
 (define (read-string-pairs port)
   "Read ordered UTF-8 string pairs from PORT, preserving duplicate keys."
