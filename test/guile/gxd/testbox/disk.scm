@@ -53,3 +53,10 @@
   (let ((base (require-testbox-base))
         (destination (testbox-root-path pid1)))
     (snapshot-dir! base destination "testbox root (PID1) already exists:")))
+
+(define (snapshot-root! testbox-root snapshot-dir)
+  "Create and return a persistent, read-only snapshot of TESTBOX-ROOT directory."
+  (let ((destination
+         (string-append (getenv "TESTBOX_DISK_MOUNT_POINT")
+                        "/testbox-snapshots/" snapshot-dir)))
+    (snapshot-dir! testbox-root destination "filesystem observation already exists:")))
