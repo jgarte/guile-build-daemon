@@ -10,6 +10,40 @@
 (define-suite (server-tests)
   'metadata `((test/fixtures . ,(paired-testbox-fixtures 'rootless 'nixd 'gxd)))
 
+  (test "build options can be set before and after other ops on one connection" (ctx)
+    (let* ((step! (get ctx 'step!))
+           (present (direct-store-path
+                     (canonicalize-path (require-program "guix-daemon"))))
+           (absent "/gnu/store/00000000000000000000000000000000-gxd-absent"))
+
+      (is (chain '(set-build-options #:user-name #f #:terminal-columns #f #:locale #f
+                                     #:offload? #f #:use-substitutes? #f
+                                     #:max-build-jobs 1 #:timeout 12
+                                     #:multiplexed-build-output? #t)
+            (step! _ #:connection 'a)
+            (null? _)))
+
+      (is (chain `(valid-path? ,present)
+            (step! _ #:connection 'a)
+            (eq? #t _)))
+
+      (is (chain '(valid-path? "/outside")
+            (step! _ #:connection 'a)
+            (equal? '((error/type . store-protocol-error)
+                      (error/message . "path `/outside' is not in the store")
+                      (error/status . 1))
+                    _)))
+
+      (is (chain '(set-build-options #:user-name #f #:terminal-columns #f #:locale #f
+                                     #:offload? #t #:use-substitutes? #t
+                                     #:max-build-jobs 2 #:timeout 24)
+            (step! _ #:connection 'a)
+            (null? _)))
+
+      (is (chain `(valid-path? ,absent)
+            (step! _ #:connection 'a #:terminal? #t)
+            (eq? #f _)))))
+
   (test "validity queries continue after an outside-store error on one connection" (ctx)
     (let* ((step! (get ctx 'step!))
            (present (direct-store-path
