@@ -9,7 +9,8 @@
   #:use-module ((gxd test-prelude) #:select (require-program))
   #:export (delete-testbox-root!
             require-testbox-base
-            snapshot-base!))
+            snapshot-base!
+            snapshot-root!))
 
 ;; Linux BTRFS_SUPER_MAGIC, from linux/magic.h.
 (define BTRFS_SUPER_MAGIC #x9123683E)
@@ -55,7 +56,7 @@
     (snapshot-dir! base destination "testbox root (PID1) already exists:")))
 
 (define (snapshot-root! testbox-root snapshot-dir)
-  "Create and return a persistent, read-only snapshot of TESTBOX-ROOT directory."
+  "Create and return a persistent snapshot of TESTBOX-ROOT directory."
   (let ((destination
          (string-append (getenv "TESTBOX_DISK_MOUNT_POINT")
                         "/testbox-snapshots/" snapshot-dir)))
