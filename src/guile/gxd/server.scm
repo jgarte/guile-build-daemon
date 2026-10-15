@@ -6,10 +6,12 @@
 (define-module (gxd server)
   #:use-module ((gxd accounts) #:select (user-exists?))
   #:use-module ((gxd socket) #:select (peer-uid))
-  #:use-module ((gxd session) #:select (&option-error option-error-message))
+  #:use-module ((gxd session) #:select (&option-error option-error-message
+                                                      initial-options update-options
+                                                      unix-peer-trusted?))
   #:use-module ((gxd database) #:select (call-with-database valid-path?)
                 #:prefix database:)
-  #:use-module ((gxd worker-protocol) #:select (read-integer read-string
+  #:use-module ((gxd worker-protocol) #:select (read-integer read-string read-options
                                                              write-completion write-error write-log)
                 #:prefix protocol:)
   #:use-module ((guix config) #:select (%store-directory
@@ -50,20 +52,32 @@
          (> (string-length path) (string-length prefix))
          (not (string-index path #\/ (string-length prefix))))))
 
-(define (serve-request connection store-directory db)
-  "Serve one validity query on CONNECTION against STORE-DIRECTORY and open DB."
-  (unless (= (protocol:read-integer connection)
-             (remote-procedure-id valid-path?))
-    (error "unsupported operation"))
+(define (serve-request connection store-directory db options trusted?)
+  "Serve one request on CONNECTION using STORE-DIRECTORY, DB, OPTIONS and TRUSTED?.
+Return the session options after the request."
+  (define operation (protocol:read-integer connection))
 
-  (define path (protocol:read-string connection))
-  (if (not (store-path? store-directory path))
-      (protocol:write-error
-       (format #f "path `~a' is not in the store" path) 1 connection)
-      (let ((valid? (database:valid-path? db path)))
-        (protocol:write-completion connection)
-        (write-value boolean valid? connection)))
-  (force-output connection))
+  (cond
+   ((= operation (remote-procedure-id set-options))
+    (call-with-option-error-reporting connection
+      (lambda ()
+        (set! options
+              (update-options options (protocol:read-options connection) trusted?))
+         (protocol:write-completion connection))))
+
+   ((= operation (remote-procedure-id valid-path?))
+    (let ((path (protocol:read-string connection)))
+      (if (not (store-path? store-directory path))
+          (protocol:write-error
+           (format #f "path `~a' is not in the store" path) 1 connection)
+          (let ((valid? (database:valid-path? db path)))
+            (protocol:write-completion connection)
+             (write-value boolean valid? connection)))))
+
+   (else (error "unsupported operation")))
+
+  (force-output connection)
+  options)
 
 (define (call-with-option-error-reporting connection thunk)
   "Call THUNK, reporting option errors on CONNECTION before re-raising them."
@@ -82,6 +96,8 @@
   (database:call-with-database database-file
     (lambda (db)
       (define uid (peer-uid connection))
+      (define trusted? (unix-peer-trusted? uid (getuid)))
+      (define options (initial-options #t))
       (unless (user-exists? uid)
         (protocol:write-log (format #f "user with UID ~a not found~%" uid)
                             connection))
@@ -90,7 +106,8 @@
       (force-output connection)
 
       (while (not (eof-object? (lookahead-u8 connection)))
-             (serve-request connection store-directory db)))))
+             (set! options
+                   (serve-request connection store-directory db options trusted?))))))
 
 (define (run-server socket-path)
   "Serve one client session at SOCKET-PATH against the configured store."
