@@ -12,7 +12,7 @@
                                             set-build-options valid-path?))
   #:use-module ((ice-9 exceptions) #:select (raise-exception with-exception-handler))
   #:use-module (gxd test-prelude)
-  #:export (direct-steps-fixture))
+  #:export (call-with-client paired-step! direct-steps-fixture))
 
 (define (call-with-client endpoint proc)
   "Call PROC with a new connection to ENDPOINT; close it before returning."
