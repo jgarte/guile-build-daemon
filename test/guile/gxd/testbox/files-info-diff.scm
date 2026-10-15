@@ -73,4 +73,24 @@ Symlinks are not followed. Paths would be relative to ROOT."
 
 (define (format-files-info-diff diff)
   "Format DIFF for an assertion failure."
-  (object->string diff))
+  (define (format-paths port label marker entries)
+    (unless (null? entries)
+      (format port "~%~a:~%" label)
+      (for-each (lambda (entry) (format port "  ~a /~a~%" marker (car entry)))
+                entries)))
+  (define (format-changes port changes)
+    (for-each
+     (lambda (change)
+       (format port "~%changed: /~a~%" (car change))
+       (for-each (lambda (field)
+                   (format port "  ~a: ~s != ~s~%" field
+                           (assoc-ref (caddr change) field)
+                           (assoc-ref (cadddr change) field)))
+                 (cadr change)))
+     changes))
+  (call-with-output-string
+   (lambda (port)
+     (format port "filesystem artifacts differ~%")
+     (format-paths port "only in left" "+" (assoc-ref diff 'only-left))
+     (format-paths port "only in right" "-" (assoc-ref diff 'only-right))
+     (format-changes port (assoc-ref diff 'changed)))))
