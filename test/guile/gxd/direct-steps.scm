@@ -9,7 +9,7 @@
                 #:select (add-text-to-store close-connection open-connection
                                             &store-protocol-error store-protocol-error-message
                                             store-protocol-error-status
-                                            valid-path?))
+                                            set-build-options valid-path?))
   #:use-module ((ice-9 exceptions) #:select (raise-exception with-exception-handler))
   #:use-module (gxd test-prelude)
   #:export (direct-steps-fixture))
@@ -28,6 +28,11 @@
      (lambda (store) (valid-path? store path)))
     (('add-text-to-store (? string? name) (? string? text) . arguments)
      (lambda (store) (apply add-text-to-store store name text arguments)))
+    (('set-build-options . arguments)
+     (lambda (store)
+       (call-with-values
+           (lambda () (apply set-build-options store arguments))
+         list)))
     (_ (error "unsupported direct step" expression))))
 
 (define (call-with-protocol-outcome proc store)
@@ -59,6 +64,7 @@ Raise on other exceptions or differing outcomes.  The caller owns both clients."
   "Preserve CTX and add step!, accepting client operations as data with the
 store argument omitted, for example (valid-path? PATH).  Return the operation's
 result or protocol-error type/message/status data if equal across both boxes.
+Collect set-build-options' zero return values as an empty list.
 Raise on other exceptions or differing outcomes.  With #:connection NAME,
 reuse one named client pair until a #:terminal? #t call or fixture teardown.
 Only one name can be open at a time; a call after closure opens a new pair.
