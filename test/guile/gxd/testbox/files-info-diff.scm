@@ -3,7 +3,7 @@
 ;; SPDX-FileCopyrightText: 2026 Andrew Zhurov
 ;; SPDX-FileCopyrightText: 2026 buttonspresser
 
-(define-module (gxd testbox files-info)
+(define-module (gxd testbox files-info-diff)
   #:use-module ((ice-9 ftw) #:select (scandir))
   #:use-module (srfi srfi-1 #:select (append-map)) 
   #:export (scan-files-info))
@@ -38,3 +38,38 @@ Symlinks are not followed. Paths would be relative to ROOT."
           (list entry))))
   
   (sort (walk ".") (lambda (a b) (string<? (car a) (car b)))))
+
+
+(define (diff-files-info left right)
+  "Return paths+info present only in LEFT, only in RIGHT, and changed in both."
+  (define (diff-info left-info right-info)
+    (filter (lambda (field)
+              (not (equal? (assoc-ref left-info field)
+                           (assoc-ref right-info field))))
+            (delete-duplicates (append (map car left-info) (map car right-info)))))
+  (let ((only-left (filter
+                    (lambda (entry) (not (assoc (car entry) right)))
+                    left))
+        (only-right (filter
+                     (lambda (entry) (not (assoc (car entry) left)))
+                     right))
+        (changed (filter-map
+                  (lambda (left-file-info)
+                    (let ((right-file-info (assoc (car left-file-info) right)))
+                      (and right-file-info
+                          (let ((fields (diff-info
+                                         (cdr left-file-info)
+                                         (cdr right-file-info))))
+                            (and (pair? fields)
+                                 (list (car left-file-info)
+                                       fields
+                                       (cdr left-file-info)
+                                       (cdr right-file-info)))))))
+                  left)))
+    `((only-left . ,only-left)
+      (only-right . ,only-right)
+      (changed . ,changed))))
+
+(define (format-files-info-diff diff)
+  "Format DIFF for an assertion failure."
+  (object->string diff))
