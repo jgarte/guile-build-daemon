@@ -4,12 +4,18 @@
 ;; SPDX-FileCopyrightText: 2026 buttonspresser
 
 (define-module (gxd session)
+  #:use-module ((ice-9 exceptions) #:select (&error define-exception-type
+                                                    raise-exception))
+  #:use-module ((ice-9 format) #:select (format))
+  #:use-module ((ice-9 match) #:select (match match-lambda))
   #:use-module ((ice-9 regex) #:select (string-match match:start match:end
                                                      match:substring))
+  #:use-module (gxd prelude)
   #:use-module ((srfi srfi-1) #:select (alist-delete fold))
   #:use-module ((srfi srfi-9) #:select (define-record-type))
   #:use-module ((system foreign) #:select (sizeof unsigned-int unsigned-long))
-  #:export (unix-peer-trusted? initial-options))
+  #:export (unix-peer-trusted? initial-options
+                               &option-error option-error? option-error-message))
 
 (define-record-type <options>
   (make-options keep-failed? keep-going? verbosity offload?
@@ -91,3 +97,68 @@ Prefix non-public names with untrusted- unless TRUSTED?.  Preserve other setting
                           (string-append "untrusted-" name))))
             (acons key (cdr pair) (alist-delete key settings string=?))))
         settings pairs))
+
+(define-exception-type &option-error &error
+  make-option-error option-error?
+  (message option-error-message))
+
+;; Settings::update validates in this order; build-repeat is parsed later.
+(define setting-types
+  '(("build-fallback" . boolean)
+    ("build-max-jobs" . unsigned-int)
+    ("build-cores" . unsigned-int)
+    ("system" . string)
+    ("multiplexed-build-output" . boolean)
+    ("build-max-silent-time" . time-t)
+    ("build-timeout" . time-t)
+    ("gc-reserved-space" . off-t)
+    ("fsync-metadata" . boolean)
+    ("use-sqlite-wal" . boolean)
+    ("sync-before-registering" . boolean)
+    ("build-use-substitutes" . boolean)
+    ("build-users-group" . string)
+    ("build-use-chroot" . boolean)
+    ("build-impersonate-linux-26" . boolean)
+    ("build-keep-log" . boolean)
+    ("build-max-log-size" . unsigned-long)
+    ("build-cache-failure" . boolean)
+    ("build-poll-interval" . unsigned-int)
+    ("gc-check-reachability" . boolean)
+    ("gc-keep-outputs" . boolean)
+    ("gc-keep-derivations" . boolean)
+    ("auto-optimise-store" . boolean)
+    ("env-keep-derivations" . boolean)))
+
+(define (parse-option-boolean name value)
+  "Return textual VALUE as a Boolean; raise an option error naming NAME if invalid."
+  (match value
+    ("true" #t)
+    ("false" #f)
+    (_
+     (raise-exception
+      (make-option-error
+       (format #f "configuration option `~a' should be either `true' or `false', not `~a'"
+               name value))))))
+
+(define (parse-option-integer name value type)
+  "Return VALUE as C++ integer TYPE; raise an option error naming NAME if invalid."
+  (or (parse-integer-for-type value type)
+      (raise-exception
+       (make-option-error
+        (format #f "configuration setting `~a' should have an integer value"
+                name)))))
+
+(define (validate-settings settings)
+  "Validate SETTINGS in nixd update order without changing its textual values.
+SETTINGS has unique string keys.  Defer unrecognized settings to their consumers.
+Raise an option error for the first invalid recognized setting."
+  (for-each
+   (match-lambda
+     ((name . type)
+      (and-let* ((setting (assoc name settings))
+                 (value (cdr setting)))
+        (case type
+          ((string) #t)
+          ((boolean) (parse-option-boolean name value))
+          (else (parse-option-integer name value type))))))
+   setting-types))
