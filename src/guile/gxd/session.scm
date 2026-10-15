@@ -140,6 +140,11 @@ Prefix non-public names with untrusted- unless TRUSTED?.  Preserve other setting
        (format #f "configuration option `~a' should be either `true' or `false', not `~a'"
                name value))))))
 
+(define (options-use-substitutes? options)
+  "Return whether OPTIONS permits substitution."
+  (define key "build-use-substitutes")
+  (parse-option-boolean key (assoc-ref (options-settings options) key)))
+
 (define (parse-option-integer name value type)
   "Return VALUE as C++ integer TYPE; raise an option error naming NAME if invalid."
   (or (parse-integer-for-type value type)
