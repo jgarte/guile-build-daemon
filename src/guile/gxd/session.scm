@@ -4,6 +4,7 @@
 ;; SPDX-FileCopyrightText: 2026 buttonspresser
 
 (define-module (gxd session)
+  #:use-module ((srfi srfi-1) #:select (alist-delete fold))
   #:use-module ((srfi srfi-9) #:select (define-record-type))
   #:export (unix-peer-trusted? initial-options))
 
@@ -28,3 +29,22 @@ Retain named settings as unique string pairs; substitution starts enabled."
 
 (define (unix-peer-trusted? peer-uid daemon-uid)
   (or (zero? peer-uid) (= peer-uid daemon-uid)))
+
+(define public-setting-keys
+  '("build-timeout"
+    "build-max-silent-time"
+    "build-max-jobs"
+    "build-cores"
+    "build-repeat"
+    "multiplexed-build-output"))
+
+(define (merge-client-settings settings pairs trusted?)
+  "Return SETTINGS updated by ordered client PAIRS; later values replace earlier ones.
+Prefix non-public names with untrusted- unless TRUSTED?.  Preserve other settings."
+  (fold (lambda (pair settings)
+          (let* ((name (car pair))
+                 (key (if (or trusted? (member name public-setting-keys))
+                          name
+                          (string-append "untrusted-" name))))
+            (acons key (cdr pair) (alist-delete key settings string=?))))
+        settings pairs))
