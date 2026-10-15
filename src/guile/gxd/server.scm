@@ -6,6 +6,7 @@
 (define-module (gxd server)
   #:use-module ((gxd accounts) #:select (user-exists?))
   #:use-module ((gxd socket) #:select (peer-uid))
+  #:use-module ((gxd session) #:select (&option-error option-error-message))
   #:use-module ((gxd database) #:select (call-with-database valid-path?)
                 #:prefix database:)
   #:use-module ((gxd worker-protocol) #:select (read-integer read-string
@@ -63,6 +64,17 @@
         (protocol:write-completion connection)
         (write-value boolean valid? connection)))
   (force-output connection))
+
+(define (call-with-option-error-reporting connection thunk)
+  "Call THUNK, reporting option errors on CONNECTION before re-raising them."
+  (with-exception-handler
+    (lambda (exception)
+      (protocol:write-error (option-error-message exception) 1 connection)
+      (force-output connection)
+      (raise-exception exception))
+    thunk
+    #:unwind? #t
+    #:unwind-for-type &option-error))
 
 (define (serve-client connection store-directory database-file)
   "Serve supported requests until CONNECTION ends, using STORE-DIRECTORY and DATABASE-FILE."
