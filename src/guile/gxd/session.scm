@@ -14,7 +14,7 @@
   #:use-module ((srfi srfi-1) #:select (alist-delete fold))
   #:use-module ((srfi srfi-9) #:select (define-record-type))
   #:use-module ((system foreign) #:select (sizeof unsigned-int unsigned-long))
-  #:export (unix-peer-trusted? initial-options
+  #:export (unix-peer-trusted? initial-options update-options
                                &option-error option-error? option-error-message))
 
 (define-record-type <options>
@@ -167,3 +167,33 @@ Raise an option error for the first invalid recognized setting."
           ((boolean) (parse-option-boolean name value))
           (else (parse-option-integer name value type))))))
    setting-types))
+
+(define (update-options previous request trusted?)
+  "Return PREVIOUS options updated by a decoded Unix session REQUEST.
+TRUSTED? controls setting-name routing.  Raise an option error on invalid settings."
+  (define (boolean-text value)
+    (if value "true" "false"))
+
+  ;; Fallback and substitution can arrive both as fixed Boolean fields and as
+  ;; named string pairs.  Nixd applies the fixed fields first, so a trusted
+  ;; "build-use-substitutes" pair can override a false fixed field with "true".
+  ;; Without that named override, the fixed field cannot re-enable substitution.
+  (let* ((fixed-pairs
+          `(("build-fallback" . ,(boolean-text (get request 'fallback?)))
+            ,@(if (options-use-substitutes? previous)
+                  `(("build-use-substitutes"
+                     . ,(boolean-text (get request 'use-substitutes?))))
+                  '())))
+         (fixed-settings
+          (merge-client-settings (options-settings previous) fixed-pairs #t))
+         (settings
+          (merge-client-settings fixed-settings (get request 'settings) trusted?)))
+    (validate-settings settings)
+    (make-options (get request 'keep-failed?)
+                  (get request 'keep-going?)
+                  (get request 'verbosity)
+                  (get request 'offload?)
+                  (get request 'build-verbosity)
+                  (get request 'log-type)
+                  (get request 'print-build-trace?)
+                  settings)))
