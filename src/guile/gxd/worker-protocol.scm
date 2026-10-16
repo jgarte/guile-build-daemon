@@ -11,7 +11,9 @@
                                              bytevector-copy!
                                              make-bytevector utf8->string))
   #:use-module ((rnrs io ports) #:select (get-bytevector-n))
+  #:use-module ((srfi srfi-1) #:select (delete-duplicates))
   #:export (read-integer read-boolean read-bytevector read-string read-string-pairs read-options
+                         read-text
                          write-completion write-error write-log))
 
 (define STDERR_LAST #x616c7473)
@@ -80,6 +82,21 @@ The operation number is already consumed."
         (let* ((name (read-string port))
                (value (read-string port)))
           (loop (1- remaining) (cons (cons name value) pairs))))))
+
+(define (read-text port)
+  "Read an add-text-to-store payload from PORT as keyed data.
+NAME is a string, CONTENTS a bytevector, and REFERENCES sorted unique strings.
+The operation number is already consumed; reference syntax is not validated."
+  (let* ((name (read-string port))
+         (contents (read-bytevector port))
+         (references
+          (let loop ((remaining (read-integer port)) (paths '()))
+            (if (zero? remaining)
+                (sort (delete-duplicates paths string=?) string<?)
+                (loop (1- remaining) (cons (read-string port) paths))))))
+    `((name . ,name)
+      (contents . ,contents)
+      (references . ,references))))
 
 (define (read-string port)
   "Read a UTF-8 worker-protocol string from PORT, requiring zero padding."
