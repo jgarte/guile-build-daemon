@@ -11,7 +11,7 @@
                                              bytevector-copy!
                                              make-bytevector utf8->string))
   #:use-module ((rnrs io ports) #:select (get-bytevector-n))
-  #:export (read-integer read-boolean read-string read-string-pairs read-options
+  #:export (read-integer read-boolean read-bytevector read-string read-string-pairs read-options
                          write-completion write-error write-log))
 
 (define STDERR_LAST #x616c7473)
@@ -83,6 +83,10 @@ The operation number is already consumed."
 
 (define (read-string port)
   "Read a UTF-8 worker-protocol string from PORT, requiring zero padding."
+  (utf8->string (read-bytevector port)))
+
+(define (read-bytevector port)
+  "Read a worker-protocol bytevector from PORT, requiring zero padding."
   (let* ((length (read-integer port))
          (padding (modulo (- length) 8))
          (bytes (get-bytevector-n port (+ length padding))))
@@ -100,4 +104,4 @@ The operation number is already consumed."
 
     (let ((value (make-bytevector length)))
       (bytevector-copy! bytes 0 value 0 length)
-      (utf8->string value))))
+      value)))
