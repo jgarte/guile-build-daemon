@@ -9,8 +9,12 @@
   #:use-module ((gxd session) #:select (&option-error option-error-message
                                                       initial-options update-options
                                                       unix-peer-trusted?))
-  #:use-module ((gxd database) #:select (call-with-database valid-path?)
+  #:use-module ((gxd database) #:select (call-with-database valid-path?
+                                                            invalid-reference?
+                                                            invalid-reference-message)
                 #:prefix database:)
+  #:use-module ((gxd store-path)
+                #:select (store-name-error? store-name-error-message))
   #:use-module ((gxd worker-protocol) #:select (read-integer read-string read-options
                                                              write-completion write-error write-log)
                 #:prefix protocol:)
@@ -89,6 +93,21 @@ Return the session options after the request."
     thunk
     #:unwind? #t
     #:unwind-for-type &option-error))
+
+(define (call-with-text-error-reporting connection thunk)
+  "Call THUNK, reporting invalid-name or invalid-reference errors on CONNECTION.
+These errors end the request, not the client session; other exceptions propagate."
+  (with-exception-handler
+    (lambda (exception)
+      (protocol:write-error
+       (cond
+        ((store-name-error? exception) (store-name-error-message exception))
+        ((database:invalid-reference? exception)
+         (database:invalid-reference-message exception))
+        (else (raise-exception exception)))
+       1 connection))
+    thunk
+    #:unwind? #t))
 
 (define (serve-client connection store-directory database-file)
   "Serve supported requests until CONNECTION ends, using STORE-DIRECTORY and DATABASE-FILE."
