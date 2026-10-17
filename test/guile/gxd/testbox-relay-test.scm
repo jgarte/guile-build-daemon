@@ -7,7 +7,9 @@
   #:use-module ((rnrs bytevectors) #:select (bytevector=?))
   #:use-module ((ares suitbl core) #:select (define-suite is test))
   #:use-module ((guix store) #:select (direct-store-path))
-  #:use-module ((gxd direct-steps) #:select (direct-steps-fixture))
+  #:use-module ((gxd direct-steps)
+                #:select (diff-snapshoted-roots-fixture direct-steps-fixture))
+  #:use-module ((gxd checked-steps) #:select (checked-steps-fixture))
   #:use-module ((gxd test-fixtures) #:select (paired-testbox-fixtures))
   #:use-module (gxd test-prelude)
   #:use-module ((gxd testbox) #:select (paired-daemon-testboxes-fixture))
@@ -18,7 +20,8 @@
   (list (client-trust-fixture #f)
         (paired-daemon-testboxes-fixture 'rootless 'nixd 'nixd)
         paired-relay-observers-fixture
-        direct-steps-fixture))
+        direct-steps-fixture
+        diff-snapshoted-roots-fixture))
 
 (define-suite (testbox-relay-tests)
   (test "two named queries change the stable single-query capture" (ctx)
@@ -54,6 +57,10 @@
            (absent "/gnu/store/00000000000000000000000000000000-gxd-absent"))
       (is (step! `(valid-path? ,present)))
       (is (not (step! `(valid-path? ,absent))))))
+
+  (test "paired testbox roots have equal filesystem artifacts" (ctx)
+    'metadata `((test/fixtures . ,paired-relay-fixtures))
+    (is (pair? ((get ctx 'diff-snapshots!) "equal-roots"))))
 
   (test "paired captures agree and change with the queried path" (ctx)
     'metadata `((test/fixtures . ,paired-relay-fixtures))
