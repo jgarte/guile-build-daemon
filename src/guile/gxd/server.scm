@@ -63,7 +63,7 @@ Return the session options after the request."
       (lambda ()
         (set! options
               (update-options options (protocol:read-options connection) trusted?))
-         (protocol:write-completion connection))))
+        (protocol:write-completion connection))))
 
    ((= operation (remote-procedure-id valid-path?))
     (let ((path (protocol:read-string connection)))
@@ -72,7 +72,7 @@ Return the session options after the request."
            (format #f "path `~a' is not in the store" path) 1 connection)
           (let ((valid? (database:valid-path? db path)))
             (protocol:write-completion connection)
-             (write-value boolean valid? connection)))))
+            (write-value boolean valid? connection)))))
 
    (else (error "unsupported operation")))
 
