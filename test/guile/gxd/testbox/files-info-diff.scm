@@ -5,7 +5,10 @@
 
 (define-module (gxd testbox files-info-diff)
   #:use-module ((ice-9 ftw) #:select (scandir))
-  #:use-module ((srfi srfi-1) #:select (append-map))
+  #:use-module ((gcrypt base16) #:select (bytevector->base16-string))
+  #:use-module ((gcrypt hash) #:select (file-sha256))
+  #:use-module ((srfi srfi-1)
+                #:select (append-map delete-duplicates filter-map))
   #:export (diff-files-info format-files-info-diff scan-files-info))
 
 (define (file-info path stat)
