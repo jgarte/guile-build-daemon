@@ -4,10 +4,23 @@
 ;; SPDX-FileCopyrightText: 2026 buttonspresser
 
 (define-module (gxd database)
-  #:use-module ((guix store database) #:select (valid-path-id))
+  #:use-module ((guix base16) #:select (bytevector->base16-string))
+  #:use-module ((guix store database)
+                #:prefix guix:
+                #:select (register-valid-path valid-path-id))
+  #:use-module ((ice-9 exceptions)
+                #:select (&error define-exception-type raise-exception))
+  #:use-module ((ice-9 format) #:select (format))
+  #:use-module ((srfi srfi-19) #:select (current-time time-utc))
   #:use-module ((sqlite3) #:select (SQLITE_OPEN_READWRITE
                                     sqlite-close sqlite-exec sqlite-open))
-  #:export (call-with-database valid-path?))
+  #:export (call-with-database valid-path? register-text!
+                               &invalid-reference invalid-reference?
+                               invalid-reference-message))
+
+(define-exception-type &invalid-reference &error
+  make-invalid-reference invalid-reference?
+  (message invalid-reference-message))
 
 (define (call-with-database file proc)
   "Call PROC with an open existing database FILE, closing it on return or error."
@@ -22,7 +35,7 @@
 
 (define (valid-path? db path)
   "Return whether PATH is registered in DB."
-  (and (valid-path-id db path) #t))
+  (and (guix:valid-path-id db path) #t))
 
 (define (call-with-transaction db thunk)
   "Call THUNK in an immediate transaction on DB; roll back on exceptional exit."
@@ -36,3 +49,24 @@
         (set! committed? #t))
       (lambda ()
         (unless committed? (sqlite-exec db "ROLLBACK;"))))))
+
+(define (register-text! db path hash size references)
+  "Register fresh non-derivation PATH and REFERENCES atomically in DB.
+HASH and SIZE describe PATH's NAR.  REFERENCES must be sorted unique store paths.
+Raise an invalid-reference error if a reference is not registered valid.
+The caller owns PATH's destination lock and has materialized its contents."
+  (call-with-transaction db
+    (lambda ()
+      (for-each
+       (lambda (reference)
+         (unless (valid-path? db reference)
+           (raise-exception
+            (make-invalid-reference
+             (format #f "path `~a' is not valid" reference)))))
+       references)
+      (guix:register-valid-path
+       db #:path path #:references references #:deriver #f
+       #:hash (string-append "sha256:" (bytevector->base16-string hash))
+       #:nar-size size
+       ;; Guix's default honors SOURCE_DATE_EPOCH; daemon registration uses now.
+       #:time (current-time time-utc)))))
