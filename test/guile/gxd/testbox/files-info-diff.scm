@@ -5,8 +5,8 @@
 
 (define-module (gxd testbox files-info-diff)
   #:use-module ((ice-9 ftw) #:select (scandir))
-  #:use-module (srfi srfi-1 #:select (append-map)) 
-  #:export (scan-files-info))
+  #:use-module ((srfi srfi-1) #:select (append-map))
+  #:export (diff-files-info format-files-info-diff scan-files-info))
 
 (define (file-info path stat)
   "Return info about file metadata at PATH from STAT."
