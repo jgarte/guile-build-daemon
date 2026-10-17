@@ -4,6 +4,7 @@
 ;; SPDX-FileCopyrightText: 2026 buttonspresser
 
 (define-module (gxd server)
+  #:use-module (gxd prelude)
   #:use-module ((gxd accounts) #:select (user-exists?))
   #:use-module ((gxd socket) #:select (peer-uid))
   #:use-module ((gxd session) #:select (&option-error option-error-message
@@ -15,7 +16,8 @@
                 #:prefix database:)
   #:use-module ((gxd store-path)
                 #:select (store-name-error? store-name-error-message))
-  #:use-module ((gxd worker-protocol) #:select (read-integer read-string read-options
+  #:use-module ((gxd text-store) #:select (add-text!))
+  #:use-module ((gxd worker-protocol) #:select (read-integer read-string read-options read-text
                                                              write-completion write-error write-log)
                 #:prefix protocol:)
   #:use-module ((guix config) #:select (%store-directory
@@ -24,7 +26,7 @@
                                                    %worker-magic-1
                                                    %worker-magic-2
                                                    remote-procedure-id))
-  #:use-module ((guix serialization) #:select (boolean integer
+  #:use-module ((guix serialization) #:select (boolean integer utf8-string
                                                        write-value))
   #:use-module ((ice-9 exceptions) #:select (raise-exception
                                              with-exception-handler))
@@ -77,6 +79,28 @@ Return the session options after the request."
           (let ((valid? (database:valid-path? db path)))
             (protocol:write-completion connection)
             (write-value boolean valid? connection)))))
+
+   ((= operation (remote-procedure-id add-text-to-store))
+    (let* ((request (protocol:read-text connection))
+           (name (get request 'name))
+           (references (get request 'references)))
+      ;; nixd validates the complete reference set before startWork.
+      (for-each
+       (lambda (reference)
+         (unless (store-path? store-directory reference)
+           (error "reference is not in the store" reference)))
+       references)
+
+      ;; Derivation output validation and registration are not implemented yet.
+      (when (string-suffix? ".drv" name)
+        (error "derivation registration is not supported"))
+
+      (call-with-text-error-reporting connection
+        (lambda ()
+          (let ((path (add-text! db store-directory name
+                                 (get request 'contents) references)))
+            (protocol:write-completion connection)
+            (write-value utf8-string path connection))))))
 
    (else (error "unsupported operation")))
 
