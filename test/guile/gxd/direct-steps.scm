@@ -14,7 +14,7 @@
   #:use-module ((ice-9 exceptions) #:select (raise-exception with-exception-handler))
   #:use-module (gxd test-prelude)
   #:use-module ((gxd testbox) #:select (testbox-root))
-  #:use-module ((gxd testbox disk) #:select (snapshot-root!))
+  #:use-module ((gxd testbox disk) #:select (delete-snapshot! snapshot-root!))
   #:use-module ((gxd testbox files-info-diff)
                 #:select (scan-files-info diff-files-info format-files-info-diff))
   #:export (call-with-client paired-step! direct-steps-fixture diff-snapshoted-roots-fixture))
@@ -129,7 +129,8 @@ Named calls execute in the caller without a per-operation deadline."
 
 
 (define (diff-snapshoted-roots! left right snapshot-name)
-  "Snapshot roots of LEFT and RIGHT testboxes and raise when their files differ."
+  "Snapshot roots of LEFT and RIGHT testboxes and raise when their files differ.
+If files are the same delete snapshots and returen files info."
   (define (root-files-info box side)
     (scan-files-info
      (snapshot-root! (testbox-root box)
@@ -139,6 +140,8 @@ Named calls execute in the caller without a per-operation deadline."
          (diff (diff-files-info left-info right-info)))
     (unless (every null? (map cdr diff))
       (error "testbox filesystem artifacts differ" (format-files-info-diff diff)))
+    (delete-snapshot! (string-append snapshot-name "-left"))
+    (delete-snapshot! (string-append snapshot-name "-right"))
     left-info))
 
 (define (diff-snapshoted-roots-fixture ctx proceed)

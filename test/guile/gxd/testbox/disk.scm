@@ -7,7 +7,8 @@
   #:use-module ((guix build syscalls) #:select (file-system-type statfs))
   #:use-module ((guix build utils) #:select (invoke mkdir-p))
   #:use-module ((gxd test-prelude) #:select (require-program))
-  #:export (delete-testbox-root!
+  #:export (delete-snapshot!
+            delete-testbox-root!
             require-testbox-base
             snapshot-base!
             snapshot-root!))
@@ -54,6 +55,12 @@
   (let ((base (require-testbox-base))
         (destination (testbox-root-path pid1)))
     (snapshot-dir! base destination "testbox root (PID1) already exists:")))
+
+(define (delete-snapshot! snapshot-dir)
+  "Delete persistent snapshot named SNAPSHOT-DIR."
+  (invoke (require-program "btrfs") "--quiet" "subvolume" "delete"
+          (string-append (getenv "TESTBOX_DISK_MOUNT_POINT")
+                         "/testbox-snapshots/" snapshot-dir)))
 
 (define (snapshot-root! testbox-root snapshot-dir)
   "Create and return a persistent snapshot of TESTBOX-ROOT directory."
