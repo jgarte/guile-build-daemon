@@ -137,6 +137,30 @@
             (get _ 'references)
             (equal? (list a) _))))))
 
+(define-suite (server-invalid-text-tests)
+  'metadata `((test/fixtures
+               . ,(list (client-trust-fixture #f)
+                        (paired-daemon-testboxes-fixture 'rootless 'nixd 'gxd)
+                        paired-relay-observers-fixture)))
+
+  (test "outside-store text references report an error and close the connection" (ctx)
+    (call-with-paired-clients
+     (get ctx 'relay/left-endpoint)
+     (get ctx 'relay/right-endpoint)
+     (lambda (left right)
+       (is (chain '(add-text-to-store "b-name" "b-content" ("/outside"))
+             (paired-step! left right _)
+             (equal? '((error/type . store-protocol-error)
+                       (error/message . "path `/outside' is not in the store")
+                       (error/status . 1))
+                     _)))
+
+       (is (remote-eof? left))
+       (is (remote-eof? right))))
+
+    (match-let (((left-bytes right-bytes) ((get ctx 'observe-bytes!))))
+      (is (bytevector=? left-bytes right-bytes)))))
+
 (define-suite (server-tests)
   'metadata `((test/fixtures . ,(paired-testbox-fixtures 'rootless 'nixd 'gxd)))
 
