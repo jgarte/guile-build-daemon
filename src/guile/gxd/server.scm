@@ -156,6 +156,9 @@ These errors end the request, not the client session; other exceptions propagate
   "Serve one client session at SOCKET-PATH against the configured store."
   (define listener (socket AF_UNIX SOCK_STREAM 0))
 
+  ;; Make new files and directories non-group/world-writable, as in nixd.
+  (umask #o022)
+
   (with-exception-handler
     (lambda (exception)
       (close-port listener)
