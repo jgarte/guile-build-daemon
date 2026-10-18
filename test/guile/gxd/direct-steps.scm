@@ -5,7 +5,6 @@
 
 (define-module (gxd direct-steps)
   #:use-module ((ice-9 match) #:select (match))
-  #:use-module ((srfi srfi-1) #:select (every))
   #:use-module ((guix store)
                 #:select (add-text-to-store close-connection open-connection
                                             &store-protocol-error store-protocol-error-message
@@ -13,11 +12,7 @@
                                             set-build-options valid-path?))
   #:use-module ((ice-9 exceptions) #:select (raise-exception with-exception-handler))
   #:use-module (gxd test-prelude)
-  #:use-module ((gxd testbox) #:select (testbox-root))
-  #:use-module ((gxd testbox disk) #:select (delete-snapshot! snapshot-root!))
-  #:use-module ((gxd testbox files-info-diff)
-                #:select (scan-files-info diff-files-info format-files-info-diff))
-  #:export (call-with-client paired-step! direct-steps-fixture diff-snapshoted-roots-fixture))
+  #:export (call-with-client paired-step! direct-steps-fixture))
 
 (define (call-with-client endpoint proc)
   "Call PROC with a new connection to ENDPOINT; close it before returning."
@@ -126,31 +121,3 @@ Named calls execute in the caller without a per-operation deadline."
               outcome))))
 
     (proceed (acons 'step! step! ctx) close-clients!)))
-
-
-(define (diff-snapshoted-roots! left right snapshot-name)
-  "Snapshot roots of LEFT and RIGHT testboxes and raise when their files differ.
-If files are the same delete snapshots and returen files info."
-  (define (root-files-info box side)
-    (scan-files-info
-     (snapshot-root! (testbox-root box)
-                     (string-append snapshot-name "-" side))))
-  (let* ((left-info (root-files-info left "left"))
-         (right-info (root-files-info right "right"))
-         (diff (diff-files-info left-info right-info)))
-    (unless (every null? (map cdr diff))
-      (error "testbox filesystem artifacts differ" (format-files-info-diff diff)))
-    (delete-snapshot! (string-append snapshot-name "-left"))
-    (delete-snapshot! (string-append snapshot-name "-right"))
-    left-info))
-
-(define (diff-snapshoted-roots-fixture ctx proceed)
-  "Adds 'diff-snapshots!' to CTX"
-    (let ((left-box (get ctx 'testbox/left))
-          (right-box (get ctx 'testbox/right)))
-      (unless (and left-box right-box)
-        (error "diffing testbox roots steps require two testboxes" left-box right-box))
-      (proceed
-       (acons 'diff-snapshots! (lambda (name) (diff-snapshoted-roots! left-box right-box name))
-              ctx)
-       (lambda () #t))))
