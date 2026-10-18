@@ -42,7 +42,7 @@
 (define* (snapshot-dir! target destination
                         #:optional
                         (destination-exists-error "DESTINATION already exists:"))
-  "Snapshot the TARGET into DESTINATION its path."
+  "Snapshot TARGET at the absent DESTINATION and return its path."
   (when (file-exists? destination)
     (error destination-exists-error destination))
   (mkdir-p (dirname destination))
@@ -57,13 +57,13 @@
     (snapshot-dir! base destination "testbox root (PID1) already exists:")))
 
 (define (delete-snapshot! snapshot-dir)
-  "Delete persistent snapshot named SNAPSHOT-DIR."
+  "Delete SNAPSHOT-DIR from the configured observation snapshot directory."
   (invoke (require-program "btrfs") "--quiet" "subvolume" "delete"
           (string-append (getenv "TESTBOX_DISK_MOUNT_POINT")
                          "/testbox-snapshots/" snapshot-dir)))
 
 (define (snapshot-root! testbox-root snapshot-dir)
-  "Create and return a persistent snapshot of TESTBOX-ROOT directory."
+  "Snapshot TESTBOX-ROOT as SNAPSHOT-DIR and return its complete path."
   (let ((destination
          (string-append (getenv "TESTBOX_DISK_MOUNT_POINT")
                         "/testbox-snapshots/" snapshot-dir)))
