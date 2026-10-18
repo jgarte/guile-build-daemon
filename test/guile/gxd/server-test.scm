@@ -13,7 +13,7 @@
   #:use-module ((gxd direct-steps) #:select (call-with-client paired-step!))
   #:use-module ((gxd test-fixtures) #:select (paired-testbox-fixtures))
   #:use-module (gxd test-prelude)
-  #:use-module ((gxd testbox) #:select (paired-daemon-testboxes-fixture))
+  #:use-module ((gxd testbox) #:select (paired-daemon-testboxes-fixture testbox-root))
   #:use-module ((gxd testbox snapshots) #:select (paired-snapshots-fixture))
   #:use-module ((gxd testbox database-observations) #:select (database-observations-fixture))
   #:use-module ((gxd testbox store-observations) #:select (store-observations-fixture))
@@ -70,7 +70,39 @@
                 (select-keys _ '(nar-hash nar-size))
                 (equal? `((nar-hash . ,(string-append "sha256:" (bytevector->base16-string hash)))
                           (nar-size . ,size))
-                        _))))))))
+                        _)))))))
+
+  (test "adding valid text does not recreate its missing file" (ctx)
+    (let* ((step! (get ctx 'step!))
+           (observe-store! (get ctx 'observe-store!))
+           (a (step! '(add-text-to-store "a-name" "a-content")
+                     #:connection 'a))
+           (b (step! `(add-text-to-store "b-name" "b-content" (,a))
+                     #:connection 'a)))
+
+      (is (chain (observe-store!)
+            (assoc (basename b) _)))
+
+      (is (chain `(valid-path? ,b)
+            (step! _ #:connection 'a)
+            (eq? #t _)))
+
+      (delete-file (string-append (testbox-root (get ctx 'testbox/left)) b))
+      (delete-file (string-append (testbox-root (get ctx 'testbox/right)) b))
+
+      ;; A different reference list bypasses the client's add cache, but denotes
+      ;; the same reference set and therefore the same destination.
+      (is (chain `(add-text-to-store "b-name" "b-content" (,a ,a))
+            (step! _ #:connection 'a)
+            (equal? b _)))
+
+      (is (chain `(valid-path? ,b)
+            (step! _ #:connection 'a #:terminal? #t)
+            (eq? #t _)))
+
+      (is (chain (observe-store!)
+            (assoc (basename b) _)
+            (not _))))))
 
 (define-suite (server-tests)
   'metadata `((test/fixtures . ,(paired-testbox-fixtures 'rootless 'nixd 'gxd)))
