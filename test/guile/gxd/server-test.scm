@@ -4,14 +4,18 @@
 (define-module (gxd server-test)
   #:use-module ((ares suitbl core) #:select (define-suite is test))
   #:use-module ((guix store) #:select (direct-store-path store-connection-socket))
+  #:use-module ((guix base16) #:select (bytevector->base16-string))
+  #:use-module ((guix store deduplication) #:select (nar-sha256))
   #:use-module ((ice-9 match) #:select (match-let))
   #:use-module ((rnrs bytevectors) #:select (bytevector=?))
   #:use-module ((rnrs io ports) #:select (lookahead-u8))
+  #:use-module ((srfi srfi-11) #:select (let-values))
   #:use-module ((gxd direct-steps) #:select (call-with-client paired-step!))
   #:use-module ((gxd test-fixtures) #:select (paired-testbox-fixtures))
   #:use-module (gxd test-prelude)
   #:use-module ((gxd testbox) #:select (paired-daemon-testboxes-fixture))
   #:use-module ((gxd testbox snapshots) #:select (paired-snapshots-fixture))
+  #:use-module ((gxd testbox database-observations) #:select (database-observations-fixture))
   #:use-module ((gxd testbox store-observations) #:select (store-observations-fixture))
   #:use-module ((gxd testbox-relay)
                 #:select (client-trust-fixture paired-relay-observers-fixture)))
@@ -25,7 +29,8 @@
 (define-suite (server-text-tests)
   'metadata `((test/fixtures
                . ,(append (paired-testbox-fixtures 'rootless 'nixd 'gxd)
-                          (list paired-snapshots-fixture store-observations-fixture))))
+                          (list paired-snapshots-fixture store-observations-fixture
+                                database-observations-fixture))))
 
   (test "text ingress creates matching regular read-only store entries" (ctx)
     (let* ((step! (get ctx 'step!))
@@ -45,7 +50,27 @@
       (is (chain inventory
             (assoc-ref _ (basename b))
             (select-keys _ '(type mode))
-            (equal? '((type . regular) (mode . #o444)) _))))))
+            (equal? '((type . regular) (mode . #o444)) _)))
+
+      (define registrations ((get ctx 'observe-db!) (list a b)))
+      (is (chain registrations
+            (assoc-ref _ a)
+            (select-keys _ '(deriver references))
+            (equal? '((deriver . #f) (references)) _)))
+      (is (chain registrations
+            (assoc-ref _ b)
+            (select-keys _ '(deriver references))
+            (equal? `((deriver . #f) (references ,a)) _)))
+
+      ;; Compare the common DB facts with a fresh NAR of the observed file.
+      (match-let (((left-root _) ((get ctx 'snapshot!))))
+        (let-values (((hash size) (nar-sha256 (string-append left-root b))))
+          (is (chain registrations
+                (assoc-ref _ b)
+                (select-keys _ '(nar-hash nar-size))
+                (equal? `((nar-hash . ,(string-append "sha256:" (bytevector->base16-string hash)))
+                          (nar-size . ,size))
+                        _))))))))
 
 (define-suite (server-tests)
   'metadata `((test/fixtures . ,(paired-testbox-fixtures 'rootless 'nixd 'gxd)))
