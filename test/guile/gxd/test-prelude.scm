@@ -8,10 +8,12 @@
   #:use-module ((ice-9 rdelim) #:select (read-string))
   #:use-module ((guix build utils) #:select (which))
   #:use-module ((gxd isolation) #:select (child-proc))
+  #:use-module ((srfi srfi-1) #:select (filter-map))
   #:use-module (gxd prelude)
   #:export (call-with-process-deadline
             capture-exception
             require-program
+            select-keys
             slurp
             spit
             with-module-binding))
@@ -19,6 +21,10 @@
 (eval-when (eval load compile)
   (module-use! (module-public-interface (current-module))
                (resolve-interface '(gxd prelude))))
+
+(define (select-keys alist keys)
+  "Return ALIST's entries for KEYS in key order, omitting absent keys."
+  (filter-map (lambda (key) (assoc key alist)) keys))
 
 (define (require-program program)
   "Return the complete file name of PROGRAM on $PATH, or raise an error."
