@@ -7,10 +7,11 @@
   #:use-module ((guix base16) #:select (bytevector->base16-string))
   #:use-module ((guix store deduplication) #:select (nar-sha256))
   #:use-module ((ice-9 match) #:select (match-let))
-  #:use-module ((rnrs bytevectors) #:select (bytevector=?))
+  #:use-module ((rnrs bytevectors) #:select (bytevector=? string->utf8))
   #:use-module ((rnrs io ports) #:select (lookahead-u8))
   #:use-module ((srfi srfi-11) #:select (let-values))
   #:use-module ((gxd direct-steps) #:select (call-with-client paired-step!))
+  #:use-module ((gxd store-path) #:select (text-path))
   #:use-module ((gxd test-fixtures) #:select (paired-testbox-fixtures))
   #:use-module (gxd test-prelude)
   #:use-module ((gxd testbox) #:select (paired-daemon-testboxes-fixture testbox-root))
@@ -102,7 +103,39 @@
 
       (is (chain (observe-store!)
             (assoc (basename b) _)
-            (not _))))))
+            (not _)))))
+
+  (test "rejected text can be added after registering its missing reference" (ctx)
+    (let* ((step! (get ctx 'step!))
+           (observe-db! (get ctx 'observe-db!))
+           (a (text-path "/gnu/store" "a-name" (string->utf8 "a-content") '()))
+           (add-b `(add-text-to-store "b-name" "b-content" (,a))))
+
+      (is (chain `(valid-path? ,a)
+            (step! _ #:connection 'a)
+            (eq? #f _)))
+
+      (is (chain add-b
+            (step! _ #:connection 'a)
+            (equal? `((error/type . store-protocol-error)
+                      (error/message . ,(string-append "path `" a "' is not valid"))
+                      (error/status . 1))
+                    _)))
+
+      (is (chain '(add-text-to-store "a-name" "a-content")
+            (step! _ #:connection 'a)
+            (equal? a _)))
+
+      (define b (step! add-b #:connection 'a))
+
+      (is (chain `(valid-path? ,b)
+            (step! _ #:connection 'a #:terminal? #t)
+            (eq? #t _)))
+
+      (is (chain (observe-db! (list b))
+            (assoc-ref _ b)
+            (get _ 'references)
+            (equal? (list a) _))))))
 
 (define-suite (server-tests)
   'metadata `((test/fixtures . ,(paired-testbox-fixtures 'rootless 'nixd 'gxd)))
