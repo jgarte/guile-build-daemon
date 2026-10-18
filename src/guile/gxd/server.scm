@@ -22,6 +22,7 @@
                 #:prefix protocol:)
   #:use-module ((guix config) #:select (%store-directory
                                         %store-database-directory))
+  #:use-module ((guix build utils) #:select (mkdir-p))
   #:use-module ((guix remote-procedures) #:select (%protocol-version
                                                    %worker-magic-1
                                                    %worker-magic-2
@@ -136,6 +137,8 @@ These errors end the request, not the client session; other exceptions propagate
 (define (serve-client connection store-directory database-file)
   "Serve supported requests until CONNECTION ends, using STORE-DIRECTORY and DATABASE-FILE."
   (greet-client connection)
+  ;; LocalStore creates this index even when automatic deduplication is disabled.
+  (mkdir-p (string-append store-directory "/.links"))
   (database:call-with-database database-file
     (lambda (db)
       (define uid (peer-uid connection))
