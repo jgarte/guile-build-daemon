@@ -5,13 +5,14 @@
 
 (define-module (gxd testbox database-observations)
   #:use-module (gxd test-prelude)
-  #:use-module ((ice-9 match) #:select (match))
+  #:use-module ((guix config) #:select (%store-database-directory))
+  #:use-module ((ice-9 match) #:select (match match-let))
   #:use-module ((sqlite3)
                 #:select (SQLITE_OPEN_READONLY sqlite-open sqlite-close
                                                sqlite-prepare sqlite-bind-arguments sqlite-map
                                                sqlite-finalize))
   #:use-module ((srfi srfi-1) #:select (delete-duplicates filter-map))
-  #:export (read-store-entries))
+  #:export (read-store-entries database-observations-fixture))
 
 (define (query db sql path)
   (let ((statement (sqlite-prepare db sql)))
@@ -55,3 +56,21 @@ Values contain nar-hash, nar-size, deriver (#f if absent), and direct references
           (sort _ string<?)
           (filter-map (lambda (path) (read-entry db path)) _)))
       (lambda () (sqlite-close db)))))
+
+(define (database-observations-fixture ctx proceed)
+  "Add `observe-db!' to CTX, using the preceding snapshot fixture.
+Given a path list, return common registration facts or raise on a difference."
+  (let ((snapshot! (get ctx 'snapshot!)))
+    (unless snapshot!
+      (error "database observations require the snapshot fixture"))
+
+    (define (observe-db! paths)
+      (match-let (((left-root right-root) (snapshot!)))
+        (let* ((suffix (string-append %store-database-directory "/db.sqlite"))
+               (left (read-store-entries (string-append left-root suffix) paths))
+               (right (read-store-entries (string-append right-root suffix) paths)))
+          (unless (equal? left right)
+            (error "store database entries differ" left right))
+          left)))
+
+    (proceed (acons 'observe-db! observe-db! ctx) (lambda () #t))))
