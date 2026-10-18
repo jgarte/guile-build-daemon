@@ -133,13 +133,12 @@ Raise an error when a group names an unknown role."
         (write-group _ (string-append etc "/group"))))))
 
 (define (mount-testbox-sources! root manifest)
-  "Bind the sources from MANIFEST into ROOT read-only."
+  "Bind the sources listed in MANIFEST into ROOT read-only."
   (for-each
-   (lambda (key)
-     (let ((source (get manifest key)))
+   (lambda (entry)
+     (let ((source (cdr entry)))
        (bind-mount-read-only! source (string-append root source))))
-   '(testbox/gxd-src
-     testbox/relay-src)))
+   (get manifest 'testbox/sources)))
 
 (define (testbox-init => <=)
   "Prepare the root, enter it, report readiness, then await exit."
@@ -165,9 +164,9 @@ Raise an error when a group names an unknown role."
 (define (make-testbox-manifest daemon-mode)
   "Return DAEMON-MODE's roles, groups and canonical harness sources."
   `((testbox/daemon-mode . ,daemon-mode)
-    (testbox/gxd-src . ,(canonicalize-path "src"))
-    (testbox/relay-src
-     . ,(canonicalize-path "test/guile/gxd/testbox-relay"))
+    (testbox/sources
+     . ((gxd . ,(canonicalize-path "src"))
+        (relay . ,(canonicalize-path "test/guile/gxd/testbox-relay"))))
     ,@(mode-configuration daemon-mode)))
 
 (define (role-id-map-ranges manifest id-key current-id subordinate-start)
@@ -266,7 +265,7 @@ ENVIRONMENT overrides inherited string name/value pairs in the child only."
 (define (start-gxd! box)
   "Start gxd inside BOX as the daemon role and return its process."
   (let* ((guix (canonicalize-path (require-program "guix")))
-         (source (get (testbox-manifest box) 'testbox/gxd-src)))
+         (source (get-in (testbox-manifest box) '(testbox/sources gxd))))
     (start-testbox-process! box 'daemon guix
                             (list "repl" "-L" (string-append source "/guile")
                                   "--" (string-append source "/main.scm")))))

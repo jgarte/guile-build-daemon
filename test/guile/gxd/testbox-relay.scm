@@ -34,7 +34,7 @@
 (define (start-testbox-relay box role)
   "Return (ENDPOINT OBSERVER TEARDOWN!) for BOX's relay running as ROLE.
 BOX owns and reaps the relay process; TEARDOWN! releases host resources."
-  (let ((source (get (testbox-manifest box) 'testbox/relay-src))
+  (let ((source (get-in (testbox-manifest box) '(testbox/sources relay)))
         (root-fd #f)
         (endpoint #f)
         (observation-path #f)
