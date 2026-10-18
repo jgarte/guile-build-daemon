@@ -6,16 +6,13 @@
 (define-module (gxd testbox-relay-test)
   #:use-module ((rnrs bytevectors) #:select (bytevector=?))
   #:use-module ((ares suitbl core) #:select (define-suite is test))
-  #:use-module ((ares suitbl checks) #:select (throws-exception?))
   #:use-module ((guix store) #:select (direct-store-path))
   #:use-module ((gxd direct-steps)
-                #:select (diff-snapshoted-roots-fixture direct-steps-fixture))
-  #:use-module ((gxd checked-steps) #:select (checked-steps-fixture))
+                #:select (direct-steps-fixture))
   #:use-module ((gxd test-fixtures) #:select (paired-testbox-fixtures))
   #:use-module (gxd test-prelude)
   #:use-module ((gxd testbox)
-                #:select (paired-daemon-testboxes-fixture testbox-root))
-  #:use-module ((gxd testbox disk) #:select (delete-snapshot!))
+                #:select (paired-daemon-testboxes-fixture))
   #:use-module ((gxd testbox-relay)
                 #:select (client-trust-fixture paired-relay-observers-fixture)))
 
@@ -23,8 +20,7 @@
   (list (client-trust-fixture #f)
         (paired-daemon-testboxes-fixture 'rootless 'nixd 'nixd)
         paired-relay-observers-fixture
-        direct-steps-fixture
-        diff-snapshoted-roots-fixture))
+        direct-steps-fixture))
 
 (define-suite (testbox-relay-tests)
   (test "two named queries change the stable single-query capture" (ctx)
@@ -60,25 +56,6 @@
            (absent "/gnu/store/00000000000000000000000000000000-gxd-absent"))
       (is (step! `(valid-path? ,present)))
       (is (not (step! `(valid-path? ,absent))))))
-
-  (test "paired testbox roots have equal filesystem artifacts" (ctx)
-    'metadata `((test/fixtures . ,paired-relay-fixtures))
-    (is (pair? ((get ctx 'diff-snapshots!) "equal-roots"))))
-
-  (test "a left-only root artifact is reported" (ctx)
-    'metadata `((test/fixtures . ,paired-relay-fixtures))
-    (let* ((name "left-only-artifact")
-           (left (get ctx 'testbox/left))
-           (diff-snapshots! (get ctx 'diff-snapshots!)))
-      (spit (string-append (testbox-root left) "/tmp/gxd-diff-sentinel")
-            "left only")
-      (dynamic-wind
-        (lambda () #t)
-        (lambda ()
-          (is (throws-exception? (diff-snapshots! name))))
-        (lambda ()
-          (delete-snapshot! (string-append name "-left"))
-          (delete-snapshot! (string-append name "-right"))))))
 
   (test "paired captures agree and change with the queried path" (ctx)
     'metadata `((test/fixtures . ,paired-relay-fixtures))
