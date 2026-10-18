@@ -132,8 +132,17 @@ Raise an error when a group names an unknown role."
         (map group->entry _)
         (write-group _ (string-append etc "/group"))))))
 
+(define (mount-testbox-sources! root manifest)
+  "Bind the sources from MANIFEST into ROOT read-only."
+  (for-each
+   (lambda (key)
+     (let ((source (get manifest key)))
+       (bind-mount-read-only! source (string-append root source))))
+   '(testbox/gxd-src
+     testbox/relay-src)))
+
 (define (testbox-init => <=)
-  "Expose the selected sources, enter the root, report readiness, then await exit."
+  "Prepare the root, enter it, report readiness, then await exit."
   ;; As PID 1, this process adopts orphaned descendants.  Explicitly ignoring
   ;; SIGCHLD tells Linux to discard their exit status and reap them
   ;; automatically, so adopted children cannot accumulate as zombies.
@@ -147,10 +156,7 @@ Raise an error when a group names an unknown role."
       (match-let (((root manifest) (<= 'setup)))
         (make-mounts-private!)
         (install-group-accounts! root manifest)
-        (let ((source (get manifest 'testbox/gxd-src)))
-          (bind-mount-read-only! source (string-append root source)))
-        (let ((source (get manifest 'testbox/relay-src)))
-          (bind-mount-read-only! source (string-append root source)))
+        (mount-testbox-sources! root manifest)
         (pivot-into! root))
       (=> 'ready #f))
     #:unwind? #t)
