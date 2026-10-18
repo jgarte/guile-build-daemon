@@ -12,7 +12,7 @@
                                             set-build-options valid-path?))
   #:use-module ((ice-9 exceptions) #:select (raise-exception with-exception-handler))
   #:use-module (gxd test-prelude)
-  #:export (call-with-client paired-step! direct-steps-fixture))
+  #:export (call-with-client call-with-paired-clients paired-step! direct-steps-fixture))
 
 (define (call-with-client endpoint proc)
   "Call PROC with a new connection to ENDPOINT; close it before returning."
@@ -21,6 +21,14 @@
       (lambda () #t)
       (lambda () (proc store))
       (lambda () (close-connection store)))))
+
+(define (call-with-paired-clients left-endpoint right-endpoint proc)
+  "Call PROC with new clients for LEFT-ENDPOINT and RIGHT-ENDPOINT.
+Close both clients before returning or propagating an exception."
+  (call-with-client left-endpoint
+    (lambda (left)
+      (call-with-client right-endpoint
+        (lambda (right) (proc left right))))))
 
 (define (expression->procedure expression)
   (match expression
