@@ -11,6 +11,8 @@
   #:use-module ((gxd test-fixtures) #:select (paired-testbox-fixtures))
   #:use-module (gxd test-prelude)
   #:use-module ((gxd testbox) #:select (paired-daemon-testboxes-fixture))
+  #:use-module ((gxd testbox snapshots) #:select (paired-snapshots-fixture))
+  #:use-module ((gxd testbox store-observations) #:select (store-observations-fixture))
   #:use-module ((gxd testbox-relay)
                 #:select (client-trust-fixture paired-relay-observers-fixture)))
 
@@ -19,6 +21,31 @@
   (let ((socket (store-connection-socket store)))
     (and (memq socket (car (select (list socket) '() '() 5)))
          (eof-object? (lookahead-u8 socket)))))
+
+(define-suite (server-text-tests)
+  'metadata `((test/fixtures
+               . ,(append (paired-testbox-fixtures 'rootless 'nixd 'gxd)
+                          (list paired-snapshots-fixture store-observations-fixture))))
+
+  (test "text ingress creates matching regular read-only store entries" (ctx)
+    (let* ((step! (get ctx 'step!))
+           (a (step! '(add-text-to-store "gxd-text-a" "reference\n")
+                     #:connection 'a))
+           (b (step! `(add-text-to-store "gxd-text-b" "payload\n" (,a))
+                     #:connection 'a)))
+      (is (chain `(valid-path? ,b)
+            (step! _ #:connection 'a #:terminal? #t)
+            (eq? #t _)))
+
+      (define inventory ((get ctx 'observe-store!)))
+      (is (chain inventory
+            (assoc-ref _ (basename a))
+            (select-keys _ '(type mode))
+            (equal? '((type . regular) (mode . #o444)) _)))
+      (is (chain inventory
+            (assoc-ref _ (basename b))
+            (select-keys _ '(type mode))
+            (equal? '((type . regular) (mode . #o444)) _))))))
 
 (define-suite (server-tests)
   'metadata `((test/fixtures . ,(paired-testbox-fixtures 'rootless 'nixd 'gxd)))
