@@ -89,6 +89,9 @@ Return the session options after the request."
       (for-each
        (lambda (reference)
          (unless (store-path? store-directory reference)
+           (protocol:write-error
+            (format #f "path `~a' is not in the store" reference) 1 connection)
+           (force-output connection)
            (error "reference is not in the store" reference)))
        references)
 
