@@ -18,6 +18,7 @@
   #:use-module ((guix utils) #:select (call-with-temporary-directory))
   #:use-module ((gxd isolation) #:select (child-proc
                                           make-mounts-private!
+                                          bind-mount!
                                           bind-mount-read-only!
                                           pivot-into!
                                           read-current-id-facts
@@ -264,6 +265,7 @@ IDs."
    (logior CLONE_NEWUSER CLONE_NEWNS SIGCHLD)
    (lambda (=> <=)
      (<= 'ids-mapped)
+     (make-mounts-private!)
      (bind-mount-read-only! source target)
      (=> 'observed
          `((content . ,(slurp (string-append target "/file")))
@@ -275,6 +277,32 @@ IDs."
        (write-id-map-ranges! child-pid uid-ranges gid-ranges))
      (=> 'ids-mapped)
      (<= 'observed))))
+
+(define (observe-writable-bind-mount source target)
+  "Return whether TARGET accepts a write after mounting."
+  (call-with-child-proc
+   (logior CLONE_NEWUSER CLONE_NEWNS SIGCHLD)
+   (lambda (=> <=)
+     (<= 'ids-mapped)
+     (make-mounts-private!)
+     (bind-mount! source target)
+     (spit (string-append target "/written") "written")
+     (=> 'observed #t))
+   (lambda (child-pid => <=)
+     (let-values (((uid-ranges gid-ranges) (current-root-id-map-ranges 1)))
+       (write-id-map-ranges! child-pid uid-ranges gid-ranges))
+     (=> 'ids-mapped)
+     (<= 'observed))))
+
+(define-suite (bind-mount-tests)
+  (test "source contents are exposed writable at the target" ()
+    (call-with-temporary-directory
+     (lambda (directory)
+       (let ((source (string-append directory "/source"))
+             (target (string-append directory "/target")))
+         (mkdir source)
+         (is (observe-writable-bind-mount source target))
+         (is (string=? "written" (slurp (string-append source "/written")))))))))
 
 (define-suite (bind-mount-read-only-tests)
   (test "source contents are exposed read-only at the target" ()

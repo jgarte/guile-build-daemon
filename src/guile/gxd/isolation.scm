@@ -45,6 +45,7 @@
   #:use-module ((gxd prelude))
   #:export (child-proc
             make-mounts-private!
+            bind-mount!
             bind-mount-read-only!
             pivot-into!
             read-current-id-facts
@@ -223,10 +224,19 @@ GID start.  Each start covers at least REQUIRED-COUNT contiguous ids."
   ;; inherited mount private, not only /, so later host mounts cannot enter.
   (mount #f "/" #f (logior MS_REC MS_PRIVATE)))
 
+(define (bind-mount! source target)
+  "Bind-mount SOURCE at TARGET."
+  (case (stat:type (stat source))
+    ((directory) (mkdir-p target))
+    (else
+     (mkdir-p (dirname target))
+     (unless (file-exists? target)
+       (call-with-output-file target (lambda (_) #t)))))
+  (mount source target #f MS_BIND))
+
 (define (bind-mount-read-only! source target)
-  "Bind-mount directory SOURCE read-only at TARGET."
-  (mkdir-p target)
-  (mount source target #f MS_BIND)
+  "Bind-mount SOURCE read-only at TARGET."
+  (bind-mount! source target)
   ;; Bind mounts inherit flags; remount to add MS_RDONLY.  Preserve locked
   ;; MS_NOSUID and MS_NODEV, or the kernel rejects the remount with EPERM.
   (mount #f target #f
