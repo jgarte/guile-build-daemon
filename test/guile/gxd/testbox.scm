@@ -166,6 +166,14 @@ Raise an error when a group names an unknown role."
       (chmod (string-append pts "/ptmx") #o666)
       (symlink "/dev/pts/ptmx" (string-append root "/dev/ptmx")))))
 
+(define (install-testbox-dev-fd-links! root)
+  "Install standard file-descriptor links beneath ROOT/dev."
+  (for-each
+   (lambda (name target)
+     (symlink target (string-append root "/dev/" name)))
+   '("fd" "stdin" "stdout" "stderr")
+   '("/proc/self/fd" "/proc/self/fd/0" "/proc/self/fd/1" "/proc/self/fd/2")))
+
 (define (mount-testbox-sources! root manifest)
   "Bind the sources listed in MANIFEST into ROOT read-only."
   (for-each
@@ -192,6 +200,7 @@ Raise an error when a group names an unknown role."
         (mount-testbox-devices! root)
         (mount-testbox-dev-shm! root)
         (mount-testbox-devpts! root)
+        (install-testbox-dev-fd-links! root)
         (install-group-accounts! root manifest)
         (mount-testbox-sources! root manifest)
         (pivot-into! root))
