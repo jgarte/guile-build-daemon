@@ -6,7 +6,7 @@
 (define-module (gxd testbox database-observations)
   #:use-module (gxd test-prelude)
   #:use-module ((guix config) #:select (%store-database-directory))
-  #:use-module ((ice-9 match) #:select (match match-let))
+  #:use-module ((ice-9 match) #:select (match match-let match-lambda))
   #:use-module ((sqlite3)
                 #:select (SQLITE_OPEN_READONLY sqlite-open sqlite-close
                                                sqlite-prepare sqlite-bind-arguments sqlite-map
@@ -32,6 +32,15 @@ JOIN ValidPaths target ON target.id = Refs.reference
 WHERE source.path = ? ORDER BY target.path;"
               path)))
 
+(define (read-outputs db path)
+  "Return PATH's declared output name/path pairs in DB, sorted by output name."
+  (map (match-lambda (#(name output-path) (cons name output-path)))
+       (query db
+              "SELECT outputs.id, outputs.path FROM DerivationOutputs outputs
+JOIN ValidPaths drv ON drv.id = outputs.drv
+WHERE drv.path = ? ORDER BY outputs.id;"
+              path)))
+
 (define (read-entry db path)
   (match (query db "SELECT hash, narSize, deriver FROM ValidPaths WHERE path = ?;" path)
     (() #f)
@@ -40,12 +49,14 @@ WHERE source.path = ? ORDER BY target.path;"
            `((nar-hash . ,hash)
              (nar-size . ,size)
              (deriver . ,deriver)
-             (references . ,(read-references db path)))))))
+             (references . ,(read-references db path))
+             (outputs . ,(read-outputs db path)))))))
 
 (define (read-store-entries database-file paths)
   "Return DB registration facts for PATHS from read-only DATABASE-FILE.
 Entries are keyed by path, unique and sorted; unregistered paths are omitted.
-Values contain nar-hash, nar-size, deriver (#f if absent), and direct references."
+Values contain nar-hash, nar-size, deriver (#f if absent), direct references,
+and declared outputs as sorted name/path pairs (empty for ordinary files)."
   (let ((db (sqlite-open database-file SQLITE_OPEN_READONLY)))
     (call-with-cleanup
      (lambda () (sqlite-close db))
