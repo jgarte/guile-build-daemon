@@ -49,6 +49,25 @@
       (sqlite-exec db "COMMIT;"))
     #:unwind? #t))
 
+(define (check-references db references)
+  "Raise an invalid-reference error for the first unregistered path in REFERENCES."
+  (for-each
+   (lambda (reference)
+     (unless (valid-path? db reference)
+       (raise-exception
+        (make-invalid-reference
+         (format #f "path `~a' is not valid" reference)))))
+   references))
+
+(define (register-path! db path hash size references)
+  "Insert or update PATH's NAR metadata and REFERENCES in DB's current transaction."
+  (guix-db:register-valid-path
+   db #:path path #:references references #:deriver #f
+   #:hash (string-append "sha256:" (bytevector->base16-string hash))
+   #:nar-size size
+   ;; Guix's default honors SOURCE_DATE_EPOCH; daemon registration uses now.
+   #:time (current-time time-utc)))
+
 (define (register-text! db path hash size references)
   "Register fresh non-derivation PATH and REFERENCES atomically in DB.
 HASH and SIZE describe PATH's NAR.  REFERENCES must be sorted unique store paths.
@@ -56,16 +75,5 @@ Raise an invalid-reference error if a reference is not registered valid.
 The caller owns PATH's destination lock and has materialized its contents."
   (call-with-transaction db
     (lambda ()
-      (for-each
-       (lambda (reference)
-         (unless (valid-path? db reference)
-           (raise-exception
-            (make-invalid-reference
-             (format #f "path `~a' is not valid" reference)))))
-       references)
-      (guix-db:register-valid-path
-       db #:path path #:references references #:deriver #f
-       #:hash (string-append "sha256:" (bytevector->base16-string hash))
-       #:nar-size size
-       ;; Guix's default honors SOURCE_DATE_EPOCH; daemon registration uses now.
-       #:time (current-time time-utc)))))
+      (check-references db references)
+      (register-path! db path hash size references))))
