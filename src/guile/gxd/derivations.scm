@@ -4,6 +4,7 @@
 ;; SPDX-FileCopyrightText: 2026 buttonspresser
 
 (define-module (gxd derivations)
+  #:use-module ((gxd store-path) #:select (check-store-name))
   #:use-module ((gcrypt hash) #:select (lookup-hash-algorithm hash-size))
   #:use-module ((guix base16) #:select (bytevector->base16-string))
   #:use-module ((guix derivations)
@@ -138,6 +139,10 @@ Raise a derivation-output error on a mismatch.  No files or database are read."
     (for-each
      (match-lambda
        ((output-name . output)
+        (check-store-name
+         (if (or fixed (string=? output-name "out"))
+             name
+             (string-append name "-" output-name)))
         (let* ((declared-path (guix-drv:derivation-output-path output))
                (expected-path
                 (if fixed
