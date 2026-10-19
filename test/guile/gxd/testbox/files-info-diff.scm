@@ -6,8 +6,9 @@
 (define-module (gxd testbox files-info-diff)
   #:use-module ((ice-9 ftw) #:select (scandir))
   #:use-module ((ice-9 format) #:select (format))
+  #:use-module ((ice-9 match) #:select (match))
   #:use-module ((srfi srfi-1)
-                #:select (append-map delete-duplicates filter-map))
+                #:select (append-map delete-duplicates))
   #:export (diff-files-info format-files-info-diff scan-files-info))
 
 (define (file-info path stat)
@@ -38,35 +39,39 @@ Include ROOT as \".\" and do not follow symlinks."
   (sort (walk ".") (lambda (a b) (string<? (car a) (car b)))))
 
 (define (diff-files-info left right)
-  "Return paths+info present only in LEFT, only in RIGHT, and changed in both."
+  "Compare inventories LEFT and RIGHT, sorted by unique path.
+Return paths+info present only in LEFT, only in RIGHT, and changed in both."
   (define (diff-info left-info right-info)
     (filter (lambda (field)
               (not (equal? (assoc-ref left-info field)
                            (assoc-ref right-info field))))
             (delete-duplicates (append (map car left-info) (map car right-info)))))
 
-  (let ((only-left (filter
-                    (lambda (entry) (not (assoc (car entry) right)))
-                    left))
-        (only-right (filter
-                     (lambda (entry) (not (assoc (car entry) left)))
-                     right))
-        (changed (filter-map
-                  (lambda (left-file-info)
-                    (let ((right-file-info (assoc (car left-file-info) right)))
-                      (and right-file-info
-                           (let ((fields (diff-info
-                                          (cdr left-file-info)
-                                          (cdr right-file-info))))
-                             (and (pair? fields)
-                                  (list (car left-file-info)
-                                        fields
-                                        (cdr left-file-info)
-                                        (cdr right-file-info)))))))
-                  left)))
+  (define (result only-left only-right changed)
     `((only-left . ,only-left)
       (only-right . ,only-right)
-      (changed . ,changed))))
+      (changed . ,(reverse changed))))
+
+  (let walk ((left left) (right right)
+             (only-left '()) (only-right '()) (changed '()))
+    (match (list left right)
+      ((() _)
+       (result (reverse only-left) (append (reverse only-right) right) changed))
+      ((_ ())
+       (result (append (reverse only-left) left) (reverse only-right) changed))
+      ((((left-path . left-info) . left-rest)
+        ((right-path . right-info) . right-rest))
+       (cond
+        ((string<? left-path right-path)
+         (walk left-rest right (cons (cons left-path left-info) only-left) only-right changed))
+        ((string<? right-path left-path)
+         (walk left right-rest only-left (cons (cons right-path right-info) only-right) changed))
+        (else
+         (let ((fields (diff-info left-info right-info)))
+           (walk left-rest right-rest only-left only-right
+                 (if (null? fields)
+                     changed
+                     (cons (list left-path fields left-info right-info) changed))))))))))
 
 (define (format-files-info-diff diff)
   "Format DIFF for an assertion failure."
