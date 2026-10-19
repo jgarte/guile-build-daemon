@@ -12,7 +12,8 @@
   #:use-module ((srfi srfi-9) #:select (define-record-type))
   #:use-module ((guix build utils) #:select (executable-file? mkdir-p))
   #:use-module ((guix build syscalls)
-                #:select (restart-on-EINTR
+                #:select (mount
+                          restart-on-EINTR
                           CLONE_NEWNS
                           CLONE_NEWPID
                           CLONE_NEWUSER))
@@ -156,6 +157,15 @@ Raise an error when a group names an unknown role."
   "Mount fresh shared memory beneath ROOT/dev."
   (mount-tmpfs! (string-append root "/dev/shm") #:mode #o1777))
 
+(define (mount-testbox-devpts! root)
+  "Mount private pseudo-terminals beneath ROOT/dev when available."
+  (when (file-exists? "/dev/pts/ptmx")
+    (let ((pts (string-append root "/dev/pts")))
+      (mkdir-p pts)
+      (mount "none" pts "devpts" 0 "newinstance,mode=0620")
+      (chmod (string-append pts "/ptmx") #o666)
+      (symlink "/dev/pts/ptmx" (string-append root "/dev/ptmx")))))
+
 (define (mount-testbox-sources! root manifest)
   "Bind the sources listed in MANIFEST into ROOT read-only."
   (for-each
@@ -181,6 +191,7 @@ Raise an error when a group names an unknown role."
         (mount-testbox-dev-tmpfs! root)
         (mount-testbox-devices! root)
         (mount-testbox-dev-shm! root)
+        (mount-testbox-devpts! root)
         (install-group-accounts! root manifest)
         (mount-testbox-sources! root manifest)
         (pivot-into! root))
