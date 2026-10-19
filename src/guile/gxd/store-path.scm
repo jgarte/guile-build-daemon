@@ -11,7 +11,7 @@
   #:use-module ((ice-9 exceptions) #:select (&error define-exception-type
                                                     raise-exception))
   #:use-module ((ice-9 format) #:select (format))
-  #:export (text-path &store-name-error store-name-error?
+  #:export (text-path check-store-name &store-name-error store-name-error?
                       store-name-error-message))
 
 (define-exception-type &store-name-error &error
@@ -19,6 +19,7 @@
   (message store-name-error-message))
 
 (define (check-store-name name)
+  "Raise a store-name error when NAME is invalid."
   (when (string-prefix? "." name)
     (raise-exception
      (make-store-name-error

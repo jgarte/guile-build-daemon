@@ -380,6 +380,28 @@ outputs are not built."
                 (registration-outcome! "example.drv" drv-short-hash))
         "short SHA256 digest rejects registration and leaves the session usable")))
 
+(define-suite (server-invalid-derivation-name-tests)
+  'metadata `((test/fixtures . ,derivation-test-fixtures))
+
+  (test "invalid output name prevents registration without closing the session" (ctx)
+    (define registration-outcome! (get ctx 'registration-outcome!))
+
+    (define drv (test-derivation))
+    (define drv-output (assoc-ref (derivation-outputs drv) "out"))
+
+    ;; The output ID makes the resultant store name `example-bad/id' invalid.
+    ;; Leave the output path intact: name validation must precede path comparison.
+    (define drv-invalid-output-name
+      (set-fields drv ((derivation-outputs) (list (cons "bad/id" drv-output)))))
+
+    (is (equal? '((response . ((error/type . store-protocol-error)
+                               (error/message . "invalid character `/' in name `example-bad/id'")
+                               (error/status . 1)))
+                  (registration . ())
+                  (connection-usable? . #t))
+                (registration-outcome! "example.drv" drv-invalid-output-name))
+        "invalid output name rejects registration and leaves the session usable")))
+
 (define-suite (server-invalid-text-tests)
   'metadata `((test/fixtures
                . ,(list (client-trust-fixture #f)
