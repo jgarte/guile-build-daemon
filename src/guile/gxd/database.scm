@@ -23,3 +23,16 @@
 (define (valid-path? db path)
   "Return whether PATH is registered in DB."
   (and (valid-path-id db path) #t))
+
+(define (call-with-transaction db thunk)
+  "Call THUNK in an immediate transaction on DB; roll back on exceptional exit."
+  (let ((committed? #f))
+    (sqlite-exec db "BEGIN IMMEDIATE;")
+    (dynamic-wind
+      (lambda () #t)
+      (lambda ()
+        (thunk)
+        (sqlite-exec db "COMMIT;")
+        (set! committed? #t))
+      (lambda ()
+        (unless committed? (sqlite-exec db "ROLLBACK;"))))))
