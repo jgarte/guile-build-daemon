@@ -7,7 +7,7 @@
   #:use-module (gxd prelude)
   #:use-module ((gxd database)
                 #:prefix database:
-                #:select (valid-path? register-text!))
+                #:select (valid-path? register-text! register-derivation!))
   #:use-module ((gxd path-locks) #:select (call-with-destination-lock))
   #:use-module ((gxd store-path) #:select (text-path))
   #:use-module ((guix build utils) #:select (false-if-file-not-found))
@@ -18,7 +18,7 @@
   #:export (write-text! add-text!))
 
 (define (add-text! db store-directory name contents references)
-  "Add non-derivation NAME with bytevector CONTENTS and REFERENCES to the store.
+  "Add NAME with bytevector CONTENTS and REFERENCES to the store.
 Return its path in STORE-DIRECTORY, registered in DB.  REFERENCES must be sorted
 unique store paths validated by the caller.  Leave already-valid items untouched.
 The caller must exclude concurrent GC."
@@ -29,7 +29,10 @@ The caller must exclude concurrent GC."
           (unless (database:valid-path? db destination)
             (delete-path! destination)
             (let-values (((hash size) (write-text! destination contents)))
-              (database:register-text! db destination hash size references))))))
+              (if (string-suffix? ".drv" name)
+                  (database:register-derivation!
+                   db store-directory destination hash size references)
+                  (database:register-text! db destination hash size references)))))))
     destination))
 
 (define (delete-path! path)
