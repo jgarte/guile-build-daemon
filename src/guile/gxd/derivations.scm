@@ -6,11 +6,95 @@
 (define-module (gxd derivations)
   #:use-module ((guix derivations)
                 #:prefix guix-drv:
-                #:select (read-derivation))
-  #:export (read-derivation))
+                #:select (read-derivation derivation-outputs derivation-output-path
+                                          derivation-output-hash derivation-output-hash-algo
+                                          derivation-output-recursive? derivation-hash
+                                          derivation-builder-environment-vars))
+  #:use-module ((guix store)
+                #:prefix guix-store:
+                #:select (%store-prefix output-path fixed-output-path
+                                        store-path-package-name))
+  #:use-module ((ice-9 exceptions)
+                #:select (&error define-exception-type raise-exception))
+  #:use-module ((ice-9 format) #:select (format))
+  #:use-module ((ice-9 match) #:select (match match-lambda match-lambda*))
+  #:use-module ((srfi srfi-9 gnu) #:select (set-fields))
+  #:use-module ((srfi srfi-13) #:select (string-drop-right))
+  #:export (read-derivation check-outputs
+                            &derivation-output-error derivation-output-error?
+                            derivation-output-error-message))
+
+(define-exception-type &derivation-output-error &error
+  make-derivation-output-error derivation-output-error?
+  (message derivation-output-error-message))
 
 (define (read-derivation port)
   "Read a derivation from PORT without loading its input derivations.
 Input records hold filenames under `derivation-input-derivation' until resolved.
 Accept the syntax understood by Guix's reader; decoding errors propagate."
   (guix-drv:read-derivation port identity))
+
+(define (mask-outputs drv)
+  "Return a copy of DRV with its output paths and corresponding environment values empty."
+  (let* ((outputs (guix-drv:derivation-outputs drv))
+         (environment (guix-drv:derivation-builder-environment-vars drv))
+         (environment (append
+                       ;; Preserve non-output environment values.
+                       (filter (match-lambda
+                                 ((name . _) (not (assoc name outputs))))
+                               environment)
+                       ;; Empty each output value, inserting it if absent.
+                       (map (match-lambda ((name . _) (cons name ""))) outputs))))
+    (set-fields drv
+      ((guix-drv:derivation-outputs)
+       (map (match-lambda
+              ((name . output)
+               (cons name
+                     (set-fields output ((guix-drv:derivation-output-path) "")))))
+            outputs))
+      ((guix-drv:derivation-builder-environment-vars)
+       (sort environment
+             (match-lambda*
+               (((left-name . _) (right-name . _))
+                (string<? left-name right-name))))))))
+
+(define (fixed-output drv)
+  (match (guix-drv:derivation-outputs drv)
+    ((("out" . output)) (and (guix-drv:derivation-output-hash output) output))
+    (_ #f)))
+
+(define (check-outputs store-directory path drv)
+  "Check the output paths and environment of DRV admitted at PATH in STORE-DIRECTORY.
+DRV must be a canonical Guix derivation with resolved input derivation records.
+Raise a derivation-output error on a mismatch.  No files or database are read."
+  (define name
+    (parameterize ((guix-store:%store-prefix store-directory))
+      (string-drop-right (guix-store:store-path-package-name path) 4)))
+
+  (define outputs (guix-drv:derivation-outputs drv))
+  (define fixed (fixed-output drv))
+
+  (define hash
+    (and (not fixed) (guix-drv:derivation-hash (mask-outputs drv))))
+
+  (parameterize ((guix-store:%store-prefix store-directory))
+    (for-each
+     (match-lambda
+       ((output-name . output)
+        (let* ((declared-path (guix-drv:derivation-output-path output))
+               (expected-path
+                (if fixed
+                    (guix-store:fixed-output-path
+                     name (guix-drv:derivation-output-hash fixed)
+                     #:hash-algo (guix-drv:derivation-output-hash-algo fixed)
+                     #:recursive? (guix-drv:derivation-output-recursive? fixed))
+                    (guix-store:output-path output-name hash name))))
+          (unless (and (string=? declared-path expected-path)
+                       (equal? expected-path
+                               (assoc-ref (guix-drv:derivation-builder-environment-vars drv)
+                                          output-name)))
+            (raise-exception
+             (make-derivation-output-error
+              (format #f "derivation `~a' has incorrect output `~a', should be `~a'"
+                      path declared-path expected-path)))))))
+     outputs)))
