@@ -9,7 +9,8 @@
                 #:select (read-derivation derivation-outputs derivation-output-path
                                           derivation-output-hash derivation-output-hash-algo
                                           derivation-output-recursive? derivation-hash
-                                          derivation-builder-environment-vars))
+                                          derivation-builder-environment-vars
+                                          derivation-inputs derivation-input-derivation))
   #:use-module ((guix store)
                 #:prefix guix-store:
                 #:select (%store-prefix output-path fixed-output-path
@@ -20,7 +21,7 @@
   #:use-module ((ice-9 match) #:select (match match-lambda match-lambda*))
   #:use-module ((srfi srfi-9 gnu) #:select (set-fields))
   #:use-module ((srfi srfi-13) #:select (string-drop-right))
-  #:export (read-derivation check-outputs
+  #:export (read-derivation resolve-inputs! check-outputs
                             &derivation-output-error derivation-output-error?
                             derivation-output-error-message))
 
@@ -33,6 +34,31 @@
 Input records hold filenames under `derivation-input-derivation' until resolved.
 Accept the syntax understood by Guix's reader; decoding errors propagate."
   (guix-drv:read-derivation port identity))
+
+(define (resolve-inputs! drv load-input)
+  "Return a copy of decoded DRV with ordinary input derivations resolved by LOAD-INPUT.
+LOAD-INPUT takes a filename and returns a decoded derivation.  Fixed-output
+derivations are retained without loading their inputs.  Load and resolve each
+input filename once per call.  Lookup and decoding errors propagate."
+  (define cache (make-hash-table))
+  (define (resolve-path! path)
+    (or (hash-ref cache path)
+        (let ((resolved (resolve! (load-input path))))
+          (hash-set! cache path resolved)
+          resolved)))
+
+  (define (resolve! drv)
+    (if (fixed-output drv)
+        drv
+        (set-fields drv
+          ((guix-drv:derivation-inputs)
+           (map (lambda (input)
+                  (set-fields input
+                    ((guix-drv:derivation-input-derivation)
+                     (resolve-path! (guix-drv:derivation-input-derivation input)))))
+                (guix-drv:derivation-inputs drv))))))
+
+  (resolve! drv))
 
 (define (mask-outputs drv)
   "Return a copy of DRV with its output paths and corresponding environment values empty."
