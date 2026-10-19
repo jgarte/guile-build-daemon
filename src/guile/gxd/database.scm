@@ -5,6 +5,11 @@
 
 (define-module (gxd database)
   #:use-module (gxd prelude)
+  #:use-module ((gxd derivations)
+                #:prefix derivations:
+                #:select (read-derivation resolve-inputs! check-outputs))
+  #:use-module ((guix derivations)
+                #:select (derivation-outputs derivation-output-path))
   #:use-module ((guix base16) #:select (bytevector->base16-string))
   #:use-module ((guix store database)
                 #:prefix guix-db:
@@ -12,10 +17,12 @@
   #:use-module ((ice-9 exceptions)
                 #:select (&error define-exception-type raise-exception with-exception-handler))
   #:use-module ((ice-9 format) #:select (format))
+  #:use-module ((ice-9 match) #:select (match-lambda))
   #:use-module ((srfi srfi-19) #:select (current-time time-utc))
   #:use-module ((sqlite3) #:select (SQLITE_OPEN_READWRITE
-                                    sqlite-close sqlite-exec sqlite-open))
-  #:export (call-with-database valid-path? register-text!
+                                    sqlite-close sqlite-exec sqlite-open
+                                    sqlite-prepare sqlite-bind-arguments sqlite-step sqlite-finalize))
+  #:export (call-with-database valid-path? register-text! register-derivation!
                                &invalid-reference invalid-reference?
                                invalid-reference-message))
 
@@ -77,3 +84,49 @@ The caller owns PATH's destination lock and has materialized its contents."
     (lambda ()
       (check-references db references)
       (register-path! db path hash size references))))
+
+(define (execute db sql arguments)
+  "Run SQL on DB with bound ARGUMENTS; return its first row or #f if none.
+Propagate SQLite errors."
+  (let ((statement (sqlite-prepare db sql)))
+    (call-with-cleanup
+     (lambda () (sqlite-finalize statement))
+     (lambda ()
+       (apply sqlite-bind-arguments statement arguments)
+       (sqlite-step statement)))))
+
+(define (read-registered-derivation! db path)
+  "Read the derivation at registered PATH in DB; reject an unregistered input."
+  (check-references db (list path))
+  (call-with-input-file path derivations:read-derivation))
+
+(define (register-derivation! db store-directory path hash size references)
+  "Register fresh derivation PATH and its declared outputs atomically in DB.
+HASH and SIZE describe PATH's NAR; REFERENCES are sorted unique store paths.
+The caller has materialized PATH and owns its destination lock, excluding GC.
+Read canonical Guix derivations; propagate decoding, lookup and output-check errors."
+  (call-with-transaction db
+    (lambda ()
+      (register-path! db path hash size '())
+      (define drv (call-with-input-file path derivations:read-derivation))
+      (define id (guix-db:valid-path-id db path))
+
+      (for-each
+       (match-lambda
+         ((name . output)
+          (execute db
+                   "INSERT OR REPLACE INTO DerivationOutputs (drv, id, path) VALUES (?, ?, ?);"
+                   (list id name (derivation-output-path output)))))
+       (derivation-outputs drv))
+
+      (check-references db references)
+      (for-each
+       (lambda (reference)
+         (execute db "INSERT OR REPLACE INTO Refs (referrer, reference) VALUES (?, ?);"
+                  (list id (guix-db:valid-path-id db reference))))
+       references)
+
+      (derivations:check-outputs
+       store-directory path
+       (derivations:resolve-inputs!
+        drv (lambda (input) (read-registered-derivation! db input)))))))
