@@ -152,6 +152,10 @@ Raise an error when a group names an unknown role."
      "/dev/urandom"
      "/dev/zero")))
 
+(define (mount-testbox-dev-shm! root)
+  "Mount fresh shared memory beneath ROOT/dev."
+  (mount-tmpfs! (string-append root "/dev/shm") #:mode #o1777))
+
 (define (mount-testbox-sources! root manifest)
   "Bind the sources listed in MANIFEST into ROOT read-only."
   (for-each
@@ -176,6 +180,7 @@ Raise an error when a group names an unknown role."
         (make-mounts-private!)
         (mount-testbox-dev-tmpfs! root)
         (mount-testbox-devices! root)
+        (mount-testbox-dev-shm! root)
         (install-group-accounts! root manifest)
         (mount-testbox-sources! root manifest)
         (pivot-into! root))
