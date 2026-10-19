@@ -3,11 +3,16 @@
 
 (define-module (gxd server-test)
   #:use-module ((ares suitbl core) #:select (define-suite is test))
-  #:use-module ((guix store) #:select (direct-store-path store-connection-socket))
+  #:use-module ((guix store) #:select (direct-store-path store-connection-socket valid-path?))
+  #:use-module ((guix derivations)
+                #:select (derivation derivation-input derivation-file-name
+                                     derivation->output-paths derivation-inputs
+                                     derivation-input-path derivation-sources))
   #:use-module ((guix base16) #:select (bytevector->base16-string))
   #:use-module ((guix store deduplication) #:select (nar-sha256))
-  #:use-module ((ice-9 match) #:select (match-let))
-  #:use-module ((rnrs bytevectors) #:select (bytevector=? string->utf8))
+  #:use-module ((ice-9 match) #:select (match-let match-lambda match-lambda*))
+  #:use-module ((srfi srfi-1) #:select (append-map))
+  #:use-module ((rnrs bytevectors) #:select (bytevector=? string->utf8 make-bytevector))
   #:use-module ((rnrs io ports) #:select (lookahead-u8))
   #:use-module ((srfi srfi-11) #:select (let-values))
   #:use-module ((gxd direct-steps) #:select (call-with-paired-clients paired-step!))
@@ -136,6 +141,80 @@
             (assoc-ref _ b)
             (get _ 'references)
             (equal? (list a) _))))))
+
+(define-suite (server-derivation-tests)
+  'metadata `((test/fixtures
+               . ,(list (client-trust-fixture #f)
+                        (paired-daemon-testboxes-fixture 'rootless 'nixd 'gxd)
+                        paired-relay-observers-fixture
+                        paired-snapshots-fixture database-observations-fixture)))
+
+  (test "derivation registration records outputs and references without realizing outputs" (ctx)
+    (define (make-drvs store)
+      "Register the test derivations through STORE and return their records.
+Each `derivation' call submits the serialized derivation through op 8;
+outputs are not built."
+      (let* ((multi (derivation store "multi" "/bin/sh" '()
+                                #:system "x86_64-linux" #:outputs '("dev" "out")))
+             (parent (derivation store "parent" "/bin/sh" '()
+                                 #:system "x86_64-linux"
+                                 #:inputs (list (derivation-input multi '("dev")))))
+             (fixed (derivation store "fixed" "/bin/sh" '()
+                                #:system "x86_64-linux"
+                                #:hash (make-bytevector 32 17) #:hash-algo 'sha256))
+             (fixed-parent (derivation store "fixed-parent" "/bin/sh" '()
+                                       #:system "x86_64-linux"
+                                       #:inputs (list (derivation-input fixed)))))
+        (list multi parent fixed fixed-parent)))
+
+    (define (expected-registration drv)
+      "Return DRV's declared references and output mappings keyed by derivation path."
+      (cons (derivation-file-name drv)
+            `((references . ,(chain (derivation-inputs drv)
+                               (map derivation-input-path _)
+                               (append _ (derivation-sources drv))
+                               (sort _ string<?)))
+              (outputs . ,(derivation->output-paths drv)))))
+
+    (define (outputs-valid? store drvs)
+      "Query validity of each declared output, in DRVS and output order."
+      (append-map
+       (lambda (drv)
+         (map (match-lambda ((_ . path) (valid-path? store path)))
+              (derivation->output-paths drv)))
+       drvs))
+
+    (call-with-paired-clients
+     (get ctx 'relay/left-endpoint)
+     (get ctx 'relay/right-endpoint)
+     (lambda (left right)
+       (let* ((left-drvs (make-drvs left))
+              (right-drvs (make-drvs right))
+              (paths (map derivation-file-name left-drvs)))
+
+         (is (equal? paths (map derivation-file-name right-drvs)))
+
+         (define registrations ((get ctx 'observe-db!) paths))
+         (define expected
+           (chain left-drvs
+             (map expected-registration _)
+             (sort _ (match-lambda*
+                       (((left-path . _) (right-path . _))
+                        (string<? left-path right-path))))))
+
+         ;; Derivations are registered with the expected references and outputs.
+         (is (equal? expected
+                     (map (match-lambda
+                            ((path . facts)
+                             (cons path (select-keys facts '(references outputs)))))
+                          registrations)))
+
+         ;; Derivation outputs have not been realized.
+         (is (equal? '(#f #f #f #f #f) (outputs-valid? left left-drvs)))
+         (is (equal? '(#f #f #f #f #f) (outputs-valid? right right-drvs))))))
+
+    (match-let (((left-bytes right-bytes) ((get ctx 'observe-bytes!))))
+      (is (bytevector=? left-bytes right-bytes)))))
 
 (define-suite (server-invalid-text-tests)
   'metadata `((test/fixtures
