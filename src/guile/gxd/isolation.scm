@@ -45,6 +45,7 @@
   #:use-module ((gxd prelude))
   #:export (child-proc
             make-mounts-private!
+            mount-tmpfs!
             bind-mount!
             bind-mount-read-only!
             pivot-into!
@@ -223,6 +224,11 @@ GID start.  Each start covers at least REQUIRED-COUNT contiguous ids."
   ;; New mount namespaces inherit propagation groups.  MS_REC makes every
   ;; inherited mount private, not only /, so later host mounts cannot enter.
   (mount #f "/" #f (logior MS_REC MS_PRIVATE)))
+
+(define* (mount-tmpfs! target #:key (mode #o755) (flags 0))
+  "Mount a fresh tmpfs at TARGET with MODE and mount FLAGS."
+  (mkdir-p target)
+  (mount "none" target "tmpfs" flags (format #f "mode=~o" mode)))
 
 (define (bind-mount! source target)
   "Bind-mount SOURCE at TARGET."
