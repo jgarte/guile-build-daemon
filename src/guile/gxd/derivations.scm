@@ -4,6 +4,8 @@
 ;; SPDX-FileCopyrightText: 2026 buttonspresser
 
 (define-module (gxd derivations)
+  #:use-module ((gcrypt hash) #:select (lookup-hash-algorithm hash-size))
+  #:use-module ((guix base16) #:select (bytevector->base16-string))
   #:use-module ((guix derivations)
                 #:prefix guix-drv:
                 #:select (read-derivation derivation-outputs derivation-output-path
@@ -19,6 +21,7 @@
                 #:select (&error define-exception-type raise-exception))
   #:use-module ((ice-9 format) #:select (format))
   #:use-module ((ice-9 match) #:select (match match-lambda match-lambda*))
+  #:use-module ((rnrs bytevectors) #:select (bytevector-length))
   #:use-module ((srfi srfi-9 gnu) #:select (set-fields))
   #:use-module ((srfi srfi-13) #:select (string-drop-right))
   #:export (read-derivation resolve-inputs! check-outputs
@@ -89,6 +92,32 @@ input filename once per call.  Lookup and decoding errors propagate."
     ((("out" . output)) (and (guix-drv:derivation-output-hash output) output))
     (_ #f)))
 
+(define (check-output-hash output)
+  "Check OUTPUT's fixed hash algorithm and digest length."
+  (let* ((algorithm (guix-drv:derivation-output-hash-algo output))
+         (label (case algorithm
+                  ((md5) "MD5")
+                  ((sha1) "SHA1")
+                  ((sha256) "SHA256")
+                  ((sha512) "SHA512")
+                  ((sha3-256) "SHA3-256")
+                  ((sha3-512) "SHA3-512")
+                  ((blake2s-256) "BLAKE2S_256")
+                  (else #f))))
+    (unless label
+      (raise-exception
+       (make-derivation-output-error
+        (format #f "unknown hash algorithm `~a'" algorithm))))
+
+    (let* ((hash (guix-drv:derivation-output-hash output))
+           (size (bytevector-length hash))
+           (expected (hash-size (lookup-hash-algorithm algorithm))))
+      (unless (= size expected)
+        (raise-exception
+         (make-derivation-output-error
+          (format #f "invalid ~a hash '~a' (~a bytes but expected ~a)"
+                  label (bytevector->base16-string hash) size expected)))))))
+
 (define (check-outputs store-directory path drv)
   "Check the output paths and environment of DRV admitted at PATH in STORE-DIRECTORY.
 DRV must be a canonical Guix derivation with resolved input derivation records.
@@ -99,6 +128,8 @@ Raise a derivation-output error on a mismatch.  No files or database are read."
 
   (define outputs (guix-drv:derivation-outputs drv))
   (define fixed (fixed-output drv))
+
+  (when fixed (check-output-hash fixed))
 
   (define hash
     (and (not fixed) (guix-drv:derivation-hash (mask-outputs drv))))
