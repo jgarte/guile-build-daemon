@@ -18,6 +18,7 @@
   #:use-module ((guix utils) #:select (call-with-temporary-directory))
   #:use-module ((gxd isolation) #:select (child-proc
                                           make-mounts-private!
+                                          mount-tmpfs!
                                           bind-mount!
                                           bind-mount-read-only!
                                           pivot-into!
@@ -277,6 +278,33 @@ IDs."
        (write-id-map-ranges! child-pid uid-ranges gid-ranges))
      (=> 'ids-mapped)
      (<= 'observed))))
+
+(define (observe-tmpfs target)
+  "Return whether TARGET is a fresh writable tmpfs."
+  (call-with-child-proc
+   (logior CLONE_NEWUSER CLONE_NEWNS SIGCHLD)
+   (lambda (=> <=)
+     (<= 'ids-mapped)
+     (make-mounts-private!)
+     (mount-tmpfs! target)
+     (spit (string-append target "/written") "written")
+     (=> 'observed
+         `((fresh? . ,(not (file-exists? (string-append target "/present"))))
+           (content . ,(slurp (string-append target "/written"))))))
+   (lambda (child-pid => <=)
+     (let-values (((uid-ranges gid-ranges) (current-root-id-map-ranges 1)))
+       (write-id-map-ranges! child-pid uid-ranges gid-ranges))
+     (=> 'ids-mapped)
+     (<= 'observed))))
+
+(define-suite (mount-tmpfs-tests)
+  (test "a tmpfs hides old contents and accepts writes" ()
+    (call-with-temporary-directory
+     (lambda (target)
+       (spit (string-append target "/present") "present")
+       (let ((observed (observe-tmpfs target)))
+         (is (get observed 'fresh?))
+         (is (string=? "written" (get observed 'content))))))))
 
 (define (observe-writable-bind-mount source target)
   "Return whether TARGET accepts a write after mounting."
