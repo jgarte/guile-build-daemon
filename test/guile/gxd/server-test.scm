@@ -3,11 +3,15 @@
 
 (define-module (gxd server-test)
   #:use-module ((ares suitbl core) #:select (define-suite is test))
-  #:use-module ((guix store) #:select (direct-store-path store-connection-socket valid-path?))
+  #:use-module ((guix store) #:select (direct-store-path store-connection-socket valid-path?
+                                                         output-path))
   #:use-module ((guix derivations)
                 #:select (derivation derivation-input derivation-file-name
                                      derivation->output-paths derivation-inputs
-                                     derivation-input-path derivation-sources))
+                                     derivation-input-path derivation-sources
+                                     derivation-outputs derivation-output-path
+                                     write-derivation read-derivation derivation-hash
+                                     derivation-builder-environment-vars))
   #:use-module ((guix base16) #:select (bytevector->base16-string))
   #:use-module ((guix store deduplication) #:select (nar-sha256))
   #:use-module ((ice-9 match) #:select (match-let match-lambda match-lambda*))
@@ -15,6 +19,7 @@
   #:use-module ((rnrs bytevectors) #:select (bytevector=? string->utf8 make-bytevector))
   #:use-module ((rnrs io ports) #:select (lookahead-u8))
   #:use-module ((srfi srfi-11) #:select (let-values))
+  #:use-module ((srfi srfi-9 gnu) #:select (set-fields))
   #:use-module ((gxd direct-steps) #:select (call-with-paired-clients paired-step!))
   #:use-module ((gxd store-path) #:select (text-path))
   #:use-module ((gxd test-fixtures) #:select (paired-testbox-fixtures))
@@ -25,6 +30,64 @@
   #:use-module ((gxd testbox store-observations) #:select (store-observations-fixture))
   #:use-module ((gxd testbox-relay)
                 #:select (client-trust-fixture paired-relay-observers-fixture)))
+
+(define (derivation->text drv)
+  "Return the serialized derivation for DRV."
+  (call-with-output-string
+   (lambda (port) (write-derivation drv port))))
+
+(define (test-derivation)
+  "Return a completed single-output derivation named example, without store access."
+  (let* ((drv (call-with-input-string
+                  "Derive([(\"out\",\"\",\"\",\"\")],[],[],\"x86_64-linux\",\"/bin/sh\",[],[(\"out\",\"\")])"
+                read-derivation))
+         (path (output-path "out" (derivation-hash drv) "example"))
+         (output (assoc-ref (derivation-outputs drv) "out")))
+    (set-fields drv
+      ((derivation-outputs)
+       (list (cons "out" (set-fields output ((derivation-output-path) path)))))
+      ((derivation-builder-environment-vars) (list (cons "out" path))))))
+
+(define (derivation-text-path name drv)
+  "Return the text store path for DRV submitted under NAME."
+  (text-path "/gnu/store" name (string->utf8 (derivation->text drv)) '()))
+
+(define (incorrect-output-error drv-path declared-path expected-path)
+  "Return the expected protocol error for DRV-PATH's DECLARED-PATH versus EXPECTED-PATH."
+  `((error/type . store-protocol-error)
+    (error/message . ,(string-append
+                       "derivation `" drv-path "' has incorrect output `"
+                       declared-path "', should be `" expected-path "'"))
+    (error/status . 1)))
+
+(define (derivation-steps-fixture ctx proceed)
+  "Add registration-outcome! to CTX using its checked step! and DB observer."
+  (define step! (get ctx 'step!))
+  (define observe-db! (get ctx 'observe-db!))
+  (define present-path
+    (direct-store-path (canonicalize-path (require-program "guix-daemon"))))
+
+  (define (registration-outcome! name drv)
+    "Submit DRV under NAME and observe its registration and subsequent connection usability.
+Return response, registration and connection-usable? fields.  Check usability
+by querying a known valid store item on the same connections.
+Use one named connection pair, closed and capture-checked by the final query."
+    (let* ((text (derivation->text drv))
+           (path (derivation-text-path name drv))
+           (outcome (step! `(add-text-to-store ,name ,text) #:connection 'derivation))
+           (registration (observe-db! (list path)))
+           (usable? (step! `(valid-path? ,present-path)
+                           #:connection 'derivation #:terminal? #t)))
+      `((response . ,outcome)
+        (registration . ,registration)
+        (connection-usable? . ,usable?))))
+
+  (proceed (acons 'registration-outcome! registration-outcome! ctx) (lambda () #t)))
+
+(define derivation-test-fixtures
+  (append (paired-testbox-fixtures 'rootless 'nixd 'gxd)
+          (list paired-snapshots-fixture database-observations-fixture
+                derivation-steps-fixture)))
 
 (define (remote-eof? store)
   "Return whether STORE reaches remote EOF within five seconds."
@@ -215,6 +278,34 @@ outputs are not built."
 
     (match-let (((left-bytes right-bytes) ((get ctx 'observe-bytes!))))
       (is (bytevector=? left-bytes right-bytes)))))
+
+(define-suite (server-rejected-derivation-tests)
+  'metadata `((test/fixtures . ,derivation-test-fixtures))
+
+  (test "incorrect derivation output prevents registration but permits another request" (ctx)
+    (define registration-outcome! (get ctx 'registration-outcome!))
+
+    (define drv (test-derivation))
+
+    ;; Change only the declared output path; keep the original environment.
+    (define drv-output (assoc-ref (derivation-outputs drv) "out"))
+    (define valid-output-path (derivation-output-path drv-output))
+
+    (define invalid-output-path "/gnu/store/00000000000000000000000000000000-invalid")
+    (define drv-with-invalid-output
+      (set-fields drv
+        ((derivation-outputs)
+         (list (cons "out" (set-fields drv-output ((derivation-output-path) invalid-output-path)))))))
+
+    (define invalid-drv-path (derivation-text-path "example.drv" drv-with-invalid-output))
+
+    ;; Rejection leaves no registration and both connections usable.
+    (is (equal? `((response . ,(incorrect-output-error invalid-drv-path
+                                                       invalid-output-path
+                                                       valid-output-path))
+                  (registration . ())
+                  (connection-usable? . #t))
+                (registration-outcome! "example.drv" drv-with-invalid-output)))))
 
 (define-suite (server-invalid-text-tests)
   'metadata `((test/fixtures
