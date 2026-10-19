@@ -19,6 +19,7 @@
   #:use-module ((gxd isolation)
                 #:select (bind-mount-read-only!
                           child-proc
+                          mount-tmpfs!
                           make-mounts-private!
                           pivot-into!
                           read-current-id-facts
@@ -132,6 +133,10 @@ Raise an error when a group names an unknown role."
         (map group->entry _)
         (write-group _ (string-append etc "/group"))))))
 
+(define (mount-testbox-dev-tmpfs! root)
+  "Mount a fresh device directory beneath ROOT."
+  (mount-tmpfs! (string-append root "/dev")))
+
 (define (mount-testbox-sources! root manifest)
   "Bind the sources listed in MANIFEST into ROOT read-only."
   (for-each
@@ -154,6 +159,7 @@ Raise an error when a group names an unknown role."
     (lambda ()
       (match-let (((root manifest) (<= 'setup)))
         (make-mounts-private!)
+        (mount-testbox-dev-tmpfs! root)
         (install-group-accounts! root manifest)
         (mount-testbox-sources! root manifest)
         (pivot-into! root))
