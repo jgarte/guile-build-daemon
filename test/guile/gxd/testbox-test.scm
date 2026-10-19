@@ -122,6 +122,28 @@ fails with ECHILD, which is what distinguishes it from one still running."
        (is (fresh? 'mnt))
        (is (fresh? 'pid)))))
 
+  (test "testbox has the minimal device filesystem" ()
+    (call-with-rootless-testbox
+     (lambda (box)
+       (define devices
+         (append '("/dev/full"
+                   "/dev/null"
+                   "/dev/random"
+                   "/dev/tty"
+                   "/dev/urandom"
+                   "/dev/zero"
+                   "/dev/shm"
+                   "/dev/fd"
+                   "/dev/stdin"
+                   "/dev/stdout"
+                   "/dev/stderr")
+                 (if (file-exists? "/dev/pts/ptmx")
+                     '("/dev/pts" "/dev/ptmx")
+                     '())))
+       (is (daemon-observes?
+            box
+            `(and ,@(map (lambda (device) `(file-exists? ,device)) devices)))))))
+
   (test "teardown releases resources after notification failure" ()
     (define expected (make-exception-with-message "expected teardown failure"))
     (define (failing-send . _)
