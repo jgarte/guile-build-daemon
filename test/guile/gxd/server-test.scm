@@ -15,7 +15,7 @@
   #:use-module ((guix base16) #:select (bytevector->base16-string))
   #:use-module ((guix store deduplication) #:select (nar-sha256))
   #:use-module ((ice-9 match) #:select (match-let match-lambda match-lambda*))
-  #:use-module ((srfi srfi-1) #:select (append-map))
+  #:use-module ((srfi srfi-1) #:select (append-map alist-delete))
   #:use-module ((rnrs bytevectors) #:select (bytevector=? string->utf8 make-bytevector))
   #:use-module ((rnrs io ports) #:select (lookahead-u8))
   #:use-module ((srfi srfi-11) #:select (let-values))
@@ -67,17 +67,18 @@
   (define present-path
     (direct-store-path (canonicalize-path (require-program "guix-daemon"))))
 
-  (define (registration-outcome! name drv)
+  (define* (registration-outcome! name drv #:key (terminal? #t))
     "Submit DRV under NAME and observe its registration and subsequent connection usability.
 Return response, registration and connection-usable? fields.  Check usability
 by querying a known valid store item on the same connections.
-Use one named connection pair, closed and capture-checked by the final query."
+With TERMINAL? true, close and capture-check the session after the query;
+otherwise retain the same connections for the next submission."
     (let* ((text (derivation->text drv))
            (path (derivation-text-path name drv))
            (outcome (step! `(add-text-to-store ,name ,text) #:connection 'derivation))
            (registration (observe-db! (list path)))
            (usable? (step! `(valid-path? ,present-path)
-                           #:connection 'derivation #:terminal? #t)))
+                           #:connection 'derivation #:terminal? terminal?)))
       `((response . ,outcome)
         (registration . ,registration)
         (connection-usable? . ,usable?))))
@@ -305,7 +306,37 @@ outputs are not built."
                                                        valid-output-path))
                   (registration . ())
                   (connection-usable? . #t))
-                (registration-outcome! "example.drv" drv-with-invalid-output)))))
+                (registration-outcome! "example.drv" drv-with-invalid-output))))
+
+  (test "incorrect or missing output environment prevents derivation registration" (ctx)
+    (define registration-outcome! (get ctx 'registration-outcome!))
+
+    (define drv (test-derivation))
+    (define valid-output-path (assoc-ref (derivation->output-paths drv) "out"))
+    (define env-missing-out (alist-delete "out" (derivation-builder-environment-vars drv)))
+
+    (define (expected-rejection drv)
+      "Return the expected error, absent registration and usable-connection facts for DRV."
+      `((response . ,(incorrect-output-error (derivation-text-path "example.drv" drv)
+                                             valid-output-path valid-output-path))
+        (registration . ())
+        (connection-usable? . #t)))
+
+    ;; A correct output declaration cannot compensate for an incorrect environment.
+    (define drv-invalid-out-env
+      (set-fields drv
+        ((derivation-builder-environment-vars)
+         (acons "out" "/gnu/store/invalid" env-missing-out))))
+
+    ;; Missing output variables are rejected too, rather than supplied by the daemon.
+    (define drv-missing-out-env
+      (set-fields drv ((derivation-builder-environment-vars) env-missing-out)))
+
+    (is (equal? (expected-rejection drv-invalid-out-env)
+                (registration-outcome! "example.drv" drv-invalid-out-env #:terminal? #f)))
+
+    (is (equal? (expected-rejection drv-missing-out-env)
+                (registration-outcome! "example.drv" drv-missing-out-env)))))
 
 (define-suite (server-invalid-text-tests)
   'metadata `((test/fixtures
