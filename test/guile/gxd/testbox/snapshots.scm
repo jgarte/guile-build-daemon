@@ -21,15 +21,16 @@ Call only after the operations whose effects are to be observed have finished."
     (unless (and left right)
       (error "observation snapshots require two testboxes"))
 
+    (define (delete-owned-snapshot! name)
+      (capture-exception
+       (lambda ()
+         (delete-snapshot! name)
+         (set! owned (delete name owned)))))
+
     (define (cleanup!)
       (and-let* ((failure
                   (chain owned
-                    (map (lambda (name)
-                           (capture-exception
-                            (lambda ()
-                              (delete-snapshot! name)
-                              (set! owned (delete name owned)))))
-                         _)
+                    (map delete-owned-snapshot! _)
                     (find identity _))))
         (raise-exception failure)))
 
