@@ -17,6 +17,8 @@
   #:use-module ((gxd store-path)
                 #:select (store-name-error? store-name-error-message))
   #:use-module ((gxd text-store) #:select (add-text!))
+  #:use-module ((gxd derivations)
+                #:select (derivation-output-error? derivation-output-error-message))
   #:use-module ((gxd worker-protocol) #:select (read-integer read-string read-options read-text
                                                              write-completion write-error write-log)
                 #:prefix protocol:)
@@ -95,10 +97,6 @@ Return the session options after the request."
            (error "reference is not in the store" reference)))
        references)
 
-      ;; Derivation output validation and registration are not implemented yet.
-      (when (string-suffix? ".drv" name)
-        (error "derivation registration is not supported"))
-
       (call-with-text-error-reporting connection
         (lambda ()
           (let ((path (add-text! db store-directory name
@@ -123,7 +121,7 @@ Return the session options after the request."
     #:unwind-for-type &option-error))
 
 (define (call-with-text-error-reporting connection thunk)
-  "Call THUNK, reporting invalid-name or invalid-reference errors on CONNECTION.
+  "Call THUNK, reporting name, reference or derivation-output errors on CONNECTION.
 These errors end the request, not the client session; other exceptions propagate."
   (with-exception-handler
     (lambda (exception)
@@ -132,6 +130,8 @@ These errors end the request, not the client session; other exceptions propagate
         ((store-name-error? exception) (store-name-error-message exception))
         ((database:invalid-reference? exception)
          (database:invalid-reference-message exception))
+        ((derivation-output-error? exception)
+         (derivation-output-error-message exception))
         (else (raise-exception exception)))
        1 connection))
     thunk
