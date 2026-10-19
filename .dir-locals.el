@@ -33,6 +33,7 @@
      (eval . (put 'call-with-destination-lock 'scheme-indent-function 1))
      (eval . (put 'call-with-option-error-reporting 'scheme-indent-function 1))
      (eval . (put 'database:call-with-database 'scheme-indent-function 1))
+     (eval . (put 'call-with-transaction 'scheme-indent-function 1))
      (eval . (put 'call-with-output-file 'scheme-indent-function 1))
      (eval . (put 'with-output-to-file 'scheme-indent-function 1))
      (eval . (put 'role-observes? 'scheme-indent-function 2))
