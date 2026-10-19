@@ -10,6 +10,7 @@
                                      derivation->output-paths derivation-inputs
                                      derivation-input-path derivation-sources
                                      derivation-outputs derivation-output-path
+                                     derivation-output-hash derivation-output-hash-algo
                                      write-derivation read-derivation derivation-hash
                                      derivation-builder-environment-vars))
   #:use-module ((guix base16) #:select (bytevector->base16-string))
@@ -337,6 +338,47 @@ outputs are not built."
 
     (is (equal? (expected-rejection drv-missing-out-env)
                 (registration-outcome! "example.drv" drv-missing-out-env)))))
+
+(define-suite (server-invalid-derivation-hash-tests)
+  'metadata `((test/fixtures . ,derivation-test-fixtures))
+
+  (test "invalid fixed-output hashes prevent registration without closing the session" (ctx)
+    (define registration-outcome! (get ctx 'registration-outcome!))
+
+    (define drv (test-derivation))
+    (define drv-output (assoc-ref (derivation-outputs drv) "out"))
+
+    (define drv-unknown-algorithm
+      (set-fields drv
+        ((derivation-outputs)
+         (list (cons "out"
+                     (set-fields drv-output
+                       ((derivation-output-hash-algo) 'unknown)
+                       ((derivation-output-hash) (make-bytevector 32 17))))))))
+
+    (define drv-short-hash
+      (set-fields drv
+        ((derivation-outputs)
+         (list (cons "out"
+                     (set-fields drv-output
+                       ((derivation-output-hash-algo) 'sha256)
+                       ((derivation-output-hash) (make-bytevector 1 17))))))))
+
+    (is (equal? '((response . ((error/type . store-protocol-error)
+                               (error/message . "unknown hash algorithm `unknown'")
+                               (error/status . 1)))
+                  (registration . ())
+                  (connection-usable? . #t))
+                (registration-outcome! "example.drv" drv-unknown-algorithm #:terminal? #f))
+        "unknown hash algorithm rejects registration and leaves the session usable")
+
+    (is (equal? '((response . ((error/type . store-protocol-error)
+                               (error/message . "invalid SHA256 hash '11' (1 bytes but expected 32)")
+                               (error/status . 1)))
+                  (registration . ())
+                  (connection-usable? . #t))
+                (registration-outcome! "example.drv" drv-short-hash))
+        "short SHA256 digest rejects registration and leaves the session usable")))
 
 (define-suite (server-invalid-text-tests)
   'metadata `((test/fixtures
