@@ -17,7 +17,8 @@
                           CLONE_NEWPID
                           CLONE_NEWUSER))
   #:use-module ((gxd isolation)
-                #:select (bind-mount-read-only!
+                #:select (bind-mount!
+                          bind-mount-read-only!
                           child-proc
                           mount-tmpfs!
                           make-mounts-private!
@@ -137,6 +138,20 @@ Raise an error when a group names an unknown role."
   "Mount a fresh device directory beneath ROOT."
   (mount-tmpfs! (string-append root "/dev")))
 
+(define (mount-testbox-devices! root)
+  "Bind nixd's minimal device set beneath ROOT/dev."
+  (for-each
+   (lambda (device)
+     (when (file-exists? device)
+       (bind-mount! device (string-append root device))))
+   '("/dev/full"
+     "/dev/kvm"
+     "/dev/null"
+     "/dev/random"
+     "/dev/tty"
+     "/dev/urandom"
+     "/dev/zero")))
+
 (define (mount-testbox-sources! root manifest)
   "Bind the sources listed in MANIFEST into ROOT read-only."
   (for-each
@@ -160,6 +175,7 @@ Raise an error when a group names an unknown role."
       (match-let (((root manifest) (<= 'setup)))
         (make-mounts-private!)
         (mount-testbox-dev-tmpfs! root)
+        (mount-testbox-devices! root)
         (install-group-accounts! root manifest)
         (mount-testbox-sources! root manifest)
         (pivot-into! root))
