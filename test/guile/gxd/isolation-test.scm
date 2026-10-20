@@ -281,24 +281,6 @@ IDs."
     (is (string=? content (get observed 'content)))
     (is (not (get observed 'writable?)))))
 
-(define (observe-writing-and-isolation-in-tmpfs-mount target host-file
-                                                      tmpfs-file tmpfs-file-content)
-  "Return whether TARGET is a fresh (does not see HOST-FILE) and writable tmpfs (can write TMPFS-FILE with TMPFS-FILE-CONTENT)."
-  (call-with-child-proc
-   (logior CLONE_NEWUSER CLONE_NEWNS SIGCHLD)
-   (lambda (=> <=)
-     (<= 'ids-mapped)
-     (make-mounts-private!)
-     (mount-tmpfs! target)
-     (spit (string-append target "/" tmpfs-file) tmpfs-file-content)
-     (=> 'observed
-         `((fresh? . ,(not (file-exists? (string-append target "/" host-file))))
-           (content . ,(slurp (string-append target "/" tmpfs-file))))))
-   (lambda (child-pid => <=)
-     (let-values (((uid-ranges gid-ranges) (current-root-id-map-ranges 1)))
-       (write-id-map-ranges! child-pid uid-ranges gid-ranges))
-     (=> 'ids-mapped)
-     (<= 'observed))))
 
 (define-syntax-rule (with-private-mount-in-container init-body body ...)
   "Start child proccess with private mounts. Eval INIT-BODY (e.g., mounts). Return what BODY evals to."
