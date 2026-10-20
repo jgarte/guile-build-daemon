@@ -52,10 +52,9 @@ The caller owns its lock and validity registration.
 Leave a read-only, non-executable regular file with modification time 1.
 A failure may leave an unregistered file at DESTINATION."
   (let ((port (open destination (logior O_WRONLY O_CREAT O_TRUNC O_CLOEXEC) #o666)))
-    (dynamic-wind
-      (lambda () #t)
-      (lambda () (put-bytevector port contents))
-      (lambda () (close-port port))))
+    (call-with-cleanup
+     (lambda () (close-port port))
+     (lambda () (put-bytevector port contents))))
   (chmod destination #o444)
   ;; Store timestamps are one second after the epoch; preserve access time.
   (utime destination (stat:atime (stat destination)) 1)

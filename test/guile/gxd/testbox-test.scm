@@ -162,10 +162,7 @@ fails with ECHILD, which is what distinguishes it from one still running."
       (is (not (file-exists? root))))
 
     ;; Teardown is the subject, so recover independently on an uncaught error.
-    (dynamic-wind
-      (lambda () #t)
-      check-teardown
-      recover-resources!))
+    (call-with-cleanup recover-resources! check-teardown))
 
   (test "rootless daemon and user use distinct nonroot identities" ()
     (call-with-rootless-testbox

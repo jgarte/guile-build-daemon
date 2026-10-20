@@ -4,6 +4,7 @@
 ;; SPDX-FileCopyrightText: 2026 buttonspresser
 
 (define-module (gxd database)
+  #:use-module (gxd prelude)
   #:use-module ((guix base16) #:select (bytevector->base16-string))
   #:use-module ((guix store database)
                 #:prefix guix-db:
@@ -25,13 +26,12 @@
 (define (call-with-database file proc)
   "Call PROC with an open existing database FILE, closing it on return or error."
   (let ((db (sqlite-open file SQLITE_OPEN_READWRITE)))
-    (dynamic-wind
-      (lambda () #t)
-      (lambda ()
-        ;; Match nixd's one-hour lock wait in LocalStore::openDB.
-        (sqlite-exec db "PRAGMA busy_timeout = 3600000;")
-        (proc db))
-      (lambda () (sqlite-close db)))))
+    (call-with-cleanup
+     (lambda () (sqlite-close db))
+     (lambda ()
+       ;; Match nixd's one-hour lock wait in LocalStore::openDB.
+       (sqlite-exec db "PRAGMA busy_timeout = 3600000;")
+       (proc db)))))
 
 (define (valid-path? db path)
   "Return whether PATH is registered in DB."

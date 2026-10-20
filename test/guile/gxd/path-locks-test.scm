@@ -21,20 +21,19 @@ Propagate errors other than lock contention; bound the child lifetime."
    (lambda ()
      (let ((port (open (string-append destination ".lock")
                        (logior O_RDWR O_CREAT O_CLOEXEC) #o600)))
-       (dynamic-wind
-         (lambda () #t)
-         (lambda ()
-           (let ((failure (capture-exception
-                           (lambda () (fcntl-flock port 'write-lock #:wait? #f)))))
-             (if failure
-                 (match (cons (exception-kind failure) (exception-args failure))
-                   (('flock-error errno)
-                    (if (memv errno (list EACCES EAGAIN))
-                        #f
-                        (raise-exception failure)))
-                   (_ (raise-exception failure)))
-                 #t)))
-         (lambda () (close-port port)))))))
+       (call-with-cleanup
+        (lambda () (close-port port))
+        (lambda ()
+          (let ((failure (capture-exception
+                          (lambda () (fcntl-flock port 'write-lock #:wait? #f)))))
+            (if failure
+                (match (cons (exception-kind failure) (exception-args failure))
+                  (('flock-error errno)
+                   (if (memv errno (list EACCES EAGAIN))
+                       #f
+                       (raise-exception failure)))
+                  (_ (raise-exception failure)))
+                #t))))))))
 
 (define-suite (path-locks-tests)
   (test "destination scope excludes another process and releases on return" ()
