@@ -42,6 +42,7 @@
      (eval . (put 'daemon-observes? 'scheme-indent-function 1))
      (eval . (put 'user-observes? 'scheme-indent-function 1))
      (eval . (put 'with-tmpfs-mount-in-container 'scheme-indent-function 1))
+     (eval . (put 'with-bind-mount-in-container 'scheme-indent-function 2))
 
      ;; Guix data forms used by the development manifests/packages.
      (eval . (put 'substitute-keyword-arguments 'scheme-indent-function 1))
