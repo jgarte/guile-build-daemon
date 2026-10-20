@@ -6,7 +6,7 @@
 (define-module (gxd database)
   #:use-module ((guix base16) #:select (bytevector->base16-string))
   #:use-module ((guix store database)
-                #:prefix guix:
+                #:prefix guix-db:
                 #:select (register-valid-path valid-path-id))
   #:use-module ((ice-9 exceptions)
                 #:select (&error define-exception-type raise-exception with-exception-handler))
@@ -35,7 +35,7 @@
 
 (define (valid-path? db path)
   "Return whether PATH is registered in DB."
-  (and (guix:valid-path-id db path) #t))
+  (and (guix-db:valid-path-id db path) #t))
 
 (define (call-with-transaction db thunk)
   "Call THUNK in an immediate transaction on DB; commit on return, roll back on exception."
@@ -63,7 +63,7 @@ The caller owns PATH's destination lock and has materialized its contents."
             (make-invalid-reference
              (format #f "path `~a' is not valid" reference)))))
        references)
-      (guix:register-valid-path
+      (guix-db:register-valid-path
        db #:path path #:references references #:deriver #f
        #:hash (string-append "sha256:" (bytevector->base16-string hash))
        #:nar-size size

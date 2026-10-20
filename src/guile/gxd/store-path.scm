@@ -6,7 +6,7 @@
 (define-module (gxd store-path)
   #:use-module ((gcrypt hash) #:select (sha256))
   #:use-module ((guix store)
-                #:prefix guix:
+                #:prefix guix-store:
                 #:select (%store-prefix store-path))
   #:use-module ((ice-9 exceptions) #:select (&error define-exception-type
                                                     raise-exception))
@@ -45,5 +45,5 @@ Raise a store-name error when NAME is invalid."
                        (map (lambda (reference) (string-append ":" reference))
                             references))))
         (hash (sha256 contents)))
-    (parameterize ((guix:%store-prefix store-directory))
-      (guix:store-path type hash name))))
+    (parameterize ((guix-store:%store-prefix store-directory))
+      (guix-store:store-path type hash name))))
