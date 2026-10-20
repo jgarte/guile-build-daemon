@@ -16,12 +16,11 @@
 
 (define (query db sql path)
   (let ((statement (sqlite-prepare db sql)))
-    (dynamic-wind
-      (lambda () #t)
-      (lambda ()
-        (sqlite-bind-arguments statement path)
-        (sqlite-map identity statement))
-      (lambda () (sqlite-finalize statement)))))
+    (call-with-cleanup
+     (lambda () (sqlite-finalize statement))
+     (lambda ()
+       (sqlite-bind-arguments statement path)
+       (sqlite-map identity statement)))))
 
 (define (read-references db path)
   "Return PATH's direct references in DB, sorted by path."
@@ -48,14 +47,13 @@ WHERE source.path = ? ORDER BY target.path;"
 Entries are keyed by path, unique and sorted; unregistered paths are omitted.
 Values contain nar-hash, nar-size, deriver (#f if absent), and direct references."
   (let ((db (sqlite-open database-file SQLITE_OPEN_READONLY)))
-    (dynamic-wind
-      (lambda () #t)
-      (lambda ()
-        (chain paths
-          (delete-duplicates _ string=?)
-          (sort _ string<?)
-          (filter-map (lambda (path) (read-entry db path)) _)))
-      (lambda () (sqlite-close db)))))
+    (call-with-cleanup
+     (lambda () (sqlite-close db))
+     (lambda ()
+       (chain paths
+         (delete-duplicates _ string=?)
+         (sort _ string<?)
+         (filter-map (lambda (path) (read-entry db path)) _))))))
 
 (define (database-observations-fixture ctx proceed)
   "Add `observe-db!' to CTX, using the preceding snapshot fixture.

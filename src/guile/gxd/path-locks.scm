@@ -4,6 +4,7 @@
 ;; SPDX-FileCopyrightText: 2026 buttonspresser
 
 (define-module (gxd path-locks)
+  #:use-module (gxd prelude)
   #:use-module ((guix build syscalls) #:select (fcntl-flock))
   #:use-module ((guix build utils) #:select (false-if-file-not-found))
   #:use-module ((ice-9 exceptions)
@@ -55,13 +56,11 @@
 (define (acquire-lock file)
   (let ((port (open file (logior O_RDWR O_CREAT O_CLOEXEC) #o600))
         (current? #f))
-    (dynamic-wind
-      (lambda () #t)
-      (lambda ()
-        (write-lock port)
-        (set! current? (current-lock? file port)))
-      (lambda ()
-        (unless current? (close-port port))))
+    (call-with-cleanup
+     (lambda () (unless current? (close-port port)))
+     (lambda ()
+       (write-lock port)
+       (set! current? (current-lock? file port))))
 
     ;; A previous holder may have unlinked the inode while we waited on it.
     (if current? port (acquire-lock file))))
@@ -75,10 +74,9 @@ Report cleanup failures without propagating them."
               file exception))
     (lambda ()
       ;; Closing must release the kernel lock even when unlinking fails.
-      (dynamic-wind
-        (lambda () #t)
-        (lambda () (delete-file file))
-        (lambda () (close-port port))))
+      (call-with-cleanup
+       (lambda () (close-port port))
+       (lambda () (delete-file file))))
     #:unwind? #t))
 
 (define (call-with-destination-lock destination thunk)
@@ -87,7 +85,6 @@ Return THUNK's values and release the lock when THUNK exits.
 This scope must not nest another lock on DESTINATION."
   (let* ((file (string-append destination ".lock"))
          (port (acquire-lock file)))
-    (dynamic-wind
-      (lambda () #t)
-      thunk
-      (lambda () (release-lock file port)))))
+    (call-with-cleanup
+     (lambda () (release-lock file port))
+     thunk)))

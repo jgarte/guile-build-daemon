@@ -17,10 +17,9 @@
 (define (call-with-client endpoint proc)
   "Call PROC with a new connection to ENDPOINT; close it before returning."
   (let ((store (open-connection endpoint)))
-    (dynamic-wind
-      (lambda () #t)
-      (lambda () (proc store))
-      (lambda () (close-connection store)))))
+    (call-with-cleanup
+     (lambda () (close-connection store))
+     (lambda () (proc store)))))
 
 (define (call-with-paired-clients left-endpoint right-endpoint proc)
   "Call PROC with new clients for LEFT-ENDPOINT and RIGHT-ENDPOINT.

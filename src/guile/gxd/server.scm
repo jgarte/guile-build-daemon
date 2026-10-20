@@ -172,25 +172,22 @@ These errors end the request, not the client session; other exceptions propagate
     (lambda ()
       ;; Like nixd's open_unix_socket, permit clients with other UIDs to connect.
       (let ((previous-mask (umask #o111)))
-        (dynamic-wind
-          (lambda () #t)
-          (lambda () (bind listener AF_UNIX socket-path))
-          (lambda () (umask previous-mask)))))
+        (call-with-cleanup
+         (lambda () (umask previous-mask))
+         (lambda () (bind listener AF_UNIX socket-path)))))
     #:unwind? #t)
 
-  (dynamic-wind
-    (lambda () #t)
-    (lambda ()
-      (listen listener 1)
-      (match (accept listener)
-        ((connection . _)
-         (dynamic-wind
-           (lambda () #t)
-           (lambda ()
-             (serve-client connection %store-directory
-                           (string-append %store-database-directory
-                                          "/db.sqlite")))
-           (lambda () (close-port connection))))))
-    (lambda ()
-      (close-port listener)
-      (delete-file socket-path))))
+  (call-with-cleanup
+   (lambda ()
+     (close-port listener)
+     (delete-file socket-path))
+   (lambda ()
+     (listen listener 1)
+     (match (accept listener)
+       ((connection . _)
+        (call-with-cleanup
+         (lambda () (close-port connection))
+         (lambda ()
+           (serve-client connection %store-directory
+                         (string-append %store-database-directory
+                                        "/db.sqlite")))))))))

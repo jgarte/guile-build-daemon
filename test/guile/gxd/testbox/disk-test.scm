@@ -17,12 +17,11 @@
   "Call PROC with the PID and path of a fresh testbox root, then delete it."
   (let* ((pid1 (getpid))
          (testbox-root (snapshot-base! pid1)))
-    (dynamic-wind
-      (lambda () #t)
-      (lambda () (proc pid1 testbox-root))
-      (lambda ()
-        (when (file-exists? testbox-root)
-          (delete-testbox-root! pid1))))))
+    (call-with-cleanup
+     (lambda ()
+       (when (file-exists? testbox-root)
+         (delete-testbox-root! pid1)))
+     (lambda () (proc pid1 testbox-root)))))
 
 (define-suite (testbox-disk-tests)
   (test "the installed base is available" ()

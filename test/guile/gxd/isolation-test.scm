@@ -32,14 +32,13 @@
 CHILD process started with FLAGS, releasing the channel and reaping the child
 afterwards."
   (match-let (((pid => <= disconnect!) (child-proc flags child)))
-    (dynamic-wind
-      (lambda () #t)
-      (lambda () (proc pid => <=))
-      (lambda ()
-        ;; Close the channel before waiting: a child left blocked on a receive
-        ;; exits once its endpoint is gone, where waiting first would deadlock.
-        (disconnect!)
-        (waitpid pid)))))
+    (call-with-cleanup
+     (lambda ()
+       ;; Close the channel before waiting: a child left blocked on a receive
+       ;; exits once its endpoint is gone, where waiting first would deadlock.
+       (disconnect!)
+       (waitpid pid))
+     (lambda () (proc pid => <=)))))
 
 (define (alive? pid)
   "Return #t when PID can be signalled, and so has not been reaped."
