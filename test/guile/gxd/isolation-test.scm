@@ -306,31 +306,39 @@ IDs."
          (is (get observed 'fresh?))
          (is (string=? "written" (get observed 'content))))))))
 
-(define (observe-writable-bind-mount source target)
-  "Return whether TARGET accepts a write after mounting."
+(define (observe-writing-a-file-in-bind-mount source target file content)
+  "Return alist of whether TARGET accepts writing a FILE with CONTENT after mounting (key 'writabe?) and SOURCE have the same FILE with the same CONTENT (key 'same-content?)."
   (call-with-child-proc
    (logior CLONE_NEWUSER CLONE_NEWNS SIGCHLD)
    (lambda (=> <=)
      (<= 'ids-mapped)
      (make-mounts-private!)
      (bind-mount! source target)
-     (spit (string-append target "/written") "written")
-     (=> 'observed #t))
+     (=> 'file-writing
+         (not (throws-exception?
+               (spit (string-append target "/" file) content)))))
    (lambda (child-pid => <=)
      (let-values (((uid-ranges gid-ranges) (current-root-id-map-ranges 1)))
        (write-id-map-ranges! child-pid uid-ranges gid-ranges))
      (=> 'ids-mapped)
-     (<= 'observed))))
+     `((writable? . ,(<= 'file-writing))
+       (same-content? . ,(string=? content (slurp (string-append source "/" file))))))))
 
 (define-suite (bind-mount-tests)
   (test "source contents are exposed writable at the target" ()
     (call-with-temporary-directory
      (lambda (directory)
-       (let ((source (string-append directory "/source"))
-             (target (string-append directory "/target")))
-         (mkdir source)
-         (is (observe-writable-bind-mount source target))
-         (is (string=? "written" (slurp (string-append source "/written")))))))))
+       (let* ((file "some-file")
+              (content "some content")
+              (source (string-append directory "/source"))
+              (target (string-append directory "/target"))
+              (observation
+               (begin (mkdir source)
+                      (observe-writing-a-file-in-bind-mount source target file content))))
+         (is (get observation 'writable?))
+         (is (get observation 'same-content?))
+         ;; same as above 
+         (is (string=? content (slurp (string-append source "/" file)))))))))
 
 (define-suite (bind-mount-read-only-tests)
   (test "source contents are exposed read-only at the target" ()
