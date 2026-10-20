@@ -247,20 +247,6 @@ IDs."
       (lambda ()
         (delete-file-recursively root)))))
 
-(define (observe-pivoted-root root)
-  "Return the entries and PID visible after pivoting into ROOT."
-  (call-with-child-proc
-   (logior CLONE_NEWUSER CLONE_NEWNS CLONE_NEWPID SIGCHLD)
-   (lambda (=> <=)
-     (make-mounts-private!)
-     (pivot-into! root)
-     (=> 'observed
-         `((entries . ,(scandir
-                        "/"
-                        (lambda (entry) (not (member entry '("." ".."))))))
-           (pid . ,(readlink "/proc/self")))))
-   (lambda (_ => <=) (<= 'observed))))
-
 (define (observe-read-only-bind-mount source target)
   "Return the source content and whether TARGET accepts a write after mounting."
   (call-with-child-proc
@@ -279,6 +265,21 @@ IDs."
        (write-id-map-ranges! child-pid uid-ranges gid-ranges))
      (=> 'ids-mapped)
      (<= 'observed))))
+
+(define-suite (bind-mount-read-only-tests)
+  (test "source contents are exposed read-only at the target" ()
+    (define content "source content")
+    (define observed
+      (call-with-temporary-directory
+       (lambda (directory)
+         (let ((source (string-append directory "/source"))
+               (target (string-append directory "/target")))
+           (mkdir source)
+           (spit (string-append source "/file") content)
+           (observe-read-only-bind-mount source target)))))
+
+    (is (string=? content (get observed 'content)))
+    (is (not (get observed 'writable?)))))
 
 (define (observe-tmpfs target)
   "Return whether TARGET is a fresh writable tmpfs."
@@ -341,20 +342,19 @@ IDs."
          ;; same as above 
          (is (string=? content (slurp (string-append source "/" file)))))))))
 
-(define-suite (bind-mount-read-only-tests)
-  (test "source contents are exposed read-only at the target" ()
-    (define content "source content")
-    (define observed
-      (call-with-temporary-directory
-       (lambda (directory)
-         (let ((source (string-append directory "/source"))
-               (target (string-append directory "/target")))
-           (mkdir source)
-           (spit (string-append source "/file") content)
-           (observe-read-only-bind-mount source target)))))
-
-    (is (string=? content (get observed 'content)))
-    (is (not (get observed 'writable?)))))
+(define (observe-pivoted-root root)
+  "Return the entries and PID visible after pivoting into ROOT."
+  (call-with-child-proc
+   (logior CLONE_NEWUSER CLONE_NEWNS CLONE_NEWPID SIGCHLD)
+   (lambda (=> <=)
+     (make-mounts-private!)
+     (pivot-into! root)
+     (=> 'observed
+         `((entries . ,(scandir
+                        "/"
+                        (lambda (entry) (not (member entry '("." ".."))))))
+           (pid . ,(readlink "/proc/self")))))
+   (lambda (_ => <=) (<= 'observed))))
 
 (define-suite (pivot-into-tests)
   (test "a pivoted process sees its new root and PID namespace through procfs" ()
