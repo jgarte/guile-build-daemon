@@ -9,7 +9,7 @@
                 #:prefix guix:
                 #:select (register-valid-path valid-path-id))
   #:use-module ((ice-9 exceptions)
-                #:select (&error define-exception-type raise-exception))
+                #:select (&error define-exception-type raise-exception with-exception-handler))
   #:use-module ((ice-9 format) #:select (format))
   #:use-module ((srfi srfi-19) #:select (current-time time-utc))
   #:use-module ((sqlite3) #:select (SQLITE_OPEN_READWRITE
@@ -38,17 +38,16 @@
   (and (guix:valid-path-id db path) #t))
 
 (define (call-with-transaction db thunk)
-  "Call THUNK in an immediate transaction on DB; roll back on exceptional exit."
-  (let ((committed? #f))
-    (sqlite-exec db "BEGIN IMMEDIATE;")
-    (dynamic-wind
-      (lambda () #t)
-      (lambda ()
-        (thunk)
-        (sqlite-exec db "COMMIT;")
-        (set! committed? #t))
-      (lambda ()
-        (unless committed? (sqlite-exec db "ROLLBACK;"))))))
+  "Call THUNK in an immediate transaction on DB; commit on return, roll back on exception."
+  (sqlite-exec db "BEGIN IMMEDIATE;")
+  (with-exception-handler
+    (lambda (exception)
+      (sqlite-exec db "ROLLBACK;")
+      (raise-exception exception))
+    (lambda ()
+      (thunk)
+      (sqlite-exec db "COMMIT;"))
+    #:unwind? #t))
 
 (define (register-text! db path hash size references)
   "Register fresh non-derivation PATH and REFERENCES atomically in DB.
