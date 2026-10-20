@@ -281,18 +281,19 @@ IDs."
     (is (string=? content (get observed 'content)))
     (is (not (get observed 'writable?)))))
 
-(define (observe-tmpfs target)
-  "Return whether TARGET is a fresh writable tmpfs."
+(define (observe-writing-and-isolation-in-tmpfs-mount target host-file
+                                                      tmpfs-file tmpfs-file-content)
+  "Return whether TARGET is a fresh (does not see HOST-FILE) and writable tmpfs (can write TMPFS-FILE with TMPFS-FILE-CONTENT)."
   (call-with-child-proc
    (logior CLONE_NEWUSER CLONE_NEWNS SIGCHLD)
    (lambda (=> <=)
      (<= 'ids-mapped)
      (make-mounts-private!)
      (mount-tmpfs! target)
-     (spit (string-append target "/written") "written")
+     (spit (string-append target "/" tmpfs-file) tmpfs-file-content)
      (=> 'observed
-         `((fresh? . ,(not (file-exists? (string-append target "/present"))))
-           (content . ,(slurp (string-append target "/written"))))))
+         `((fresh? . ,(not (file-exists? (string-append target "/" host-file))))
+           (content . ,(slurp (string-append target "/" tmpfs-file))))))
    (lambda (child-pid => <=)
      (let-values (((uid-ranges gid-ranges) (current-root-id-map-ranges 1)))
        (write-id-map-ranges! child-pid uid-ranges gid-ranges))
@@ -303,10 +304,17 @@ IDs."
   (test "a tmpfs hides old contents and accepts writes" ()
     (call-with-temporary-directory
      (lambda (target)
-       (spit (string-append target "/present") "present")
-       (let ((observed (observe-tmpfs target)))
-         (is (get observed 'fresh?))
-         (is (string=? "written" (get observed 'content))))))))
+       (let* ((tmpfs-file "some-tmpfs-file")
+              (tmpfs-file-content "some content of tmpfs file")
+              (host-file "some-host-file")
+              (host-file-content "some content of host file")
+              (observation
+               (begin
+                 (spit (string-append target "/" host-file) host-file-content)
+                 (observe-writing-and-isolation-in-tmpfs-mount target host-file
+                                                               tmpfs-file tmpfs-file-content))))
+         (is (get observation 'fresh?))
+         (is (string=? tmpfs-file-content (get observation 'content))))))))
 
 (define (observe-writing-a-file-in-bind-mount source target file content)
   "Return alist of whether TARGET accepts writing a FILE with CONTENT after mounting (key 'writabe?) and SOURCE have the same FILE with the same CONTENT (key 'same-content?)."
