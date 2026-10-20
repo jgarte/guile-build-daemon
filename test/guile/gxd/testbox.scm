@@ -7,7 +7,7 @@
                           password-entry
                           write-group
                           write-passwd))
-  #:use-module ((ice-9 match) #:select (match-let))
+  #:use-module ((ice-9 match) #:select (match-let match-lambda))
   #:use-module ((srfi srfi-1) #:select (append-map delete-duplicates iota))
   #:use-module ((srfi srfi-9) #:select (define-record-type))
   #:use-module ((guix build utils) #:select (executable-file? mkdir-p))
@@ -177,9 +177,9 @@ Raise an error when a group names an unknown role."
 (define (mount-testbox-sources! root manifest)
   "Bind the sources listed in MANIFEST into ROOT read-only."
   (for-each
-   (lambda (entry)
-     (let ((source (cdr entry)))
-       (bind-mount-read-only! source (string-append root source))))
+   (match-lambda
+     ((_ . source)
+      (bind-mount-read-only! source (string-append root source))))
    (get manifest 'testbox/sources)))
 
 (define (testbox-init => <=)
