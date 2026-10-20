@@ -6,10 +6,7 @@
 (define-module (gxd worker-protocol)
   #:use-module ((guix serialization) #:select (integer long-long utf8-string
                                                        read-value write-value))
-  #:use-module ((rnrs bytevectors) #:select (bytevector-length
-                                             bytevector-u8-ref
-                                             bytevector-copy!
-                                             make-bytevector utf8->string))
+  #:use-module ((rnrs bytevectors) #:select (bytevector-length bytevector-u8-ref utf8->string))
   #:use-module ((rnrs io ports) #:select (get-bytevector-n))
   #:use-module ((srfi srfi-1) #:select (delete-duplicates))
   #:export (read-integer read-boolean read-bytevector read-string read-string-pairs read-options
@@ -102,23 +99,26 @@ The operation number is already consumed; reference syntax is not validated."
   "Read a UTF-8 worker-protocol string from PORT, requiring zero padding."
   (utf8->string (read-bytevector port)))
 
+(define (read-exact-bytevector port length)
+  "Read LENGTH bytes from PORT; raise an error on premature EOF."
+  (let ((bytes (get-bytevector-n port length)))
+    (when (or (eof-object? bytes)
+              (< (bytevector-length bytes) length))
+      (error "unexpected end-of-file"))
+    bytes))
+
 (define (read-bytevector port)
   "Read a worker-protocol bytevector from PORT, requiring zero padding."
   (let* ((length (read-integer port))
          (padding (modulo (- length) 8))
-         (bytes (get-bytevector-n port (+ length padding))))
-
-    (when (or (eof-object? bytes)
-              (< (bytevector-length bytes) (+ length padding)))
-      (error "unexpected end-of-file"))
+         (bytes (read-exact-bytevector port length))
+         (padding-bytes (read-exact-bytevector port padding)))
 
     ;; nix/libutil/serialise.cc readPadding rejects nonzero padding.
-    (let loop ((index length))
-      (when (< index (+ length padding))
-        (unless (zero? (bytevector-u8-ref bytes index))
+    (let loop ((index 0))
+      (when (< index padding)
+        (unless (zero? (bytevector-u8-ref padding-bytes index))
           (error "non-zero padding"))
-        (loop (+ index 1))))
+        (loop (1+ index))))
 
-    (let ((value (make-bytevector length)))
-      (bytevector-copy! bytes 0 value 0 length)
-      value)))
+    bytes))
