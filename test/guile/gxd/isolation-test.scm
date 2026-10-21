@@ -348,7 +348,7 @@ IDs."
             (with-bind-mount-in-container
              source target
              (lambda ()
-               `((source-files-available? . ,(string=? content (slurp source-file)))
+               `((source-files-available? . ,(string=? content (slurp target-file)))
                  (target-writable? . ,(not (throws-exception?
                                              (spit target-file new-content)))))))
             `((target-source-propagation? . ,(string=? new-content (slurp source-file)))))))))
