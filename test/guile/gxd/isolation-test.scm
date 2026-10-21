@@ -331,9 +331,12 @@ IDs."
          (call-with-tmpfs-mount-in-container
           target write-and-observe-tmpfs!))))
 
-    (is (not (get observation 'underlying-file-visible?)))
-    (is (string=? expected-tmpfs-content
-                  (get observation 'tmpfs-file-content)))))
+    (define-values (underlying-file-visible? tmpfs-file-content)
+      (values (get observation 'underlying-file-visible?)
+              (get observation 'tmpfs-file-content)))
+
+    (is (not underlying-file-visible?))
+    (is (string=? expected-tmpfs-content tmpfs-file-content))))
 
 (define (call-with-bind-mount-in-container source target thunk)
   "Start a child with private mounts, bind SOURCE to TARGET, and call THUNK."
@@ -373,12 +376,16 @@ IDs."
            `((source-content-after-target-write . ,(slurp source-file))
              ,@mounted-observation)))))
 
-    (is (string=? initial-content
-                  (get observation 'target-content-before-write)))
-    (is (string=? updated-content
-                  (get observation 'target-content-after-write)))
-    (is (string=? updated-content
-                  (get observation 'source-content-after-target-write)))))
+    (define-values (target-content-before-write
+                    target-content-after-write
+                    source-content-after-target-write)
+      (values (get observation 'target-content-before-write)
+              (get observation 'target-content-after-write)
+              (get observation 'source-content-after-target-write)))
+
+    (is (string=? initial-content target-content-before-write))
+    (is (string=? updated-content target-content-after-write))
+    (is (string=? updated-content source-content-after-target-write))))
 
 (define (observe-pivoted-root root)
   "Return the entries and PID visible after pivoting into ROOT."
