@@ -316,18 +316,19 @@ IDs."
          (define host-file (string-append target "/" host-file-name))
          (define tmpfs-file (string-append target "/" tmpfs-file-name))
 
+         (define (write-and-observe-tmpfs)
+           (define host-file-visible?
+             (file-exists? host-file))
+
+           (spit tmpfs-file expected-tmpfs-content)
+
+           `((host-file-visible? . ,host-file-visible?)
+             (tmpfs-file-content . ,(slurp tmpfs-file))))
+
          (spit host-file host-file-content)
 
          (with-tmpfs-mount-in-container
-          target
-          (lambda ()
-            (define host-file-visible?
-              (file-exists? host-file))
-
-            (spit tmpfs-file expected-tmpfs-content)
-
-            `((host-file-visible? . ,host-file-visible?)
-              (tmpfs-file-content . ,(slurp tmpfs-file))))))))
+          target write-and-observe-tmpfs))))
 
     (is (not (get observation 'host-file-visible?)))
     (is (string=? expected-tmpfs-content
