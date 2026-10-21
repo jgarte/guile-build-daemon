@@ -67,8 +67,10 @@ and declared outputs as sorted name/path pairs (empty for ordinary files)."
          (filter-map (lambda (path) (read-entry db path)) _))))))
 
 (define (database-observations-fixture ctx proceed)
-  "Add `observe-db!' to CTX, using the preceding snapshot fixture.
-Given a path list, return common registration facts or raise on a difference."
+  "Add `observe-db!' and `observe-db-path!' to CTX using the snapshot fixture.
+The plural operation returns path-keyed registration facts for a path list;
+the singular operation returns one path's facts, or #f if unregistered.
+Both raise on differences between the paired databases."
   (let ((snapshot! (get ctx 'snapshot!)))
     (unless snapshot!
       (error "database observations require the snapshot fixture"))
@@ -82,4 +84,11 @@ Given a path list, return common registration facts or raise on a difference."
             (error "store database entries differ" left right))
           left)))
 
-    (proceed (acons 'observe-db! observe-db! ctx) (lambda () #t))))
+    (define (observe-db-path! path)
+      "Return common registration facts for PATH, or #f if unregistered."
+      (assoc-ref (observe-db! (list path)) path))
+
+    (proceed (append `((observe-db! . ,observe-db!)
+                       (observe-db-path! . ,observe-db-path!))
+                     ctx)
+             (lambda () #t))))
