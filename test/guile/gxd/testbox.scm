@@ -182,6 +182,13 @@ Raise an error when a group names an unknown role."
       (bind-mount-read-only! source (string-append root source))))
    (get manifest 'testbox/sources)))
 
+(define (prepare-build-log-directory! root manifest)
+  "Create the build log directory beneath ROOT, owned by MANIFEST's daemon role."
+  (let ((log-directory (string-append root "/var/log/guix"))
+        (daemon (get-in manifest '(testbox/roles daemon))))
+    (mkdir-p log-directory)
+    (chown log-directory (get daemon 'role/uid) (get daemon 'role/gid))))
+
 (define (testbox-init => <=)
   "Prepare the root, enter it, report readiness, then await exit."
   ;; As PID 1, this process adopts orphaned descendants.  Explicitly ignoring
@@ -202,6 +209,7 @@ Raise an error when a group names an unknown role."
         (mount-testbox-devpts! root)
         (install-testbox-dev-fd-links! root)
         (install-group-accounts! root manifest)
+        (prepare-build-log-directory! root manifest)
         (mount-testbox-sources! root manifest)
         (pivot-into! root))
       (=> 'ready #f))
