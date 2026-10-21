@@ -222,11 +222,7 @@ otherwise retain the same connections for the next submission."
             (equal? (list a) _))))))
 
 (define-suite (server-derivation-tests)
-  'metadata `((test/fixtures
-               . ,(list (client-trust-fixture #f)
-                        (paired-daemon-testboxes-fixture 'rootless 'nixd 'gxd)
-                        paired-relay-observers-fixture
-                        paired-snapshots-fixture database-observations-fixture)))
+  'metadata `((test/fixtures . ,derivation-test-fixtures))
 
   (test "derivation registration records outputs and references without realizing outputs" (ctx)
     (define (make-drvs store)
