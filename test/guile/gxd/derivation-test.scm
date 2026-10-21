@@ -5,7 +5,7 @@
 
 (define-module (gxd derivation-test)
   #:use-module ((ares suitbl core) #:select (define-suite is test))
-  #:use-module ((guix store) #:select (direct-store-path valid-path? output-path))
+  #:use-module ((guix store) #:select (add-text-to-store direct-store-path valid-path? output-path))
   #:use-module ((guix derivations)
                 #:select (derivation derivation-input derivation-file-name
                                      derivation->output-paths derivation-inputs
@@ -227,7 +227,7 @@ outputs are not built."
     (is (equal? (expected-rejection drv-missing-out-env)
                 (registration-outcome! "example.drv" drv-missing-out-env)))))
 
-(define-suite (server-derivation-output-order-tests)
+(define-suite (server-derivation-order-tests)
   'metadata `((test/fixtures . ,derivation-test-fixtures))
 
   (test "reversed output declarations retain their canonical output paths" (ctx)
@@ -272,7 +272,34 @@ outputs are not built."
                   (registration . #f)
                   (connection-usable? . #t))
                 _)
-        (is "dev is rejected before out, registration stays absent, and the session remains usable")))))
+        (is "dev is rejected before out, registration stays absent, and the session remains usable"))))
+
+  (test "reversed input environment retains canonical parent output paths" (ctx)
+    (define (register-parent store)
+      "Register an input with reversed environment, then its canonically hashed parent."
+      (let* ((drv (test-derivation #:output-names '("dev" "out")))
+             (drv-with-reversed-env
+              (set-fields drv
+                ((derivation-builder-environment-vars)
+                 (reverse (derivation-builder-environment-vars drv)))))
+             (input-path
+              (add-text-to-store store "example.drv" (derivation->text drv-with-reversed-env)))
+             (input-drv (set-fields drv ((derivation-file-name) input-path))))
+        (derivation store "parent" "/bin/sh" '()
+                    #:system "x86_64-linux"
+                    #:inputs (list (derivation-input input-drv '("dev"))))))
+
+    (call-with-paired-clients
+     (get ctx 'relay/left-endpoint)
+     (get ctx 'relay/right-endpoint)
+     (lambda (left right)
+       (let ((left-parent (register-parent left))
+             (right-parent (register-parent right)))
+         (is (equal? (derivation-file-name left-parent) (derivation-file-name right-parent))
+             "both daemons register the parent with output paths computed from the canonically ordered input"))))
+
+    (match-let (((left-bytes right-bytes) ((get ctx 'observe-bytes!))))
+      (is (bytevector=? left-bytes right-bytes)))))
 
 (define-suite (server-invalid-derivation-hash-tests)
   'metadata `((test/fixtures . ,derivation-test-fixtures))

@@ -41,12 +41,14 @@
 (define (read-derivation port)
   "Read a derivation from PORT without loading its input derivations.
 Input records hold filenames under `derivation-input-derivation' until resolved.
-Output declarations are sorted by name.
+Output declarations and environment bindings are sorted by name.
 Accept the syntax understood by Guix's reader; decoding errors propagate."
   (let ((drv (guix-drv:read-derivation port identity)))
     (set-fields drv
       ((guix-drv:derivation-outputs)
-       (sort (guix-drv:derivation-outputs drv) binding-name<?)))))
+       (sort (guix-drv:derivation-outputs drv) binding-name<?))
+      ((guix-drv:derivation-builder-environment-vars)
+       (sort (guix-drv:derivation-builder-environment-vars drv) binding-name<?)))))
 
 (define (resolve-inputs! drv load-input)
   "Return a copy of decoded DRV with ordinary input derivations resolved by LOAD-INPUT.
