@@ -9,6 +9,7 @@
                 #:select (derivation derivation-input derivation-file-name
                                      derivation->output-paths derivation-inputs
                                      derivation-input-path derivation-sources
+                                     derivation-system derivation-builder
                                      derivation-outputs derivation-output-path
                                      derivation-output-hash derivation-output-hash-algo
                                      write-derivation read-derivation derivation-hash
@@ -37,17 +38,31 @@
   (call-with-output-string
    (lambda (port) (write-derivation drv port))))
 
-(define (test-derivation)
-  "Return a completed single-output derivation named example, without store access."
+(define* (test-derivation #:key (output-names '("out")))
+  "Return a completed derivation named example with OUTPUT-NAMES, without store access."
   (let* ((drv (call-with-input-string
-                  "Derive([(\"out\",\"\",\"\",\"\")],[],[],\"x86_64-linux\",\"/bin/sh\",[],[(\"out\",\"\")])"
+                  "Derive([(\"out\",\"\",\"\",\"\")],[],[],\"\",\"\",[],[])"
                 read-derivation))
-         (path (output-path "out" (derivation-hash drv) "example"))
-         (output (assoc-ref (derivation-outputs drv) "out")))
-    (set-fields drv
-      ((derivation-outputs)
-       (list (cons "out" (set-fields output ((derivation-output-path) path)))))
-      ((derivation-builder-environment-vars) (list (cons "out" path))))))
+         (output (assoc-ref (derivation-outputs drv) "out"))
+         (names (sort output-names string<?))
+         (masked-outputs (map (lambda (name) (cons name output)) names))
+         (masked-env (map (lambda (name) (cons name "")) names))
+         (masked-drv
+          (set-fields drv
+            ((derivation-system) "x86_64-linux")
+            ((derivation-builder) "/bin/sh")
+            ((derivation-outputs) masked-outputs)
+            ((derivation-builder-environment-vars) masked-env)))
+         (hash (derivation-hash masked-drv))
+         (env (map (lambda (name) (cons name (output-path name hash "example"))) names))
+         (outputs
+          (map (match-lambda
+                 ((name . path)
+                  (cons name (set-fields output ((derivation-output-path) path)))))
+               env)))
+    (set-fields masked-drv
+      ((derivation-outputs) outputs)
+      ((derivation-builder-environment-vars) env))))
 
 (define (derivation-text-path name drv)
   "Return the text store path for DRV submitted under NAME."
@@ -337,6 +352,53 @@ outputs are not built."
 
     (is (equal? (expected-rejection drv-missing-out-env)
                 (registration-outcome! "example.drv" drv-missing-out-env)))))
+
+(define-suite (server-derivation-output-order-tests)
+  'metadata `((test/fixtures . ,derivation-test-fixtures))
+
+  (test "reversed output declarations retain their canonical output paths" (ctx)
+    (define step! (get ctx 'step!))
+    (define observe-db-path! (get ctx 'observe-db-path!))
+
+    (let* ((drv (test-derivation #:output-names '("dev" "out")))
+           (reversed-drv
+            (set-fields drv
+              ((derivation-outputs) (reverse (derivation-outputs drv)))))
+           (reversed-text (derivation->text reversed-drv))
+           (reversed-path (derivation-text-path "example.drv" reversed-drv)))
+
+      (chain (step! `(add-text-to-store "example.drv" ,reversed-text)
+                    #:connection 'derivation #:terminal? #t)
+        (equal? reversed-path _)
+        (is "reversed declarations are accepted at the expected derivation path"))
+
+      (chain (observe-db-path! reversed-path)
+        (get _ 'outputs)
+        (equal? (derivation->output-paths drv) _)
+        (is "registration retains the canonical output mappings"))))
+
+  (test "reversed invalid declarations report the lexically first output" (ctx)
+    (define registration-outcome! (get ctx 'registration-outcome!))
+
+    (let* ((drv (test-derivation #:output-names '("dev" "out")))
+           (invalid-output-path "/gnu/store/00000000000000000000000000000000-invalid")
+           (invalid-drv
+            (set-fields drv
+              ((derivation-outputs)
+               (map (match-lambda
+                      ((name . output)
+                       (cons name (set-fields output ((derivation-output-path) invalid-output-path)))))
+                    (reverse (derivation-outputs drv))))))
+           (invalid-drv-path (derivation-text-path "example.drv" invalid-drv))
+           (expected-dev-path (assoc-ref (derivation->output-paths drv) "dev")))
+
+      (chain (registration-outcome! "example.drv" invalid-drv)
+        (equal? `((response . ,(incorrect-output-error
+                                invalid-drv-path invalid-output-path expected-dev-path))
+                  (registration . #f)
+                  (connection-usable? . #t))
+                _)
+        (is "dev is rejected before out, registration stays absent, and the session remains usable")))))
 
 (define-suite (server-invalid-derivation-hash-tests)
   'metadata `((test/fixtures . ,derivation-test-fixtures))
