@@ -95,10 +95,21 @@ Propagate SQLite errors."
        (apply sqlite-bind-arguments statement arguments)
        (sqlite-step statement)))))
 
+;; Cached derivation files must remain valid and unchanged for this process's lifetime.
+(define resolved-inputs (make-hash-table))
+
 (define (read-registered-derivation! db path)
-  "Read the derivation at registered PATH in DB; reject an unregistered input."
-  (check-references db (list path))
-  (call-with-input-file path derivations:read-derivation))
+  "Return PATH's resolved derivation, reusing cached records for the process lifetime.
+On a cache miss, require PATH to be registered in DB and read its file."
+  (or (hash-ref resolved-inputs path)
+      (begin
+        (check-references db (list path))
+        (let* ((drv (call-with-input-file path derivations:read-derivation))
+               (resolved-drv
+                (derivations:resolve-inputs!
+                 drv (lambda (input) (read-registered-derivation! db input)))))
+          (hash-set! resolved-inputs path resolved-drv)
+          resolved-drv))))
 
 (define (register-derivation! db store-directory path hash size references)
   "Register fresh derivation PATH and its declared outputs atomically in DB.

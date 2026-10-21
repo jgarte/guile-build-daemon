@@ -48,28 +48,18 @@ Accept the syntax understood by Guix's reader; decoding errors propagate."
 
 (define (resolve-inputs! drv load-input)
   "Return a copy of decoded DRV with ordinary input derivations resolved by LOAD-INPUT.
-LOAD-INPUT takes a filename and returns a decoded derivation.  Fixed-output
-derivations are retained without loading their inputs.  Load and resolve each
-input filename once per call.  Lookup and decoding errors propagate."
-  (define cache (make-hash-table))
-  (define (resolve-path! path)
-    (or (hash-ref cache path)
-        (let ((resolved (resolve! (load-input path))))
-          (hash-set! cache path resolved)
-          resolved)))
-
-  (define (resolve! drv)
-    (if (fixed-output drv)
-        drv
-        (set-fields drv
-          ((guix-drv:derivation-inputs)
-           (map (lambda (input)
-                  (set-fields input
-                    ((guix-drv:derivation-input-derivation)
-                     (resolve-path! (guix-drv:derivation-input-derivation input)))))
-                (guix-drv:derivation-inputs drv))))))
-
-  (resolve! drv))
+LOAD-INPUT takes a filename and returns a derivation with its inputs resolved.
+Fixed-output derivations are retained without loading their inputs.
+Loader errors propagate."
+  (if (fixed-output drv)
+      drv
+      (set-fields drv
+        ((guix-drv:derivation-inputs)
+         (map (lambda (input)
+                (set-fields input
+                  ((guix-drv:derivation-input-derivation)
+                   (load-input (guix-drv:derivation-input-derivation input)))))
+              (guix-drv:derivation-inputs drv))))))
 
 (define (mask-outputs drv)
   "Return a copy of DRV with its output paths and corresponding environment values empty."
