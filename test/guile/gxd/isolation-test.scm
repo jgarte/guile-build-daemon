@@ -318,7 +318,7 @@ IDs."
             (lambda ()
               `((tmpfs-mount-fresh? . ,(not (file-exists?
                                              (string-append target "/" host-file))))
-                (tmpfs-mount-writable? ,(not (throws-exception?
+                (tmpfs-mount-writable? . ,(not (throws-exception?
                                               (spit (string-append target "/" tmpfs-file)
                                                     tmpfs-file-content)))))))))))
     (is (get observation 'tmpfs-mount-fresh?))
