@@ -282,27 +282,26 @@ IDs."
     (is (not (get observed 'writable?)))))
 
 
-(define-syntax-rule (with-private-mount-in-container init-body body ...)
-  "Start child proccess with private mounts. Eval INIT-BODY (e.g., mounts). Return what BODY evals to."
+(define (with-private-mount-in-container init proc)
+  "Start a child with private mounts, call INIT, then return PROC's result."
   (call-with-child-proc
    (logior CLONE_NEWUSER CLONE_NEWNS SIGCHLD)
    (lambda (=> <=)
      (<= 'ids-mapped)
      (make-mounts-private!)
-     init-body
-     (=> 'body-evaluation
-         (begin body ...)))
+     (init)
+     (=> 'body-evaluation (proc)))
    (lambda (child-pid => <=)
      (let-values (((uid-ranges gid-ranges) (current-root-id-map-ranges 1)))
        (write-id-map-ranges! child-pid uid-ranges gid-ranges))
      (=> 'ids-mapped)
      (<= 'body-evaluation))))
 
-(define-syntax-rule (with-tmpfs-mount-in-container target body ...)
-  "Start child proccess with private mounts and mount TARGET as tmpfs. Return what BODY evals to."
+(define (with-tmpfs-mount-in-container target proc)
+  "Start a child with private mounts, mount TARGET as tmpfs, and call PROC."
   (with-private-mount-in-container
-   (mount-tmpfs! target)
-   body ...))
+   (lambda () (mount-tmpfs! target))
+   proc))
 
 
 (define-suite (mount-tmpfs-tests)
@@ -315,20 +314,22 @@ IDs."
                (host-file "some-host-file")
                (host-file-content "some content of host file"))
            (spit (string-append target "/" host-file) host-file-content)
-           (with-tmpfs-mount-in-container target
-             `((tmpfs-mount-fresh? . ,(not (file-exists?
-                                            (string-append target "/" host-file))))
-               (tmpfs-mount-writable? ,(not (throws-exception?
-                                             (spit (string-append target "/" tmpfs-file)
-                                                   tmpfs-file-content))))))))))
+           (with-tmpfs-mount-in-container
+            target
+            (lambda ()
+              `((tmpfs-mount-fresh? . ,(not (file-exists?
+                                             (string-append target "/" host-file))))
+                (tmpfs-mount-writable? ,(not (throws-exception?
+                                              (spit (string-append target "/" tmpfs-file)
+                                                    tmpfs-file-content)))))))))))
     (is (get observation 'tmpfs-mount-fresh?))
     (is (get observation 'tmpfs-mount-writable?))))
 
-(define-syntax-rule (with-bind-mount-in-container source target body ...)
-  "Start child proccess with private mounts. Bind mount SOURCE to TARGET. Return what BODY evals to."
+(define (with-bind-mount-in-container source target proc)
+  "Start a child with private mounts, bind SOURCE to TARGET, and call PROC."
   (with-private-mount-in-container
-   (bind-mount! source target)
-   body ...))
+   (lambda () (bind-mount! source target))
+   proc))
 
 (define-suite (bind-mount-tests)
   (test "source contents are exposed writable at the target" ()
@@ -347,8 +348,10 @@ IDs."
            (append
             (with-bind-mount-in-container
              source target
-             `((source-files-available? . ,(string=? content (slurp source-file)))
-               (target-writable? . ,(not (throws-exception? (spit target-file new-content))))))
+             (lambda ()
+               `((source-files-available? . ,(string=? content (slurp source-file)))
+                 (target-writable? . ,(not (throws-exception?
+                                             (spit target-file new-content)))))))
             `((target-source-propagation? . ,(string=? new-content (slurp source-file)))))))))
     (is (get observation 'source-files-available?))
     (is (get observation 'target-writable?))
