@@ -7,7 +7,7 @@
   #:use-module (gxd prelude)
   #:use-module ((gxd database)
                 #:prefix database:
-                #:select (valid-path? register-text! register-derivation!))
+                #:select (valid-path? register-item!))
   #:use-module ((gxd path-locks) #:select (call-with-destination-lock))
   #:use-module ((gxd store-path) #:select (text-path))
   #:use-module ((gxd store-files) #:select (delete-path!))
@@ -28,10 +28,8 @@ The caller must exclude concurrent GC."
           (unless (database:valid-path? db destination)
             (delete-path! destination)
             (let-values (((hash size) (write-text! destination contents)))
-              (if (string-suffix? ".drv" name)
-                  (database:register-derivation!
-                   db store-directory destination hash size references)
-                  (database:register-text! db destination hash size references)))))))
+              (database:register-item!
+               db store-directory destination hash size references))))))
     destination))
 
 (define (write-text! destination contents)

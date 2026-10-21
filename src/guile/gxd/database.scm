@@ -22,7 +22,7 @@
   #:use-module ((sqlite3) #:select (SQLITE_OPEN_READWRITE
                                     sqlite-close sqlite-exec sqlite-open
                                     sqlite-prepare sqlite-bind-arguments sqlite-step sqlite-finalize))
-  #:export (call-with-database valid-path? register-text! register-derivation!
+  #:export (call-with-database valid-path? register-item!
                                &invalid-reference invalid-reference?
                                invalid-reference-message))
 
@@ -75,15 +75,17 @@
    ;; Guix's default honors SOURCE_DATE_EPOCH; daemon registration uses now.
    #:time (current-time time-utc)))
 
-(define (register-text! db path hash size references)
-  "Register fresh non-derivation PATH and REFERENCES atomically in DB.
-HASH and SIZE describe PATH's NAR.  REFERENCES must be sorted unique store paths.
-Raise an invalid-reference error if a reference is not registered valid.
-The caller owns PATH's destination lock and has materialized its contents."
-  (call-with-transaction db
-    (lambda ()
-      (check-references db references)
-      (register-path! db path hash size references))))
+(define (register-item! db store-directory path hash size references)
+  "Register fresh PATH in STORE-DIRECTORY with HASH, SIZE and REFERENCES in DB.
+HASH and SIZE describe its NAR; REFERENCES are sorted unique store paths.
+Validate declared outputs when PATH names a derivation.  The caller has
+materialized PATH, holds its destination lock and excludes concurrent GC."
+  (if (string-suffix? ".drv" path)
+      (register-derivation! db store-directory path hash size references)
+      (call-with-transaction db
+        (lambda ()
+          (check-references db references)
+          (register-path! db path hash size references)))))
 
 (define (execute db sql arguments)
   "Run SQL on DB with bound ARGUMENTS; return its first row or #f if none.
