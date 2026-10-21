@@ -10,9 +10,8 @@
                 #:select (valid-path? register-text! register-derivation!))
   #:use-module ((gxd path-locks) #:select (call-with-destination-lock))
   #:use-module ((gxd store-path) #:select (text-path))
-  #:use-module ((guix build utils) #:select (false-if-file-not-found))
+  #:use-module ((gxd store-files) #:select (delete-path!))
   #:use-module ((guix store deduplication) #:select (nar-sha256))
-  #:use-module ((ice-9 ftw) #:select (scandir))
   #:use-module ((rnrs io ports) #:select (put-bytevector))
   #:use-module ((srfi srfi-11) #:select (let-values))
   #:export (write-text! add-text!))
@@ -34,20 +33,6 @@ The caller must exclude concurrent GC."
                    db store-directory destination hash size references)
                   (database:register-text! db destination hash size references)))))))
     destination))
-
-(define (delete-path! path)
-  "Remove PATH without following symlinks; do nothing if it is absent.
-The caller must hold PATH's destination lock and establish that it is invalid.
-Propagate filesystem errors rather than continuing with a partial deletion."
-  (and-let* ((info (false-if-file-not-found (lstat path))))
-    (if (eq? 'directory (stat:type info))
-        (begin
-          (chmod path (logior #o700 (stat:perms info)))
-          (for-each
-           (lambda (name) (delete-path! (string-append path "/" name)))
-           (scandir path (lambda (name) (not (member name '("." ".."))))))
-          (rmdir path))
-        (delete-file path))))
 
 (define (write-text! destination contents)
   "Write bytevector CONTENTS to DESTINATION; return its NAR SHA256 and size.
