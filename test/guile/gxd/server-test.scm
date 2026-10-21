@@ -64,7 +64,7 @@
 (define (derivation-steps-fixture ctx proceed)
   "Add registration-outcome! to CTX using its checked step! and DB observer."
   (define step! (get ctx 'step!))
-  (define observe-db! (get ctx 'observe-db!))
+  (define observe-db-path! (get ctx 'observe-db-path!))
   (define present-path
     (direct-store-path (canonicalize-path (require-program "guix-daemon"))))
 
@@ -77,7 +77,7 @@ otherwise retain the same connections for the next submission."
     (let* ((text (derivation->text drv))
            (path (derivation-text-path name drv))
            (outcome (step! `(add-text-to-store ,name ,text) #:connection 'derivation))
-           (registration (observe-db! (list path)))
+           (registration (observe-db-path! path))
            (usable? (step! `(valid-path? ,present-path)
                            #:connection 'derivation #:terminal? terminal?)))
       `((response . ,outcome)
@@ -177,7 +177,7 @@ otherwise retain the same connections for the next submission."
 
   (test "rejected text can be added after registering its missing reference" (ctx)
     (let* ((step! (get ctx 'step!))
-           (observe-db! (get ctx 'observe-db!))
+           (observe-db-path! (get ctx 'observe-db-path!))
            (a (text-path "/gnu/store" "a-name" (string->utf8 "a-content") '()))
            (add-b `(add-text-to-store "b-name" "b-content" (,a))))
 
@@ -202,8 +202,7 @@ otherwise retain the same connections for the next submission."
             (step! _ #:connection 'a #:terminal? #t)
             (eq? #t _)))
 
-      (is (chain (observe-db! (list b))
-            (assoc-ref _ b)
+      (is (chain (observe-db-path! b)
             (get _ 'references)
             (equal? (list a) _))))))
 
@@ -305,7 +304,7 @@ outputs are not built."
     (is (equal? `((response . ,(incorrect-output-error invalid-drv-path
                                                        invalid-output-path
                                                        valid-output-path))
-                  (registration . ())
+                  (registration . #f)
                   (connection-usable? . #t))
                 (registration-outcome! "example.drv" drv-with-invalid-output))))
 
@@ -320,7 +319,7 @@ outputs are not built."
       "Return the expected error, absent registration and usable-connection facts for DRV."
       `((response . ,(incorrect-output-error (derivation-text-path "example.drv" drv)
                                              valid-output-path valid-output-path))
-        (registration . ())
+        (registration . #f)
         (connection-usable? . #t)))
 
     ;; A correct output declaration cannot compensate for an incorrect environment.
@@ -367,7 +366,7 @@ outputs are not built."
     (is (equal? '((response . ((error/type . store-protocol-error)
                                (error/message . "unknown hash algorithm `unknown'")
                                (error/status . 1)))
-                  (registration . ())
+                  (registration . #f)
                   (connection-usable? . #t))
                 (registration-outcome! "example.drv" drv-unknown-algorithm #:terminal? #f))
         "unknown hash algorithm rejects registration and leaves the session usable")
@@ -375,7 +374,7 @@ outputs are not built."
     (is (equal? '((response . ((error/type . store-protocol-error)
                                (error/message . "invalid SHA256 hash '11' (1 bytes but expected 32)")
                                (error/status . 1)))
-                  (registration . ())
+                  (registration . #f)
                   (connection-usable? . #t))
                 (registration-outcome! "example.drv" drv-short-hash))
         "short SHA256 digest rejects registration and leaves the session usable")))
@@ -397,7 +396,7 @@ outputs are not built."
     (is (equal? '((response . ((error/type . store-protocol-error)
                                (error/message . "invalid character `/' in name `example-bad/id'")
                                (error/status . 1)))
-                  (registration . ())
+                  (registration . #f)
                   (connection-usable? . #t))
                 (registration-outcome! "example.drv" drv-invalid-output-name))
         "invalid output name rejects registration and leaves the session usable")))
