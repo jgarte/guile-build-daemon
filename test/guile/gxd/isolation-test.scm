@@ -341,29 +341,48 @@ IDs."
 
 (define-suite (bind-mount-tests)
   (test "source contents are exposed writable at the target" ()
+    (define file-name "some-file")
+    (define initial-content "initial content")
+    (define updated-content "updated content")
+
     (define observation
       (call-with-temporary-directory
        (lambda (directory)
-         (let* ((file "some-file")
-                (content "some content")
-                (new-content "some new content")
-                (source (string-append directory "/source"))
-                (target (string-append directory "/target"))
-                (source-file (string-append source "/" file))
-                (target-file (string-append target "/" file)))
-           (mkdir source)
-           (spit source-file content)
-           (append
-            (with-bind-mount-in-container
-             source target
-             (lambda ()
-               `((source-files-available? . ,(string=? content (slurp target-file)))
-                 (target-writable? . ,(not (throws-exception?
-                                             (spit target-file new-content)))))))
-            `((target-source-propagation? . ,(string=? new-content (slurp source-file)))))))))
-    (is (get observation 'source-files-available?))
-    (is (get observation 'target-writable?))
-    (is (get observation 'target-source-propagation?))))
+         (define source
+           (string-append directory "/source"))
+         (define target
+           (string-append directory "/target"))
+         (define source-file
+           (string-append source "/" file-name))
+         (define target-file
+           (string-append target "/" file-name))
+
+         (mkdir source)
+         (spit source-file initial-content)
+
+         (let ((mounted-observation
+                (with-bind-mount-in-container
+                 source target
+                 (lambda ()
+                   (define target-content-before-write
+                     (slurp target-file))
+
+                   (spit target-file updated-content)
+
+                   `((target-content-before-write
+                      . ,target-content-before-write)
+                     (target-content-after-write
+                      . ,(slurp target-file)))))))
+
+           `((source-content-after-write . ,(slurp source-file))
+             ,@mounted-observation)))))
+
+    (is (string=? initial-content
+                  (get observation 'target-content-before-write)))
+    (is (string=? updated-content
+                  (get observation 'target-content-after-write)))
+    (is (string=? updated-content
+                  (get observation 'source-content-after-write)))))
 
 (define (observe-pivoted-root root)
   "Return the entries and PID visible after pivoting into ROOT."
