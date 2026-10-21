@@ -369,12 +369,12 @@ IDs."
          (mkdir source)
          (spit source-file initial-content)
 
-         (let ((mounted-observation
-                (call-with-bind-mount-in-container
-                 source target write-target-and-observe!)))
+         (define mounted-observation
+           (call-with-bind-mount-in-container
+            source target write-target-and-observe!))
 
-           `((source-content-after-target-write . ,(slurp source-file))
-             ,@mounted-observation)))))
+         `((source-content-after-target-write . ,(slurp source-file))
+           ,@mounted-observation))))
 
     (define-values (target-content-before-write
                     target-content-after-write
