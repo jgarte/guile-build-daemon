@@ -33,6 +33,11 @@
   make-derivation-output-error derivation-output-error?
   (message derivation-output-error-message))
 
+(define binding-name<?
+  (match-lambda*
+    (((left-name . _) (right-name . _))
+     (string<? left-name right-name))))
+
 (define (read-derivation port)
   "Read a derivation from PORT without loading its input derivations.
 Input records hold filenames under `derivation-input-derivation' until resolved.
@@ -41,10 +46,7 @@ Accept the syntax understood by Guix's reader; decoding errors propagate."
   (let ((drv (guix-drv:read-derivation port identity)))
     (set-fields drv
       ((guix-drv:derivation-outputs)
-       (sort (guix-drv:derivation-outputs drv)
-             (match-lambda*
-               (((left-name . _) (right-name . _))
-                (string<? left-name right-name))))))))
+       (sort (guix-drv:derivation-outputs drv) binding-name<?)))))
 
 (define (resolve-inputs! drv load-input)
   "Return a copy of decoded DRV with ordinary input derivations resolved by LOAD-INPUT.
@@ -80,10 +82,7 @@ Loader errors propagate."
                      (set-fields output ((guix-drv:derivation-output-path) "")))))
             outputs))
       ((guix-drv:derivation-builder-environment-vars)
-       (sort environment
-             (match-lambda*
-               (((left-name . _) (right-name . _))
-                (string<? left-name right-name))))))))
+       (sort environment binding-name<?)))))
 
 (define (fixed-output drv)
   (match (guix-drv:derivation-outputs drv)
