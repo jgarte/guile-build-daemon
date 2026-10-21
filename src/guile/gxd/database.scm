@@ -66,26 +66,27 @@
          (format #f "path `~a' is not valid" reference)))))
    references))
 
-(define (register-path! db path hash size references)
+(define (register-path! db path hash size references deriver)
   "Insert or update PATH's NAR metadata and REFERENCES in DB's current transaction."
   (guix-db:register-valid-path
-   db #:path path #:references references #:deriver #f
+   db #:path path #:references references #:deriver deriver
    #:hash (string-append "sha256:" (bytevector->base16-string hash))
    #:nar-size size
    ;; Guix's default honors SOURCE_DATE_EPOCH; daemon registration uses now.
    #:time (current-time time-utc)))
 
-(define (register-item! db store-directory path hash size references)
+(define* (register-item! db store-directory path hash size references #:key deriver)
   "Register fresh PATH in STORE-DIRECTORY with HASH, SIZE and REFERENCES in DB.
 HASH and SIZE describe its NAR; REFERENCES are sorted unique store paths.
+DERIVER names the producing derivation, or is #f when none is supplied.
 Validate declared outputs when PATH names a derivation.  The caller has
 materialized PATH, holds its destination lock and excludes concurrent GC."
   (if (string-suffix? ".drv" path)
-      (register-derivation! db store-directory path hash size references)
+      (register-derivation! db store-directory path hash size references deriver)
       (call-with-transaction db
         (lambda ()
           (check-references db references)
-          (register-path! db path hash size references)))))
+          (register-path! db path hash size references deriver)))))
 
 (define (execute db sql arguments)
   "Run SQL on DB with bound ARGUMENTS; return its first row or #f if none.
@@ -113,14 +114,14 @@ On a cache miss, require PATH to be registered in DB and read its file."
           (hash-set! resolved-inputs path resolved-drv)
           resolved-drv))))
 
-(define (register-derivation! db store-directory path hash size references)
+(define (register-derivation! db store-directory path hash size references deriver)
   "Register fresh derivation PATH and its declared outputs atomically in DB.
 HASH and SIZE describe PATH's NAR; REFERENCES are sorted unique store paths.
 The caller has materialized PATH and owns its destination lock, excluding GC.
 Read canonical Guix derivations; propagate decoding, lookup and output-check errors."
   (call-with-transaction db
     (lambda ()
-      (register-path! db path hash size '())
+      (register-path! db path hash size '() deriver)
       (define drv (call-with-input-file path derivations:read-derivation))
       (define id (guix-db:valid-path-id db path))
 
