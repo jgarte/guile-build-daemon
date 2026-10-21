@@ -305,24 +305,33 @@ IDs."
 
 (define-suite (mount-tmpfs-tests)
   (test "a tmpfs hides old contents and accepts writes" ()
+    (define host-file-name "host-file")
+    (define host-file-content "host content")
+    (define tmpfs-file-name "tmpfs-file")
+    (define expected-tmpfs-content "tmpfs content")
+
     (define observation
       (call-with-temporary-directory
        (lambda (target)
-         (let ((tmpfs-file "some-tmpfs-file")
-               (tmpfs-file-content "some content of tmpfs file")
-               (host-file "some-host-file")
-               (host-file-content "some content of host file"))
-           (spit (string-append target "/" host-file) host-file-content)
-           (with-tmpfs-mount-in-container
-            target
-            (lambda ()
-              `((tmpfs-mount-fresh? . ,(not (file-exists?
-                                             (string-append target "/" host-file))))
-                (tmpfs-mount-writable? . ,(not (throws-exception?
-                                              (spit (string-append target "/" tmpfs-file)
-                                                    tmpfs-file-content)))))))))))
-    (is (get observation 'tmpfs-mount-fresh?))
-    (is (get observation 'tmpfs-mount-writable?))))
+         (define host-file (string-append target "/" host-file-name))
+         (define tmpfs-file (string-append target "/" tmpfs-file-name))
+
+         (spit host-file host-file-content)
+
+         (with-tmpfs-mount-in-container
+          target
+          (lambda ()
+            (define host-file-visible?
+              (file-exists? host-file))
+
+            (spit tmpfs-file expected-tmpfs-content)
+
+            `((host-file-visible? . ,host-file-visible?)
+              (tmpfs-file-content . ,(slurp tmpfs-file))))))))
+
+    (is (not (get observation 'host-file-visible?)))
+    (is (string=? expected-tmpfs-content
+                  (get observation 'tmpfs-file-content)))))
 
 (define (with-bind-mount-in-container source target proc)
   "Start a child with private mounts, bind SOURCE to TARGET, and call PROC."
