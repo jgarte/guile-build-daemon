@@ -281,64 +281,65 @@ IDs."
     (is (not (get observed 'writable?)))))
 
 
-(define (with-private-mount-in-container init proc)
-  "Start a child with private mounts, call INIT, then return PROC's result."
+(define (call-with-private-mount-in-container setup! thunk)
+  "Start a child with private mounts, call SETUP!, then return THUNK's result."
   (call-with-child-proc
    (logior CLONE_NEWUSER CLONE_NEWNS SIGCHLD)
    (lambda (=> <=)
      (<= 'ids-mapped)
      (make-mounts-private!)
-     (init)
-     (=> 'body-evaluation (proc)))
+     (setup!)
+     (=> 'body-evaluation (thunk)))
    (lambda (child-pid => <=)
      (let-values (((uid-ranges gid-ranges) (current-root-id-map-ranges 1)))
        (write-id-map-ranges! child-pid uid-ranges gid-ranges))
      (=> 'ids-mapped)
      (<= 'body-evaluation))))
 
-(define (with-tmpfs-mount-in-container target proc)
-  "Start a child with private mounts, mount TARGET as tmpfs, and call PROC."
-  (with-private-mount-in-container
+(define (call-with-tmpfs-mount-in-container target thunk)
+  "Start a child with private mounts, mount TARGET as tmpfs, and call THUNK."
+  (call-with-private-mount-in-container
    (lambda () (mount-tmpfs! target))
-   proc))
+   thunk))
 
 
 (define-suite (mount-tmpfs-tests)
   (test "a tmpfs hides old contents and accepts writes" ()
-    (define host-file-name "host-file")
-    (define host-file-content "host content")
+    (define underlying-file-name "underlying-file")
+    (define underlying-file-content "underlying content")
     (define tmpfs-file-name "tmpfs-file")
     (define expected-tmpfs-content "tmpfs content")
 
     (define observation
       (call-with-temporary-directory
        (lambda (target)
-         (define host-file (string-append target "/" host-file-name))
+         (define underlying-file
+           (string-append target "/" underlying-file-name))
          (define tmpfs-file (string-append target "/" tmpfs-file-name))
 
-         (define (write-and-observe-tmpfs)
-           (define host-file-visible?
-             (file-exists? host-file))
+         (define (write-and-observe-tmpfs!)
+           (define underlying-file-visible?
+             (file-exists? underlying-file))
 
            (spit tmpfs-file expected-tmpfs-content)
 
-           `((host-file-visible? . ,host-file-visible?)
+           `((underlying-file-visible? . ,underlying-file-visible?)
              (tmpfs-file-content . ,(slurp tmpfs-file))))
 
-         (spit host-file host-file-content)
+         (spit underlying-file underlying-file-content)
 
-         (with-tmpfs-mount-in-container
-          target write-and-observe-tmpfs))))
+         (call-with-tmpfs-mount-in-container
+          target write-and-observe-tmpfs!))))
 
-    (is (not (get observation 'host-file-visible?)))
+    (is (not (get observation 'underlying-file-visible?)))
     (is (string=? expected-tmpfs-content
                   (get observation 'tmpfs-file-content)))))
 
-(define (with-bind-mount-in-container source target proc)
-  "Start a child with private mounts, bind SOURCE to TARGET, and call PROC."
-  (with-private-mount-in-container
+(define (call-with-bind-mount-in-container source target thunk)
+  "Start a child with private mounts, bind SOURCE to TARGET, and call THUNK."
+  (call-with-private-mount-in-container
    (lambda () (bind-mount! source target))
-   proc))
+   thunk))
 
 (define-suite (bind-mount-tests)
   (test "source contents are exposed writable at the target" ()
@@ -362,7 +363,7 @@ IDs."
          (spit source-file initial-content)
 
          (let ((mounted-observation
-                (with-bind-mount-in-container
+                (call-with-bind-mount-in-container
                  source target
                  (lambda ()
                    (define target-content-before-write
