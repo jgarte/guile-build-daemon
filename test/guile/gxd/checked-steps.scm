@@ -6,7 +6,7 @@
 (define-module (gxd checked-steps)
   #:use-module ((ice-9 match) #:select (match))
   #:use-module ((rnrs bytevectors) #:select (bytevector=?))
-  #:use-module ((srfi srfi-1) #:select (remove))
+  #:use-module ((srfi srfi-1) #:select (alist-delete))
   #:use-module (gxd test-prelude)
   #:export (checked-steps-fixture))
 
@@ -15,8 +15,8 @@
 Require step! and observe-bytes!.  Check unnamed calls and named #:terminal? #t
 calls before returning; other named calls return without draining observations.
 On mismatch raise with the expression, response and both captures.
-Remove observe-bytes!, relay/left-observer and relay/right-observer downstream:
-the wrapped step! owns observation consumption.  Preserve other context."
+Preserve observers for separately completed raw-client scopes.  Do not consume
+a checked call's captures again.  Preserve other context."
   (let ((step! (get ctx 'step!))
         (observe-bytes! (get ctx 'observe-bytes!)))
     (unless (and (procedure? step!) (procedure? observe-bytes!))
@@ -34,10 +34,5 @@ the wrapped step! owns observation consumption.  Preserve other context."
       response)
 
     (proceed
-     (acons 'step! checked-step!
-            (remove (lambda (entry)
-                      (memq (car entry)
-                            '(step! observe-bytes!
-                                    relay/left-observer relay/right-observer)))
-                    ctx))
+     (acons 'step! checked-step! (alist-delete 'step! ctx eq?))
      (lambda () #t))))
