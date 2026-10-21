@@ -350,33 +350,27 @@ IDs."
     (define observation
       (call-with-temporary-directory
        (lambda (directory)
-         (define source
-           (string-append directory "/source"))
-         (define target
-           (string-append directory "/target"))
-         (define source-file
-           (string-append source "/" file-name))
-         (define target-file
-           (string-append target "/" file-name))
+         (define source (string-append directory "/source"))
+         (define target (string-append directory "/target"))
+         (define source-file (string-append source "/" file-name))
+         (define target-file (string-append target "/" file-name))
+
+         (define (write-target-and-observe!)
+           (define target-content-before-write (slurp target-file))
+
+           (spit target-file updated-content)
+
+           `((target-content-before-write . ,target-content-before-write)
+             (target-content-after-write . ,(slurp target-file))))
 
          (mkdir source)
          (spit source-file initial-content)
 
          (let ((mounted-observation
                 (call-with-bind-mount-in-container
-                 source target
-                 (lambda ()
-                   (define target-content-before-write
-                     (slurp target-file))
+                 source target write-target-and-observe!)))
 
-                   (spit target-file updated-content)
-
-                   `((target-content-before-write
-                      . ,target-content-before-write)
-                     (target-content-after-write
-                      . ,(slurp target-file)))))))
-
-           `((source-content-after-write . ,(slurp source-file))
+           `((source-content-after-target-write . ,(slurp source-file))
              ,@mounted-observation)))))
 
     (is (string=? initial-content
@@ -384,7 +378,7 @@ IDs."
     (is (string=? updated-content
                   (get observation 'target-content-after-write)))
     (is (string=? updated-content
-                  (get observation 'source-content-after-write)))))
+                  (get observation 'source-content-after-target-write)))))
 
 (define (observe-pivoted-root root)
   "Return the entries and PID visible after pivoting into ROOT."
