@@ -244,12 +244,12 @@ outputs are not built."
       (chain (step! `(add-text-to-store "example.drv" ,reversed-text)
                     #:connection 'derivation #:terminal? #t)
         (equal? reversed-path _)
-        (is "reversed declarations are accepted at the expected derivation path"))
+        (is _ "reversed declarations are accepted at the expected derivation path"))
 
       (chain (observe-db-path! reversed-path)
         (get _ 'outputs)
         (equal? (derivation->output-paths drv) _)
-        (is "registration retains the canonical output mappings"))))
+        (is _ "registration retains the canonical output mappings"))))
 
   (test "reversed invalid declarations report the lexically first output" (ctx)
     (define registration-outcome! (get ctx 'registration-outcome!))
@@ -272,7 +272,7 @@ outputs are not built."
                   (registration . #f)
                   (connection-usable? . #t))
                 _)
-        (is "dev is rejected before out, registration stays absent, and the session remains usable"))))
+        (is _ "dev is rejected before out, registration stays absent, and the session remains usable"))))
 
   (test "reversed input environment retains canonical parent output paths" (ctx)
     (define (register-parent store)
