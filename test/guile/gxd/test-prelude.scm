@@ -7,12 +7,14 @@
   #:use-module ((ice-9 match) #:select (match match-let))
   #:use-module ((ice-9 rdelim) #:select (read-string))
   #:use-module ((guix build utils) #:select (which))
+  #:use-module ((guix derivations) #:select (read-derivation))
   #:use-module ((gxd isolation) #:select (child-proc))
   #:use-module ((srfi srfi-1) #:select (filter-map))
   #:use-module (gxd prelude)
   #:export (call-with-process-deadline
             capture-exception
             deadline
+            empty-derivation
             require-program
             select-keys
             slurp
@@ -22,6 +24,9 @@
 (eval-when (eval load compile)
   (module-use! (module-public-interface (current-module))
                (resolve-interface '(gxd prelude))))
+
+(define (empty-derivation)
+  (call-with-input-string "Derive([],[],[],\"\",\"\",[],[])" read-derivation))
 
 (define (select-keys alist keys)
   "Return ALIST's entries for KEYS in key order, omitting absent keys."

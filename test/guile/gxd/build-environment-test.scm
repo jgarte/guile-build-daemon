@@ -8,12 +8,9 @@
   #:use-module ((gxd build-environment) #:select (build-environment))
   #:use-module ((ares suitbl core) #:select (define-suite test is))
   #:use-module ((guix derivations)
-                #:select (read-derivation derivation-builder-environment-vars))
+                #:select (derivation-builder-environment-vars))
   #:use-module ((guix utils) #:select (with-environment-variables))
   #:use-module ((srfi srfi-9 gnu) #:select (set-fields)))
-
-(define (empty-derivation)
-  (call-with-input-string "Derive([],[],[],\"\",\"\",[],[])" read-derivation))
 
 (define-suite (build-environment-tests)
   (test "derivation bindings override defaults but not the build directory" ()
