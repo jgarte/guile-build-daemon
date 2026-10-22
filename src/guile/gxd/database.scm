@@ -140,6 +140,18 @@ expected output paths within STORE-DIRECTORY."
    (derivations:resolve-inputs!
     drv (lambda (input) (read-registered-derivation! db input)))))
 
+(define (register-references! db path references)
+  "Validate REFERENCES and add their edges from registered PATH in DB.
+Use the caller's transaction; all referenced validity rows must exist."
+  (check-references db references)
+  (define id (guix-db:valid-path-id db path))
+
+  (for-each
+   (lambda (reference)
+     (execute db "INSERT OR REPLACE INTO Refs (referrer, reference) VALUES (?, ?);"
+              (list id (guix-db:valid-path-id db reference))))
+   references))
+
 (define (register-derivation! db store-directory path hash size references deriver)
   "Register fresh derivation PATH and its declared outputs atomically in DB.
 HASH and SIZE describe PATH's NAR; REFERENCES are sorted unique store paths.
@@ -149,13 +161,5 @@ Read canonical Guix derivations; propagate decoding, lookup and output-check err
     (lambda ()
       (register-path! db path hash size '() deriver)
       (define drv (record-derivation-outputs! db path))
-      (define id (guix-db:valid-path-id db path))
-
-      (check-references db references)
-      (for-each
-       (lambda (reference)
-         (execute db "INSERT OR REPLACE INTO Refs (referrer, reference) VALUES (?, ?);"
-                  (list id (guix-db:valid-path-id db reference))))
-       references)
-
+      (register-references! db path references)
       (check-derivation-outputs! db store-directory path drv))))
