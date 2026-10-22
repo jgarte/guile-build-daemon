@@ -7,10 +7,10 @@
   #:use-module ((gcrypt hash) #:select (sha256))
   #:use-module ((guix store)
                 #:prefix guix-store:
-                #:select (%store-prefix store-path))
+                #:select (%store-prefix store-path fixed-output-path))
   #:use-module ((ice-9 exceptions) #:select (&error define-exception-type
                                                     raise-exception))
-  #:export (text-path store-path? check-store-name &store-name-error store-name-error?
+  #:export (text-path fixed-output-path store-path? check-store-name &store-name-error store-name-error?
                       store-name-error-name leading-dot-name-error?
                       invalid-character-name-error? invalid-character-name-error-character))
 
@@ -58,3 +58,14 @@ Raise a store-name error when NAME is invalid."
         (hash (sha256 contents)))
     (parameterize ((guix-store:%store-prefix store-directory))
       (guix-store:store-path type hash name))))
+
+(define* (fixed-output-path store-directory name hash
+                            #:key (hash-algo 'sha256) (recursive? #t))
+  "Return the fixed-output store path for NAME and HASH in STORE-DIRECTORY.
+HASH-ALGO is a hash-algorithm symbol.  RECURSIVE? selects NAR hashing rather
+than flat-file hashing.  Raise a store-name error when NAME is invalid."
+  (check-store-name name)
+  (parameterize ((guix-store:%store-prefix store-directory))
+    (guix-store:fixed-output-path name hash
+                                  #:hash-algo hash-algo
+                                  #:recursive? recursive?)))
