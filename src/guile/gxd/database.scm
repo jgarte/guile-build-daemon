@@ -24,11 +24,12 @@
                                     sqlite-prepare sqlite-bind-arguments sqlite-step sqlite-finalize))
   #:export (call-with-database valid-path? register-item!
                                &invalid-reference invalid-reference?
-                               invalid-reference-message))
+                               invalid-reference-message invalid-reference-path))
 
 (define-exception-type &invalid-reference &error
   make-invalid-reference invalid-reference?
-  (message invalid-reference-message))
+  (message invalid-reference-message)
+  (path invalid-reference-path))
 
 (define (call-with-database file proc)
   "Call PROC with an open existing database FILE, closing it on return or error."
@@ -65,7 +66,7 @@
      (unless (valid-path? db reference)
        (raise-exception
         (make-invalid-reference
-         (format #f "path `~a' is not valid" reference)))))
+         (format #f "path `~a' is not valid" reference) reference))))
    references))
 
 (define (register-path! db path hash size references deriver)
