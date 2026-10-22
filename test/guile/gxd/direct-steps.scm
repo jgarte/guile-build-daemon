@@ -100,14 +100,12 @@ Named calls execute in the caller without a per-operation deadline."
 
     (define* (step! expression #:key connection (terminal? #f))
       (if (not connection)
-          (call-with-process-deadline
-           5
-           (lambda ()
-             (call-with-client left
-               (lambda (left-store)
-                 (call-with-client right
-                   (lambda (right-store)
-                     (paired-step! left-store right-store expression)))))))
+          (deadline 5
+            (call-with-client left
+              (lambda (left-store)
+                (call-with-client right
+                  (lambda (right-store)
+                    (paired-step! left-store right-store expression))))))
           (begin
             (unless (symbol? connection)
               (error "connection name must be a symbol" connection))

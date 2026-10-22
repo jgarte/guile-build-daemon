@@ -32,12 +32,10 @@
      (define failure
        (capture-exception
         (lambda ()
-          (call-with-process-deadline
-           1
-           (lambda ()
-             (call-with-output-file pid-file
-               (lambda (port) (write (getpid) port)))
-             (sleep 5))))))
+          (deadline 1
+            (call-with-output-file pid-file
+              (lambda (port) (write (getpid) port)))
+            (sleep 5)))))
 
      (list (not (not failure))
            (reaped? (call-with-input-file pid-file read))))))
@@ -45,8 +43,7 @@
 (define-suite (process-deadline-tests)
   (test "bounded process execution returns or kills and reaps" ()
     (is (equal? '(value 1)
-                (call-with-process-deadline
-                 2 (lambda () '(value 1)))))
+                (deadline 2 '(value 1))))
     (is (equal? '(#t #t) (timeout-facts)))))
 
 (define-suite (get-tests)

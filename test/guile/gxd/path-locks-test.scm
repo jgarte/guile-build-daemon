@@ -16,24 +16,22 @@
 (define (lock-available? destination)
   "Return whether a separate process can immediately lock DESTINATION's lock file.
 Propagate errors other than lock contention; bound the child lifetime."
-  (call-with-process-deadline
-   2
-   (lambda ()
-     (let ((port (open (string-append destination ".lock")
-                       (logior O_RDWR O_CREAT O_CLOEXEC) #o600)))
-       (call-with-cleanup
-        (lambda () (close-port port))
-        (lambda ()
-          (let ((failure (capture-exception
-                          (lambda () (fcntl-flock port 'write-lock #:wait? #f)))))
-            (if failure
-                (match (cons (exception-kind failure) (exception-args failure))
-                  (('flock-error errno)
-                   (if (memv errno (list EACCES EAGAIN))
-                       #f
-                       (raise-exception failure)))
-                  (_ (raise-exception failure)))
-                #t))))))))
+  (deadline 2
+    (let ((port (open (string-append destination ".lock")
+                      (logior O_RDWR O_CREAT O_CLOEXEC) #o600)))
+      (call-with-cleanup
+       (lambda () (close-port port))
+       (lambda ()
+         (let ((failure (capture-exception
+                         (lambda () (fcntl-flock port 'write-lock #:wait? #f)))))
+           (if failure
+               (match (cons (exception-kind failure) (exception-args failure))
+                 (('flock-error errno)
+                  (if (memv errno (list EACCES EAGAIN))
+                      #f
+                      (raise-exception failure)))
+                 (_ (raise-exception failure)))
+               #t)))))))
 
 (define-suite (path-locks-tests)
   (test "destination scope excludes another process and releases on return" ()
