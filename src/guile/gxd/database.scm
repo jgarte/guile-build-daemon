@@ -114,6 +114,30 @@ On a cache miss, require PATH to be registered in DB and read its file."
           (hash-set! resolved-inputs path resolved-drv)
           resolved-drv))))
 
+(define (record-derivation-outputs! db path)
+  "Read derivation PATH and record its declared output mappings in DB.
+PATH's validity row must exist in the current transaction.  Return the derivation."
+  (define drv (call-with-input-file path derivations:read-derivation))
+  (define id (guix-db:valid-path-id db path))
+
+  (for-each
+   (match-lambda
+     ((name . output)
+      (execute db
+               "INSERT OR REPLACE INTO DerivationOutputs (drv, id, path) VALUES (?, ?, ?);"
+               (list id name (derivation-output-path output)))))
+   (derivation-outputs drv))
+  drv)
+
+(define (check-derivation-outputs! db store-directory drv-path drv)
+  "Resolve DRV's inputs through DB and check its declared output paths.
+DRV-PATH is the store path of the derivation file; its name determines the
+expected output paths within STORE-DIRECTORY."
+  (derivations:check-outputs
+   store-directory drv-path
+   (derivations:resolve-inputs!
+    drv (lambda (input) (read-registered-derivation! db input)))))
+
 (define (register-derivation! db store-directory path hash size references deriver)
   "Register fresh derivation PATH and its declared outputs atomically in DB.
 HASH and SIZE describe PATH's NAR; REFERENCES are sorted unique store paths.
@@ -122,16 +146,8 @@ Read canonical Guix derivations; propagate decoding, lookup and output-check err
   (call-with-transaction db
     (lambda ()
       (register-path! db path hash size '() deriver)
-      (define drv (call-with-input-file path derivations:read-derivation))
+      (define drv (record-derivation-outputs! db path))
       (define id (guix-db:valid-path-id db path))
-
-      (for-each
-       (match-lambda
-         ((name . output)
-          (execute db
-                   "INSERT OR REPLACE INTO DerivationOutputs (drv, id, path) VALUES (?, ?, ?);"
-                   (list id name (derivation-output-path output)))))
-       (derivation-outputs drv))
 
       (check-references db references)
       (for-each
@@ -140,7 +156,4 @@ Read canonical Guix derivations; propagate decoding, lookup and output-check err
                   (list id (guix-db:valid-path-id db reference))))
        references)
 
-      (derivations:check-outputs
-       store-directory path
-       (derivations:resolve-inputs!
-        drv (lambda (input) (read-registered-derivation! db input)))))))
+      (check-derivation-outputs! db store-directory path drv))))
