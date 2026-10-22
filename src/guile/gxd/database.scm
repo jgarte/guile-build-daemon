@@ -18,11 +18,15 @@
                 #:select (&error define-exception-type raise-exception with-exception-handler))
   #:use-module ((ice-9 format) #:select (format))
   #:use-module ((ice-9 match) #:select (match-lambda))
+  #:use-module ((srfi srfi-1) #:select (filter-map))
+  #:use-module ((srfi srfi-9) #:select (define-record-type))
   #:use-module ((srfi srfi-19) #:select (current-time time-utc))
   #:use-module ((sqlite3) #:select (SQLITE_OPEN_READWRITE
                                     sqlite-close sqlite-exec sqlite-open
                                     sqlite-prepare sqlite-bind-arguments sqlite-step sqlite-finalize))
   #:export (call-with-database valid-path? register-item!
+                               make-output-info register-outputs!
+                               &reference-cycle reference-cycle? reference-cycle-path
                                &invalid-reference invalid-reference?
                                invalid-reference-message invalid-reference-path))
 
@@ -30,6 +34,18 @@
   make-invalid-reference invalid-reference?
   (message invalid-reference-message)
   (path invalid-reference-path))
+
+(define-record-type <output-info>
+  (make-output-info path hash nar-size references)
+  output-info?
+  (path output-info-path)
+  (hash output-info-hash)
+  (nar-size output-info-nar-size)
+  (references output-info-references))
+
+(define-exception-type &reference-cycle &error
+  make-reference-cycle reference-cycle?
+  (path reference-cycle-path))
 
 (define (call-with-database file proc)
   "Call PROC with an open existing database FILE, closing it on return or error."
@@ -164,3 +180,57 @@ Read canonical Guix derivations; propagate decoding, lookup and output-check err
       (define drv (record-derivation-outputs! db path))
       (register-references! db path references)
       (check-derivation-outputs! db store-directory path drv))))
+
+(define (check-output-cycles output-infos)
+  (define path->output-info (make-hash-table))
+
+  (define visit
+    (match-lambda
+      ((head . tail)
+       (when (member head tail)
+         (raise-exception (make-reference-cycle head)))
+       (define output-info (hash-ref path->output-info head))
+
+       (when output-info
+         (for-each
+          (lambda (reference)
+            (unless (string=? head reference)
+              (visit (cons reference (cons head tail)))))
+          (output-info-references output-info))))))
+
+  (for-each (lambda (output-info) (hash-set! path->output-info (output-info-path output-info) output-info)) output-infos)
+  (for-each (lambda (path) (visit (list path)))
+            (sort (map output-info-path output-infos) string<?)))
+
+(define (stage-output! db drv-path output-info)
+  "Insert OUTPUT-INFO's metadata and return its parsed derivation entry, or #f."
+  (define path (output-info-path output-info))
+
+  (register-path! db path (output-info-hash output-info) (output-info-nar-size output-info) '() drv-path)
+  (and (string-suffix? ".drv" path)
+       (cons path (record-derivation-outputs! db path))))
+
+(define (register-outputs! db store-directory drv-path output-infos)
+  "Register fresh OUTPUT-INFOS in DB atomically, recording DRV-PATH as their deriver.
+Output paths are distinct and unregistered.
+All files are materialized and canonicalized; the caller holds their destination
+locks and excludes concurrent GC.  Validate derivation files in STORE-DIRECTORY.
+Allow self-references; reject cycles between distinct outputs."
+  (call-with-transaction db
+    (lambda ()
+      ;; Stage all paths before checking reference validity: outputs may refer
+      ;; to themselves or siblings that occur later in OUTPUT-INFOS.
+      (define derivations
+        (filter-map (lambda (output-info) (stage-output! db drv-path output-info)) output-infos))
+
+      (for-each
+       (lambda (output-info)
+         (register-references! db (output-info-path output-info) (output-info-references output-info)))
+       output-infos)
+
+      (for-each
+       (match-lambda
+         ((path . drv) (check-derivation-outputs! db store-directory path drv)))
+       derivations)
+
+      (check-output-cycles output-infos))))
