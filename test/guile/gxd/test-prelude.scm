@@ -12,6 +12,7 @@
   #:use-module (gxd prelude)
   #:export (call-with-process-deadline
             capture-exception
+            deadline
             require-program
             select-keys
             slurp
@@ -59,6 +60,9 @@ imported, so a test can make a procedure fail where no seam exists."
     (lambda (exception) exception)
     (lambda () (thunk) #f)
     #:unwind? #t))
+
+(define-syntax-rule (deadline seconds body ...)
+  (call-with-process-deadline seconds (lambda () body ...)))
 
 (define (call-with-process-deadline seconds thunk)
   "Call THUNK in a child, returning its small readable value.
