@@ -11,7 +11,7 @@
   #:use-module ((rnrs io ports) #:select (get-bytevector-n))
   #:use-module ((srfi srfi-1) #:select (delete-duplicates))
   #:export (read-integer read-boolean read-bytevector read-string read-string-pairs read-options
-                         read-text read-string-list
+                         read-text read-string-list read-add-to-store-request
                          write-completion write-error write-log write-log-bytes))
 
 (define STDERR_LAST #x616c7473)
@@ -91,6 +91,19 @@ The operation number is already consumed."
         (let* ((name (read-string port))
                (value (read-string port)))
           (loop (1- remaining) (cons (cons name value) pairs))))))
+
+(define (read-add-to-store-request port)
+  "Read an add-to-store header from PORT as keyed data.
+The operation number is already consumed.  The following NAR is deliberately
+left unread.  FIXED is obsolete: as in nixd, a value other than one forces
+recursive SHA-256 mode for old clients."
+  (let* ((name (read-string port))
+         (fixed? (= 1 (read-integer port)))
+         (recursive? (= 1 (read-integer port)))
+         (hash-algo (read-string port)))
+    `((name . ,name)
+      (recursive? . ,(if fixed? recursive? #t))
+      (hash-algo . ,(if fixed? hash-algo "sha256")))))
 
 (define (read-text port)
   "Read an add-text-to-store payload from PORT as keyed data.
