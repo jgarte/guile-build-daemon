@@ -6,9 +6,25 @@
 (define-module (gxd worker-protocol-test)
   #:use-module ((ares suitbl core) #:select (define-suite is test))
   #:use-module ((ares suitbl checks) #:select (throws-exception?))
-  #:use-module ((rnrs io ports) #:select (open-bytevector-input-port get-u8))
-  #:use-module ((gxd worker-protocol) #:select (read-integer read-string)
+  #:use-module ((guix serialization) #:select (integer utf8-string write-value))
+  #:use-module ((rnrs io ports)
+                #:select (open-bytevector-input-port open-bytevector-output-port
+                                                     get-u8 put-u8))
+  #:use-module ((srfi srfi-11) #:select (let-values))
+  #:use-module ((gxd worker-protocol)
+                #:select (read-integer read-string read-add-to-store-request)
                 #:prefix protocol:))
+
+(define (add-to-store-header item fixed recursive hash-algo nar-byte)
+  "Return a serialized add-to-store header followed by a sentinel NAR byte."
+  (let-values (((port extract) (open-bytevector-output-port)))
+    (write-value utf8-string item port)
+    (write-value integer fixed port)
+    (write-value integer recursive port)
+    (write-value utf8-string hash-algo port)
+    ;; sentinel NAR byte
+    (put-u8 port nar-byte)
+    (extract)))
 
 (define-suite (worker-protocol-tests)
   (test "wire integer accepts the 32-bit maximum" ()
@@ -45,4 +61,20 @@
   (test "wire string rejects truncated padding" ()
     (is (throws-exception?
          (protocol:read-string
-          (open-bytevector-input-port #vu8(1 0 0 0 0 0 0 0 97 0 0 0 0 0 0)))))))
+          (open-bytevector-input-port #vu8(1 0 0 0 0 0 0 0 97 0 0 0 0 0 0))))))
+
+  (test "add-to-store header leaves its NAR unread" ()
+    (let* ((port (open-bytevector-input-port
+                  (add-to-store-header "item" 1 0 "sha512" 42)))
+           (request (protocol:read-add-to-store-request port)))
+      (is (equal? "item" (assoc-ref request 'name)))
+      (is (eq? #f (assoc-ref request 'recursive?)))
+      (is (equal? "sha512" (assoc-ref request 'hash-algo)))
+      (is (= 42 (get-u8 port)))))
+
+  (test "obsolete add-to-store fixed field selects recursive SHA-256 mode" ()
+    (let* ((port (open-bytevector-input-port
+                  (add-to-store-header "item" 2 0 "sha512" 42)))
+           (request (protocol:read-add-to-store-request port)))
+      (is (eq? #t (assoc-ref request 'recursive?)))
+      (is (equal? "sha256" (assoc-ref request 'hash-algo))))))
