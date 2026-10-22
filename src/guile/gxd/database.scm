@@ -49,7 +49,9 @@
   (sqlite-exec db "BEGIN IMMEDIATE;")
   (with-exception-handler
     (lambda (exception)
-      (sqlite-exec db "ROLLBACK;")
+      ;; Resolved inputs may depend on validity rows undone by this transaction.
+      (hash-clear! resolved-inputs)
+      (false-if-exception (sqlite-exec db "ROLLBACK;"))
       (raise-exception exception))
     (lambda ()
       (thunk)
