@@ -11,7 +11,9 @@
                 #:select (derivation-builder derivation-builder-arguments))
   #:use-module ((srfi srfi-9 gnu) #:select (set-fields))
   #:use-module ((ice-9 match) #:select (match-let))
-  #:use-module ((rnrs bytevectors) #:select (make-bytevector bytevector=?))
+  #:use-module ((ice-9 exceptions)
+                #:select (make-exception-with-message raise-exception))
+  #:use-module ((rnrs bytevectors) #:select (make-bytevector bytevector=? bytevector-length))
   #:use-module ((rnrs io ports) #:select (open-bytevector-output-port put-bytevector))
   #:use-module ((srfi srfi-11) #:select (let-values)))
 
@@ -63,4 +65,39 @@
 
     (match-let (((setup-rejected? log-called?) observations))
       (is setup-rejected?)
-      (is (not log-called?)))))
+      (is (not log-called?))))
+
+  (test "a missing executable produces a diagnostic and exits unsuccessfully" ()
+    (define expected-exit-code 1)
+    (define drv
+      (set-fields (empty-derivation)
+        ((derivation-builder) "/missing-builder-executable")))
+
+    (define observations
+      (deadline 5
+        (let-values (((output captured-bytes) (open-bytevector-output-port)))
+          (define status
+            (execute-builder! drv "/store" "/tmp" 1
+                              (lambda (bytes) (put-bytevector output bytes))))
+
+          (list (positive? (bytevector-length (captured-bytes)))
+                (status:exit-val status)))))
+
+    (match-let (((diagnostic-received? exit-code) observations))
+      (is diagnostic-received?)
+      (is (equal? expected-exit-code exit-code))))
+
+  (test "an error while handling builder output reaches the caller unchanged" ()
+    (define drv (builder-derivation '(begin (display "builder output") (force-output))))
+    (define exception-preserved?
+      (deadline 5
+        (define expected-exception (make-exception-with-message "log consumer failed"))
+        (define actual-exception
+          (capture-exception
+           (lambda ()
+             (execute-builder! drv "/store" "/tmp" 1
+                               (lambda (_) (raise-exception expected-exception))))))
+
+        (eq? expected-exception actual-exception)))
+
+    (is exception-preserved?)))
