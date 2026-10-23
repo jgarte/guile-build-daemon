@@ -9,6 +9,7 @@
                 #:prefix derivations:
                 #:select (read-derivation resolve-inputs! check-outputs))
   #:use-module ((guix derivations)
+                #:prefix guix-drv:
                 #:select (derivation-outputs derivation-output-path))
   #:use-module ((guix base16) #:select (bytevector->base16-string))
   #:use-module ((guix store database)
@@ -26,6 +27,7 @@
                                     sqlite-prepare sqlite-bind-arguments sqlite-step sqlite-map sqlite-finalize))
   #:export (call-with-database valid-path? register-item!
                                make-output-info register-outputs! references reference-closure
+                               derivation-outputs
                                &reference-cycle reference-cycle? reference-cycle-path
                                &invalid-reference invalid-reference?
                                invalid-reference-message invalid-reference-path))
@@ -100,6 +102,21 @@ WHERE source.path = ? ORDER BY target.path;"))
    (lambda ()
      (sqlite-bind-arguments statement path)
      (sqlite-map (match-lambda (#(reference) reference)) statement))))
+
+(define (derivation-outputs db drv-path)
+  "Return registered DRV-PATH's output name/path pairs, sorted by name.
+The mappings do not imply that the outputs are registered or present on disk."
+  (check-references db (list drv-path))
+  (define statement
+    (sqlite-prepare db "SELECT outputs.id, outputs.path FROM DerivationOutputs outputs
+JOIN ValidPaths drv ON drv.id = outputs.drv
+WHERE drv.path = ? ORDER BY outputs.id;"))
+
+  (call-with-cleanup
+   (lambda () (sqlite-finalize statement))
+   (lambda ()
+     (sqlite-bind-arguments statement drv-path)
+     (sqlite-map (match-lambda (#(name path) (cons name path))) statement))))
 
 (define (reference-closure db paths)
   "Return PATHS and their transitive references in DB, once each, sorted.
@@ -176,8 +193,8 @@ PATH's validity row must exist in the current transaction.  Return the derivatio
      ((name . output)
       (execute db
                "INSERT OR REPLACE INTO DerivationOutputs (drv, id, path) VALUES (?, ?, ?);"
-               (list id name (derivation-output-path output)))))
-   (derivation-outputs drv))
+               (list id name (guix-drv:derivation-output-path output)))))
+   (guix-drv:derivation-outputs drv))
   drv)
 
 (define (check-derivation-outputs! db store-directory drv-path drv)
