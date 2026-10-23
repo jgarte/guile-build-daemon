@@ -25,7 +25,7 @@
                                     sqlite-close sqlite-exec sqlite-open
                                     sqlite-prepare sqlite-bind-arguments sqlite-step sqlite-map sqlite-finalize))
   #:export (call-with-database valid-path? register-item!
-                               make-output-info register-outputs! references
+                               make-output-info register-outputs! references reference-closure
                                &reference-cycle reference-cycle? reference-cycle-path
                                &invalid-reference invalid-reference?
                                invalid-reference-message invalid-reference-path))
@@ -100,6 +100,22 @@ WHERE source.path = ? ORDER BY target.path;"))
    (lambda ()
      (sqlite-bind-arguments statement path)
      (sqlite-map (match-lambda (#(reference) reference)) statement))))
+
+(define (reference-closure db paths)
+  "Return PATHS and their transitive references in DB, once each, sorted.
+Require every visited path to be registered.  The caller excludes concurrent
+invalidation."
+  (define seen (make-hash-table))
+
+  (define (visit path)
+    (unless (hash-ref seen path)
+      (hash-set! seen path #t)
+      (for-each visit (references db path))))
+
+  (for-each visit paths)
+  (chain seen
+    (hash-map->list (lambda (path _) path) _)
+    (sort _ string<?)))
 
 (define (register-path! db path hash size references deriver)
   "Insert or update PATH's NAR metadata and REFERENCES in DB's current transaction."

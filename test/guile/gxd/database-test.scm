@@ -7,7 +7,7 @@
   #:use-module (gxd test-prelude)
   #:use-module ((gxd test-database) #:select (query call-with-empty-database))
   #:use-module ((gxd database)
-                #:select (register-outputs! make-output-info valid-path? references
+                #:select (register-outputs! make-output-info valid-path? references reference-closure
                                             reference-cycle-path invalid-reference-path))
   #:use-module ((guix base16) #:select (bytevector->base16-string))
   #:use-module ((ares suitbl core) #:select (define-suite test is))
@@ -48,6 +48,29 @@ ORDER BY a.path, b.path;"))
          (define failure (capture-exception (lambda () (references db missing-path))))
 
          (is (equal? missing-path (invalid-reference-path failure))))))))
+
+(define-suite (database-closure-tests)
+  (test "include roots and shared transitive references once, including a self-reference" ()
+    (call-with-empty-database
+     (lambda (db directory)
+       (let* ((root-path (string-append directory "/root"))
+              (left-path (string-append directory "/left"))
+              (right-path (string-append directory "/right"))
+              (leaf-path (string-append directory "/leaf"))
+              (hash (make-bytevector 32 0))
+              (nar-size 120)
+              (expected-closure (list leaf-path left-path right-path root-path)))
+
+         (register-outputs!
+          db directory "/store/producer.drv"
+          (list (make-output-info root-path hash nar-size (list left-path right-path root-path))
+                (make-output-info left-path hash nar-size (list leaf-path))
+                (make-output-info right-path hash nar-size (list leaf-path))
+                (make-output-info leaf-path hash nar-size '())))
+
+         (is (equal? expected-closure
+                     (reference-closure db (list root-path right-path root-path))))
+         (is (null? (reference-closure db '()))))))))
 
 (define-suite (database-output-tests)
   (test "register a self-reference with the supplied NAR metadata and producing derivation" ()
