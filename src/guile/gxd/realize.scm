@@ -8,19 +8,53 @@
   #:use-module ((gxd builder) #:select (execute-builder!))
   #:use-module ((gxd build-inputs) #:select (reference-candidates))
   #:use-module ((gxd build-output) #:select (prepare-output!))
+  #:use-module ((gxd derivations) #:select (read-derivation))
   #:use-module ((gxd database)
                 #:prefix database:
-                #:select (valid-path? make-output-info register-outputs!))
+                #:select (valid-path? make-output-info register-outputs! derivation-outputs))
   #:use-module ((gxd path-locks) #:select (call-with-destination-locks))
   #:use-module ((gxd store-files) #:select (delete-path!))
   #:use-module ((guix derivations)
                 #:prefix guix-drv:
-                #:select (derivation-outputs derivation-output-path derivation-output-hash))
+                #:select (derivation-outputs derivation-output-path derivation-output-hash
+                                             derivation-inputs derivation-input-derivation
+                                             derivation-input-sub-derivations))
   #:use-module ((guix build syscalls) #:select (mkdtemp!))
   #:use-module ((ice-9 match) #:select (match-lambda))
   #:use-module ((srfi srfi-1) #:select (any every filter))
   #:use-module ((srfi srfi-11) #:select (let-values))
-  #:export (realize-derivation!))
+  #:export (realize-derivation! realize-path!))
+
+(define (requested-outputs-valid? db drv-path output-names)
+  "Return whether DRV-PATH's declared outputs selected by OUTPUT-NAMES are valid.
+An empty selection requests all outputs.  Absent names are diagnosed later by
+the consuming derivation's reference-candidate check."
+  (every
+   (match-lambda
+     ((name . path)
+      (if (or (null? output-names) (member name output-names))
+          (database:valid-path? db path)
+          #t)))
+   (database:derivation-outputs db drv-path)))
+
+(define (realize-path! db store-directory drv-path build-directory-parent cores log!)
+  "Realize registered DRV-PATH and its required input outputs.
+Build all outputs when selected outputs are missing.  BUILD-DIRECTORY-PARENT,
+CORES and LOG! follow `realize-derivation!'.  The caller excludes concurrent
+invalidation."
+  (define (realize-input! input)
+    (realize-selected! (guix-drv:derivation-input-derivation input)
+                       (guix-drv:derivation-input-sub-derivations input)))
+
+  (define (realize-selected! path output-names)
+    (if (requested-outputs-valid? db path output-names)
+        'already-valid
+        (let ((drv (call-with-input-file path read-derivation)))
+          (for-each realize-input! (guix-drv:derivation-inputs drv))
+          (realize-derivation! db store-directory path drv
+                               build-directory-parent cores log!))))
+
+  (realize-selected! drv-path '()))
 
 (define (build-and-register! db store-directory drv-path drv output-paths build-directory-parent cores log!)
   (define candidates (reference-candidates db drv-path drv))
