@@ -3,10 +3,10 @@
 ;; SPDX-FileCopyrightText: 2026 Andrew Zhurov
 ;; SPDX-FileCopyrightText: 2026 buttonspresser
 
-(define-module (gxd build-inputs-test)
+(define-module (gxd build inputs-test)
   #:use-module (gxd test-prelude)
   #:use-module ((gxd test-database) #:select (query call-with-empty-database))
-  #:use-module ((gxd build-inputs)
+  #:use-module ((gxd build inputs)
                 #:select (reference-candidates missing-input-output-drv-path
                                                missing-input-output-input-path
                                                missing-input-output-name))

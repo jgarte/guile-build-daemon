@@ -3,7 +3,7 @@
 ;; SPDX-FileCopyrightText: 2026 Andrew Zhurov
 ;; SPDX-FileCopyrightText: 2026 buttonspresser
 
-(define-module (gxd builder-process)
+(define-module (gxd build process)
   #:use-module (gxd prelude)
   #:use-module ((guix build syscalls) #:select (safe-clone))
   #:use-module ((ice-9 exceptions)

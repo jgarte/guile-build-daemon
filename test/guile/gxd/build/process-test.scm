@@ -3,9 +3,9 @@
 ;; SPDX-FileCopyrightText: 2026 Andrew Zhurov
 ;; SPDX-FileCopyrightText: 2026 buttonspresser
 
-(define-module (gxd builder-process-test)
+(define-module (gxd build process-test)
   #:use-module (gxd test-prelude)
-  #:use-module ((gxd builder-process)
+  #:use-module ((gxd build process)
                 #:select (call-with-builder-process builder-pid builder-output wait-builder!))
   #:use-module ((ares suitbl core) #:select (define-suite test is))
   #:use-module ((ice-9 exceptions)

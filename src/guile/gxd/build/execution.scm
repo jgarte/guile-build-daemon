@@ -3,10 +3,10 @@
 ;; SPDX-FileCopyrightText: 2026 Andrew Zhurov
 ;; SPDX-FileCopyrightText: 2026 buttonspresser
 
-(define-module (gxd builder)
+(define-module (gxd build execution)
   #:use-module (gxd prelude)
-  #:use-module ((gxd build-environment) #:select (build-environment))
-  #:use-module ((gxd builder-process)
+  #:use-module ((gxd build environment) #:select (build-environment))
+  #:use-module ((gxd build process)
                 #:select (call-with-builder-process builder-output wait-builder!))
   #:use-module ((guix derivations)
                 #:select (derivation-builder derivation-builder-arguments))

@@ -3,9 +3,9 @@
 ;; SPDX-FileCopyrightText: 2026 Andrew Zhurov
 ;; SPDX-FileCopyrightText: 2026 buttonspresser
 
-(define-module (gxd build-output-test)
+(define-module (gxd build outputs-test)
   #:use-module (gxd test-prelude)
-  #:use-module ((gxd build-output)
+  #:use-module ((gxd build outputs)
                 #:select (prepare-output! missing-output-error-drv-path missing-output-error-output-path
                                           output-permission-error-output-path))
   #:use-module ((ares suitbl core) #:select (define-suite test is))

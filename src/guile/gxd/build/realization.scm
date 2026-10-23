@@ -3,11 +3,11 @@
 ;; SPDX-FileCopyrightText: 2026 Andrew Zhurov
 ;; SPDX-FileCopyrightText: 2026 buttonspresser
 
-(define-module (gxd realize)
+(define-module (gxd build realization)
   #:use-module (gxd prelude)
-  #:use-module ((gxd builder) #:select (execute-builder!))
-  #:use-module ((gxd build-inputs) #:select (reference-candidates))
-  #:use-module ((gxd build-output) #:select (prepare-output!))
+  #:use-module ((gxd build execution) #:select (execute-builder!))
+  #:use-module ((gxd build inputs) #:select (reference-candidates))
+  #:use-module ((gxd build outputs) #:select (prepare-output!))
   #:use-module ((gxd derivations) #:select (read-derivation))
   #:use-module ((gxd database)
                 #:prefix database:

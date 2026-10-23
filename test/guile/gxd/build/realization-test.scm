@@ -3,10 +3,10 @@
 ;; SPDX-FileCopyrightText: 2026 Andrew Zhurov
 ;; SPDX-FileCopyrightText: 2026 buttonspresser
 
-(define-module (gxd realize-test)
+(define-module (gxd build realization-test)
   #:use-module (gxd test-prelude)
   #:use-module ((gxd test-database) #:select (call-with-empty-database))
-  #:use-module ((gxd realize) #:select (realize-derivation!))
+  #:use-module ((gxd build realization) #:select (realize-derivation!))
   #:use-module ((gxd derivations) #:select (read-derivation))
   #:use-module ((gxd database)
                 #:prefix database:

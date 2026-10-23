@@ -3,7 +3,7 @@
 ;; SPDX-FileCopyrightText: 2026 Andrew Zhurov
 ;; SPDX-FileCopyrightText: 2026 buttonspresser
 
-(define-module (gxd build-output)
+(define-module (gxd build outputs)
   #:use-module ((gxd references) #:select (scan-nar))
   #:use-module ((gxd store-files) #:select (canonicalize-metadata!))
   #:use-module ((guix build utils) #:select (false-if-file-not-found))

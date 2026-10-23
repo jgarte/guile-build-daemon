@@ -3,9 +3,9 @@
 ;; SPDX-FileCopyrightText: 2026 Andrew Zhurov
 ;; SPDX-FileCopyrightText: 2026 buttonspresser
 
-(define-module (gxd build-environment-test)
+(define-module (gxd build environment-test)
   #:use-module (gxd test-prelude)
-  #:use-module ((gxd build-environment) #:select (build-environment))
+  #:use-module ((gxd build environment) #:select (build-environment))
   #:use-module ((ares suitbl core) #:select (define-suite test is))
   #:use-module ((guix derivations)
                 #:select (derivation-builder-environment-vars))

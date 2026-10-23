@@ -3,7 +3,7 @@
 ;; SPDX-FileCopyrightText: 2026 Andrew Zhurov
 ;; SPDX-FileCopyrightText: 2026 buttonspresser
 
-(define-module (gxd build-environment)
+(define-module (gxd build environment)
   #:use-module (gxd prelude)
   #:use-module ((guix derivations) #:select (derivation-builder-environment-vars))
   #:use-module ((ice-9 match) #:select (match-lambda*))
