@@ -5,22 +5,13 @@
 
 (define-module (gxd testbox database-observations)
   #:use-module (gxd test-prelude)
+  #:use-module ((gxd test-database) #:select (query))
   #:use-module ((guix config) #:select (%store-database-directory))
   #:use-module ((ice-9 match) #:select (match match-let match-lambda))
   #:use-module ((sqlite3)
-                #:select (SQLITE_OPEN_READONLY sqlite-open sqlite-close
-                                               sqlite-prepare sqlite-bind-arguments sqlite-map
-                                               sqlite-finalize))
+                #:select (SQLITE_OPEN_READONLY sqlite-open sqlite-close))
   #:use-module ((srfi srfi-1) #:select (delete-duplicates filter-map))
   #:export (read-store-entries database-observations-fixture))
-
-(define (query db sql path)
-  (let ((statement (sqlite-prepare db sql)))
-    (call-with-cleanup
-     (lambda () (sqlite-finalize statement))
-     (lambda ()
-       (sqlite-bind-arguments statement path)
-       (sqlite-map identity statement)))))
 
 (define (read-references db path)
   "Return PATH's direct references in DB, sorted by path."
