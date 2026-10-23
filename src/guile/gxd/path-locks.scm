@@ -12,7 +12,8 @@
                                          with-exception-handler))
   #:use-module ((ice-9 format) #:select (format))
   #:use-module ((ice-9 match) #:select (match))
-  #:export (call-with-destination-lock))
+  #:use-module ((srfi srfi-1) #:select (delete-duplicates))
+  #:export (call-with-destination-lock call-with-destination-locks))
 
 ;;; Destination locks
 ;;;
@@ -88,3 +89,14 @@ This scope must not nest another lock on DESTINATION."
     (call-with-cleanup
      (lambda () (release-lock file port))
      thunk)))
+
+(define (call-with-destination-locks destinations thunk)
+  "Call THUNK holding the exclusive locks for distinct DESTINATIONS.
+Acquire in pathname order, return THUNK's values and release on return or
+exception.  The caller must not already hold any of these locks."
+  (let acquire ((paths (sort (delete-duplicates destinations string=?) string<?)))
+    (match paths
+      (() (thunk))
+      ((path . rest)
+       (call-with-destination-lock path
+         (lambda () (acquire rest)))))))
