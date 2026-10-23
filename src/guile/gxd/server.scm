@@ -15,7 +15,7 @@
                                                             invalid-reference-message)
                 #:prefix database:)
   #:use-module ((gxd store-path)
-                #:select (store-name-error? store-name-error-message))
+                #:select (store-path? store-name-error? store-name-error-message))
   #:use-module ((gxd text-store) #:select (add-text!))
   #:use-module ((gxd derivations)
                 #:select (derivation-output-error? derivation-output-error-message))
@@ -53,13 +53,6 @@
       (protocol:read-integer connection))
     (protocol:read-integer connection)
     version))
-
-(define (store-path? store-directory path)
-  "Return whether PATH names an immediate item beneath STORE-DIRECTORY."
-  (let ((prefix (string-append store-directory "/")))
-    (and (string-prefix? prefix path)
-         (> (string-length path) (string-length prefix))
-         (not (string-index path #\/ (string-length prefix))))))
 
 (define (serve-request connection store-directory db options trusted?)
   "Serve one request on CONNECTION using STORE-DIRECTORY, DB, OPTIONS and TRUSTED?.

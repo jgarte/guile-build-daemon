@@ -11,12 +11,19 @@
   #:use-module ((ice-9 exceptions) #:select (&error define-exception-type
                                                     raise-exception))
   #:use-module ((ice-9 format) #:select (format))
-  #:export (text-path check-store-name &store-name-error store-name-error?
+  #:export (text-path store-path? check-store-name &store-name-error store-name-error?
                       store-name-error-message))
 
 (define-exception-type &store-name-error &error
   make-store-name-error store-name-error?
   (message store-name-error-message))
+
+(define (store-path? store-directory path)
+  "Return whether PATH names an immediate item beneath STORE-DIRECTORY."
+  (let ((prefix (string-append store-directory "/")))
+    (and (string-prefix? prefix path)
+         (> (string-length path) (string-length prefix))
+         (not (string-index path #\/ (string-length prefix))))))
 
 (define (check-store-name name)
   "Raise a store-name error when NAME is invalid."
