@@ -4,23 +4,28 @@
 ;; SPDX-FileCopyrightText: 2026 buttonspresser
 
 (define-module (gxd worker-protocol)
-  #:use-module ((guix serialization) #:select (integer long-long utf8-string
+  #:use-module ((guix serialization) #:select (integer long-long utf8-string bytevector
                                                        read-value write-value))
-  #:use-module ((rnrs bytevectors) #:select (bytevector-length bytevector-u8-ref utf8->string))
+  #:use-module ((rnrs bytevectors)
+                #:select (bytevector-length bytevector-u8-ref utf8->string string->utf8))
   #:use-module ((rnrs io ports) #:select (get-bytevector-n))
   #:use-module ((srfi srfi-1) #:select (delete-duplicates))
   #:export (read-integer read-boolean read-bytevector read-string read-string-pairs read-options
                          read-text read-string-list
-                         write-completion write-error write-log))
+                         write-completion write-error write-log write-log-bytes))
 
 (define STDERR_LAST #x616c7473)
 (define STDERR_ERROR #x63787470)
 (define STDERR_NEXT #x6f6c6d67)
 
-(define (write-log message port)
-  "Write MESSAGE as a worker-protocol log frame to PORT."
+(define (write-log-bytes bytes port)
+  "Write bytevector BYTES as a worker-protocol log frame to PORT."
   (write-value integer STDERR_NEXT port)
-  (write-value utf8-string message port))
+  (write-value bytevector bytes port))
+
+(define (write-log message port)
+  "Write UTF-8 MESSAGE as a worker-protocol log frame to PORT."
+  (write-log-bytes (string->utf8 message) port))
 
 (define (write-completion port)
   "Write the work-completion marker to PORT."
