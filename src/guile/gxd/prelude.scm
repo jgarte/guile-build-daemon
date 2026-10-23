@@ -3,11 +3,26 @@
 ;; SPDX-FileCopyrightText: 2026 Andrew Zhurov
 
 (define-module (gxd prelude)
-  #:use-module ((ice-9 exceptions) #:select (raise-exception with-exception-handler))
+  #:use-module ((ice-9 exceptions)
+                #:select (&error define-exception-type make-exception
+                                 make-exception-with-message raise-exception with-exception-handler))
   #:use-module ((srfi srfi-2) #:select (and-let*))
   #:use-module ((srfi srfi-197) #:select (chain))
   #:re-export (and-let* chain)
-  #:export (comment get get-in call-with-cleanup))
+  #:export (comment get get-in call-with-cleanup todo!
+                    &todo todo? todo-feature todo-context))
+
+(define-exception-type &todo &error
+  make-todo todo?
+  (feature todo-feature)
+  (context todo-context))
+
+(define (todo! feature . context)
+  "Raise a not-yet-implemented error for planned FEATURE, carrying CONTEXT."
+  (raise-exception
+   (make-exception
+    (make-todo feature context)
+    (make-exception-with-message (string-append "not yet implemented: " feature)))))
 
 ;; taken from guile-ares-rs/src/guile/ares/guile/prelude.scm
 (define-syntax comment
