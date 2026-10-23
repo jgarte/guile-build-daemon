@@ -13,6 +13,7 @@
   #:use-module (gxd prelude)
   #:export (call-with-process-deadline
             capture-exception
+            call-with-resource
             deadline
             empty-derivation
             require-program
@@ -27,6 +28,20 @@
 
 (define (empty-derivation)
   (call-with-input-string "Derive([],[],[],\"\",\"\",[],[])" read-derivation))
+
+(define (call-with-resource name proc)
+  "Call PROC with an input port for test resource NAME.
+Resolve NAME beneath TEST_RESOURCES_DIRECTORY; close the port on return or
+exception.  Require the directory to be configured and the resource to exist."
+  (define directory
+    (or (getenv "TEST_RESOURCES_DIRECTORY")
+        (error "TEST_RESOURCES_DIRECTORY is not configured")))
+
+  (define port (open-input-file (string-append directory "/" name)))
+
+  (call-with-cleanup
+   (lambda () (close-port port))
+   (lambda () (proc port))))
 
 (define (select-keys alist keys)
   "Return ALIST's entries for KEYS in key order, omitting absent keys."
