@@ -23,9 +23,9 @@
   #:use-module ((srfi srfi-19) #:select (current-time time-utc))
   #:use-module ((sqlite3) #:select (SQLITE_OPEN_READWRITE
                                     sqlite-close sqlite-exec sqlite-open
-                                    sqlite-prepare sqlite-bind-arguments sqlite-step sqlite-finalize))
+                                    sqlite-prepare sqlite-bind-arguments sqlite-step sqlite-map sqlite-finalize))
   #:export (call-with-database valid-path? register-item!
-                               make-output-info register-outputs!
+                               make-output-info register-outputs! references
                                &reference-cycle reference-cycle? reference-cycle-path
                                &invalid-reference invalid-reference?
                                invalid-reference-message invalid-reference-path))
@@ -84,6 +84,22 @@
         (make-invalid-reference
          (format #f "path `~a' is not valid" reference) reference))))
    references))
+
+(define (references db path)
+  "Return registered PATH's direct references in DB, sorted by `string<?'.
+Raise an invalid-reference error if PATH is unregistered.  Do not inspect files."
+  (check-references db (list path))
+  (define statement
+    (sqlite-prepare db "SELECT target.path FROM Refs r
+JOIN ValidPaths source ON source.id = r.referrer
+JOIN ValidPaths target ON target.id = r.reference
+WHERE source.path = ? ORDER BY target.path;"))
+
+  (call-with-cleanup
+   (lambda () (sqlite-finalize statement))
+   (lambda ()
+     (sqlite-bind-arguments statement path)
+     (sqlite-map (match-lambda (#(reference) reference)) statement))))
 
 (define (register-path! db path hash size references deriver)
   "Insert or update PATH's NAR metadata and REFERENCES in DB's current transaction."

@@ -7,7 +7,7 @@
   #:use-module (gxd test-prelude)
   #:use-module ((gxd test-database) #:select (query call-with-empty-database))
   #:use-module ((gxd database)
-                #:select (register-outputs! make-output-info valid-path?
+                #:select (register-outputs! make-output-info valid-path? references
                                             reference-cycle-path invalid-reference-path))
   #:use-module ((guix base16) #:select (bytevector->base16-string))
   #:use-module ((ares suitbl core) #:select (define-suite test is))
@@ -26,6 +26,28 @@ ORDER BY a.path, b.path;"))
          "SELECT * FROM Refs ORDER BY referrer, reference;"
          "SELECT * FROM DerivationOutputs ORDER BY drv, id;"
          "SELECT * FROM sqlite_sequence ORDER BY name;")))
+
+(define-suite (database-reference-tests)
+  (test "read direct references and distinguish a registered leaf from an absent path" ()
+    (call-with-empty-database
+     (lambda (db directory)
+       (let* ((leaf-path (string-append directory "/leaf"))
+              (parent-path (string-append directory "/parent"))
+              (missing-path (string-append directory "/missing"))
+              (hash (make-bytevector 32 0))
+              (nar-size 120)
+              (expected-references (list leaf-path parent-path)))
+
+         (register-outputs! db directory "/store/producer.drv"
+                            (list (make-output-info parent-path hash nar-size expected-references)
+                                  (make-output-info leaf-path hash nar-size '())))
+
+         (is (equal? expected-references (references db parent-path)))
+         (is (null? (references db leaf-path)))
+
+         (define failure (capture-exception (lambda () (references db missing-path))))
+
+         (is (equal? missing-path (invalid-reference-path failure))))))))
 
 (define-suite (database-output-tests)
   (test "register a self-reference with the supplied NAR metadata and producing derivation" ()
