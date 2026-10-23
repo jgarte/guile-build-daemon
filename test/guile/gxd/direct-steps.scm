@@ -6,7 +6,7 @@
 (define-module (gxd direct-steps)
   #:use-module ((ice-9 match) #:select (match))
   #:use-module ((guix store)
-                #:select (add-text-to-store close-connection open-connection
+                #:select (add-text-to-store build-things close-connection open-connection
                                             &store-protocol-error store-protocol-error-message
                                             store-protocol-error-status
                                             set-build-options valid-path?))
@@ -35,6 +35,8 @@ Close both clients before returning or propagating an exception."
      (lambda (store) (valid-path? store path)))
     (('add-text-to-store (? string? name) (? string? text) . arguments)
      (lambda (store) (apply add-text-to-store store name text arguments)))
+    (('build-things paths . arguments)
+     (lambda (store) (apply build-things store paths arguments)))
     (('set-build-options . arguments)
      (lambda (store)
        (call-with-values
