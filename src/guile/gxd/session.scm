@@ -15,6 +15,7 @@
   #:use-module ((srfi srfi-9) #:select (define-record-type))
   #:use-module ((system foreign) #:select (sizeof unsigned-int unsigned-long))
   #:export (unix-peer-trusted? initial-options update-options
+                               options-build-cores
                                &option-error option-error? option-error-message))
 
 (define-record-type <options>
@@ -144,6 +145,11 @@ Prefix non-public names with untrusted- unless TRUSTED?.  Preserve other setting
   "Return whether OPTIONS permits substitution."
   (define key "build-use-substitutes")
   (parse-option-boolean key (assoc-ref (options-settings options) key)))
+
+(define (options-build-cores options)
+  "Return the number of build cores advertised by OPTIONS."
+  (define value (assoc-ref (options-settings options) "build-cores"))
+  (if value (parse-option-integer "build-cores" value 'unsigned-int) 1))
 
 (define (parse-option-integer name value type)
   "Return VALUE as C++ integer TYPE; raise an option error naming NAME if invalid."
