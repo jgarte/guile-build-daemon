@@ -9,7 +9,8 @@
   #:use-module ((gxd socket) #:select (peer-uid))
   #:use-module ((gxd session) #:select (&option-error option-error-message
                                                       initial-options update-options
-                                                      unix-peer-trusted?))
+                                                      unix-peer-trusted? options-build-cores))
+  #:use-module ((gxd build) #:select (build-paths!))
   #:use-module ((gxd database) #:select (call-with-database valid-path?
                                                             invalid-reference?
                                                             invalid-reference-message)
@@ -20,6 +21,7 @@
   #:use-module ((gxd derivations)
                 #:select (derivation-output-error? derivation-output-error-message))
   #:use-module ((gxd worker-protocol) #:select (read-integer read-string read-options read-text
+                                                             read-string-list write-log-bytes
                                                              write-completion write-error write-log)
                 #:prefix protocol:)
   #:use-module ((guix config) #:select (%store-directory
@@ -96,6 +98,20 @@ Return the session options after the request."
                                  (get request 'contents) references)))
             (protocol:write-completion connection)
             (write-value utf8-string path connection))))))
+
+   ((= operation (remote-procedure-id build-things))
+    (let* ((paths (protocol:read-string-list connection))
+           (mode (protocol:read-integer connection)))
+      (define build-directory-parent (or (getenv "TMPDIR") "/tmp"))
+      (define (log! bytes)
+        (protocol:write-log-bytes bytes connection)
+        (force-output connection))
+
+      (build-paths! db store-directory paths mode build-directory-parent
+                    (options-build-cores options) log!)
+
+      (protocol:write-completion connection)
+      (write-value boolean #t connection)))
 
    (else (error "unsupported operation")))
 
