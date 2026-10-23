@@ -10,7 +10,7 @@
   #:use-module ((rnrs io ports) #:select (get-bytevector-n))
   #:use-module ((srfi srfi-1) #:select (delete-duplicates))
   #:export (read-integer read-boolean read-bytevector read-string read-string-pairs read-options
-                         read-text
+                         read-text read-string-list
                          write-completion write-error write-log))
 
 (define STDERR_LAST #x616c7473)
@@ -44,6 +44,13 @@
 (define (read-boolean port)
   "Read a worker-protocol Boolean from PORT; zero is false, nonzero is true."
   (not (zero? (read-integer port))))
+
+(define (read-string-list port)
+  "Read a counted list of UTF-8 strings from PORT, preserving order and duplicates."
+  (let loop ((remaining (read-integer port)) (strings '()))
+    (if (zero? remaining)
+        (reverse strings)
+        (loop (1- remaining) (cons (read-string port) strings)))))
 
 (define (read-options port)
   "Read a pinned-protocol set-options payload from PORT as keyed data.
