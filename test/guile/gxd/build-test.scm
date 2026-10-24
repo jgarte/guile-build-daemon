@@ -195,4 +195,40 @@
 
     (is (step! `(valid-path? ,guile-store-path) #:connection 'build #:terminal? #t))
 
+    (observe-bytes!))
+
+  (test "a builder that exits successfully without its output is rejected and the connection stays usable" (ctx)
+    (define step! (get ctx 'step!))
+    (define observe-db-path! (get ctx 'observe-db-path!))
+    (define observe-bytes! (get ctx 'observe-bytes!))
+    (define guile (canonicalize-path (require-program "guile")))
+    (define guile-store-path (direct-store-path guile))
+
+    (define drv
+      (step! `(derivation "missing-output" ,guile
+                          ("--no-auto-compile" "-c" "(exit 0)")
+                          #:sources (,guile-store-path)
+                          #:substitutable? #f #:local-build? #t)
+             #:connection 'build))
+
+    (define drv-path (guix-drv:derivation-file-name drv))
+    (define expected-error
+      `((error/type . store-protocol-error)
+        (error/message . ,(string-append "build of `" drv-path "' failed"))
+        (error/status . 1)))
+
+    (step! '(set-build-options #:use-substitutes? #f #:offload? #f #:max-build-jobs 1)
+           #:connection 'build)
+
+    (is (equal? expected-error
+                (step! `(build-things (,drv-path)) #:connection 'build))
+        "missing output rejected")
+
+    (define registration (observe-db-path! drv-path))
+
+    (is (equal? '() (get registration 'valid-outputs)))
+
+    (is (step! `(valid-path? ,guile-store-path) #:connection 'build #:terminal? #t)
+        "connection remained usable")
+
     (observe-bytes!)))
