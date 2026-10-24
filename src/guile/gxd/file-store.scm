@@ -78,14 +78,6 @@
       (error "unknown hash algorithm" name))
     (values algorithm (lookup-hash-algorithm algorithm))))
 
-(define (add-recursive-from-port! db store-directory name hash-algo port)
-  "Read one recursive NAR from PORT and add it as NAME to STORE-DIRECTORY."
-  (let-values (((algorithm gcrypt-algorithm)
-                (fixed-output-hash-algorithm hash-algo)))
-    (let* ((nar (read-nar port))
-           (hash (bytevector-hash nar gcrypt-algorithm)))
-      (add-recursive! db store-directory name hash algorithm nar))))
-
 (define (flat-nar-contents nar)
   "Return NAR's top-level regular-file contents, or raise otherwise."
   (let-values (((output extract) (open-bytevector-output-port)))
@@ -159,3 +151,11 @@ unchanged.  The caller excludes concurrent GC."
               (database:register-item!
                db store-directory destination nar-hash nar-size '()))))))
     destination))
+
+(define (add-recursive-from-port! db store-directory name hash-algo port)
+  "Read one recursive NAR from PORT and add it as NAME to STORE-DIRECTORY."
+  (let-values (((algorithm gcrypt-algorithm)
+                (fixed-output-hash-algorithm hash-algo)))
+    (let* ((nar (read-nar port))
+           (hash (bytevector-hash nar gcrypt-algorithm)))
+      (add-recursive! db store-directory name hash algorithm nar))))
