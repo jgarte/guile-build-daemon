@@ -32,6 +32,16 @@ JOIN ValidPaths drv ON drv.id = outputs.drv
 WHERE drv.path = ? ORDER BY outputs.id;"
               path)))
 
+(define (read-valid-outputs db path)
+  "Return PATH's declared output mappings whose paths are registered in DB."
+  (map (match-lambda (#(name output-path) (cons name output-path)))
+       (query db
+              "SELECT outputs.id, outputs.path FROM DerivationOutputs outputs
+JOIN ValidPaths drv ON drv.id = outputs.drv
+JOIN ValidPaths output ON output.path = outputs.path
+WHERE drv.path = ? ORDER BY outputs.id;"
+              path)))
+
 (define (read-entry db path)
   (match (query db "SELECT hash, narSize, deriver FROM ValidPaths WHERE path = ?;" path)
     (() #f)
@@ -41,13 +51,15 @@ WHERE drv.path = ? ORDER BY outputs.id;"
              (nar-size . ,size)
              (deriver . ,deriver)
              (references . ,(read-references db path))
-             (outputs . ,(read-outputs db path)))))))
+             (outputs . ,(read-outputs db path))
+             (valid-outputs . ,(read-valid-outputs db path)))))))
 
 (define (read-store-entries database-file paths)
   "Return DB registration facts for PATHS from read-only DATABASE-FILE.
 Entries are keyed by path, unique and sorted; unregistered paths are omitted.
 Values contain nar-hash, nar-size, deriver (#f if absent), direct references,
-and declared outputs as sorted name/path pairs (empty for ordinary files)."
+and declared outputs as sorted name/path pairs (empty for ordinary files).
+The valid-outputs field is the subset whose paths are registered in DB."
   (let ((db (sqlite-open database-file SQLITE_OPEN_READONLY)))
     (call-with-cleanup
      (lambda () (sqlite-close db))
