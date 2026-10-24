@@ -8,11 +8,14 @@
   #:use-module ((gxd testbox disk) #:select (snapshot-root! delete-snapshot!))
   #:use-module (gxd test-prelude)
   #:use-module ((ice-9 exceptions) #:select (raise-exception))
+  #:use-module ((ice-9 match) #:select (match-let))
   #:use-module ((srfi srfi-1) #:select (delete find))
   #:export (paired-snapshots-fixture))
 
 (define (paired-snapshots-fixture ctx proceed)
-  "Add `snapshot!' to CTX: return fresh left/right root snapshot paths.
+  "Add `snapshot!' and `observe-snapshot!' to CTX.
+The former returns fresh left/right root snapshot paths; the latter applies
+a callback to each fresh snapshot and returns its common result, or raises.
 Each call replaces the preceding snapshots.  Delete owned snapshots at teardown.
 Call only after the operations whose effects are to be observed have finished."
   (let ((left (get ctx 'testbox/left))
@@ -46,4 +49,15 @@ Call only after the operations whose effects are to be observed have finished."
              (right-path (snapshot-box! right)))
         (list left-path right-path)))
 
-    (proceed (acons 'snapshot! snapshot! ctx) cleanup!)))
+    (define (observe-snapshot! proc)
+      (match-let (((left-path right-path) (snapshot!)))
+        (let* ((left-result (proc left-path))
+               (right-result (proc right-path)))
+          (unless (equal? left-result right-result)
+            (error "snapshot observations differ" left-result right-result))
+          left-result)))
+
+    (proceed (append `((snapshot! . ,snapshot!)
+                       (observe-snapshot! . ,observe-snapshot!))
+                     ctx)
+             cleanup!)))
