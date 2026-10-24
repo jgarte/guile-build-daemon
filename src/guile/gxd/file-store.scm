@@ -10,11 +10,78 @@
   #:use-module ((gxd path-locks) #:select (call-with-destination-lock))
   #:use-module ((gxd store-files) #:select (delete-path!))
   #:use-module ((gxd store-path) #:select (fixed-output-path))
-  #:use-module ((guix serialization) #:select (restore-file))
+  #:use-module ((gcrypt hash) #:select (bytevector-hash lookup-hash-algorithm))
+  #:use-module ((guix serialization) #:select (fold-archive restore-file))
   #:use-module ((guix store deduplication) #:select (nar-sha256))
-  #:use-module ((rnrs io ports) #:select (open-bytevector-input-port))
+  #:use-module ((rnrs bytevectors) #:select (bytevector-length))
+  #:use-module ((rnrs io ports) #:select (get-bytevector-n get-bytevector-n!
+                                             make-custom-binary-input-port
+                                             open-bytevector-input-port
+                                             open-bytevector-output-port
+                                             put-bytevector))
+  #:use-module ((ice-9 match) #:select (match))
   #:use-module ((srfi srfi-11) #:select (let-values))
-  #:export (add-recursive!))
+  #:export (add-recursive! add-recursive-from-port!))
+
+(define (drain port size)
+  "Read exactly SIZE bytes from PORT."
+  (let loop ((remaining size))
+    (unless (zero? remaining)
+      (let ((bytes (get-bytevector-n port (min remaining 65536))))
+        (when (eof-object? bytes)
+          (error "unexpected end-of-file in NAR contents"))
+        (loop (- remaining (bytevector-length bytes)))))))
+
+(define (tee-input-port input output)
+  "Return an input port that copies bytes read from INPUT to OUTPUT."
+  (define (read! bytes start count)
+    (let ((read (get-bytevector-n! input bytes start count)))
+      (cond ((eof-object? read) 0)
+            ((zero? read) (read! bytes start count))
+            (else
+             (put-bytevector output bytes start read)
+             read))))
+  (let ((port (make-custom-binary-input-port
+               "NAR saving input port" read! #f #f #f)))
+    ;; Disable buffering so this port doesn't read ahead and steal bytes.
+    ;; This ensures the caller can cleanly resume reading from the original 
+    ;; input port later.
+    (setvbuf port 'none)
+    port))
+
+(define (read-nar port)
+  "Read, validate, and return one normalized NAR from PORT."
+  (let-values (((output extract) (open-bytevector-output-port)))
+    ;; OUTPUT owns an in-memory buffer and must be closed after EXTRACT has
+    ;; returned it.  INPUT is a custom view of PORT and does not own PORT.
+    (call-with-cleanup
+     (lambda () (close-port output))
+     (lambda ()
+       (let ((input (tee-input-port port output)))
+         (fold-archive
+          (lambda (_ type contents result)
+            (match type
+              ((or 'regular 'executable)
+               (drain (car contents) (cdr contents)))
+              (_ #t))
+            result)
+          #t input "")
+         (extract))))))
+
+(define (fixed-output-hash-algorithm name)
+  "Return NAME as a supported fixed-output hash-algorithm and gcrypt value."
+  (let ((algorithm (string->symbol name)))
+    (unless (memq algorithm '(md5 sha1 sha256 sha512))
+      (error "unknown hash algorithm" name))
+    (values algorithm (lookup-hash-algorithm algorithm))))
+
+(define (add-recursive-from-port! db store-directory name hash-algo port)
+  "Read one recursive NAR from PORT and add it as NAME to STORE-DIRECTORY."
+  (let-values (((algorithm gcrypt-algorithm)
+                (fixed-output-hash-algorithm hash-algo)))
+    (let* ((nar (read-nar port))
+           (hash (bytevector-hash nar gcrypt-algorithm)))
+      (add-recursive! db store-directory name hash algorithm nar))))
 
 (define (add-recursive! db store-directory name hash hash-algo nar)
   "Restore buffered NAR as a recursive fixed-output item named NAME.

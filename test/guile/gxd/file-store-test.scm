@@ -10,10 +10,13 @@
   #:use-module ((guix store database) #:prefix guix-db:
                 #:select (call-with-database))
   #:use-module ((gxd database) #:prefix database: #:select (valid-path?))
-  #:use-module ((gxd file-store) #:select (add-recursive!))
+  #:use-module ((gxd file-store)
+                #:select (add-recursive! add-recursive-from-port!))
   #:use-module ((gxd store-path) #:select (fixed-output-path))
   #:use-module ((guix utils) #:select (call-with-temporary-directory))
-  #:use-module ((rnrs io ports) #:select (open-bytevector-output-port))
+  #:use-module ((rnrs io ports)
+                #:select (get-u8 open-bytevector-input-port
+                                 open-bytevector-output-port put-bytevector put-u8))
   #:use-module ((srfi srfi-11) #:select (let-values))
   #:use-module (gxd test-prelude))
 
@@ -48,5 +51,20 @@
          (is (= #o444 (stat:perms (stat destination))))
          ;; existing item is selected without rereading NAR
          (is (equal? destination
-                     (add-recursive! db dir "item" hash 'sha256 #vu8()))))))))
+                     (add-recursive! db dir "item" hash 'sha256 #vu8())))))))
+
+  (test "recursive port import consumes exactly one NAR" ()
+    (call-with-tmp-dir-and-database
+     (lambda (dir db)
+       (let ((source (string-append dir "/source")))
+         (spit source "contents")
+         (let-values (((output extract) (open-bytevector-output-port)))
+           ;; The byte after the NAR models the next protocol input.
+           (put-bytevector output (nar-bytes source))
+           (put-u8 output 42)
+           (let* ((input (open-bytevector-input-port (extract)))
+                  (destination (add-recursive-from-port!
+                                db dir "item" "sha256" input)))
+             (is (database:valid-path? db destination))
+             (is (= 42 (get-u8 input))))))))))
 
