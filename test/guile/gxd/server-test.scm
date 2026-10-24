@@ -4,6 +4,7 @@
 (define-module (gxd server-test)
   #:use-module ((ares suitbl core) #:select (define-suite is test))
   #:use-module ((guix store) #:select (direct-store-path store-connection-socket))
+  #:use-module ((guix utils) #:select (call-with-temporary-directory))
   #:use-module ((guix base16) #:select (bytevector->base16-string))
   #:use-module ((guix store deduplication) #:select (nar-sha256))
   #:use-module ((ice-9 match) #:select (match-let))
@@ -20,6 +21,14 @@
   #:use-module ((gxd testbox store-observations) #:select (store-observations-fixture))
   #:use-module ((gxd testbox-relay)
                 #:select (client-trust-fixture paired-relay-observers-fixture)))
+
+(define (call-with-temporary-regular-source contents proc)
+  "Write CONTENTS to a temporary regular file and call PROC with its path."
+  (call-with-temporary-directory
+   (lambda (directory)
+     (let ((source (string-append directory "/source")))
+       (call-with-output-file source (lambda (port) (display contents port)))
+       (proc source)))))
 
 (define (remote-eof? store)
   "Return whether STORE reaches remote EOF within five seconds."
@@ -223,6 +232,18 @@
           (path (direct-store-path
                  (canonicalize-path (require-program "guix-daemon")))))
       (is (eq? #t (step! `(valid-path? ,path))))))
+
+  (test "recursive file ingress registers the same store path" (ctx)
+    (let* ((step! (get ctx 'step!))
+           (path
+            (call-with-temporary-regular-source
+             "contents"
+             (lambda (source)
+               (step! `(add-to-store "source" #t "sha256" ,source)
+                      #:connection 'add)))))
+      (is (string? path))
+      (is (eq? #t (step! `(valid-path? ,path)
+                         #:connection 'add #:terminal? #t)))))
 
   (test "unregistered path is invalid on nixd and gxd" (ctx)
     (let ((step! (get ctx 'step!)))

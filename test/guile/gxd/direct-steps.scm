@@ -6,10 +6,12 @@
 (define-module (gxd direct-steps)
   #:use-module ((ice-9 match) #:select (match))
   #:use-module ((guix store)
-                #:select (add-text-to-store build-things close-connection open-connection
-                                            &store-protocol-error store-protocol-error-message
-                                            store-protocol-error-status
-                                            set-build-options valid-path?))
+                #:select (add-text-to-store
+                          add-to-store
+                          build-things close-connection open-connection
+                          &store-protocol-error store-protocol-error-message
+                          store-protocol-error-status
+                          set-build-options valid-path?))
   #:use-module ((ice-9 exceptions) #:select (raise-exception with-exception-handler))
   #:use-module ((guix derivations)
                 #:prefix guix-drv:
@@ -36,6 +38,9 @@ Close both clients before returning or propagating an exception."
   (match expression
     (('valid-path? (? string? path))
      (lambda (store) (valid-path? store path)))
+    (('add-to-store (? string? name) (? boolean? recursive?) (? string? hash-algo)
+                    (? string? file-name))
+     (lambda (store) (add-to-store store name recursive? hash-algo file-name)))
     (('add-text-to-store (? string? name) (? string? text) . arguments)
      (lambda (store) (apply add-text-to-store store name text arguments)))
     (('build-things paths . arguments)
