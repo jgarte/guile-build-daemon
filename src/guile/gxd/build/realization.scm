@@ -21,9 +21,18 @@
                                              derivation-input-sub-derivations))
   #:use-module ((guix build syscalls) #:select (mkdtemp!))
   #:use-module ((ice-9 match) #:select (match-lambda))
+  #:use-module ((ice-9 exceptions)
+                #:select (&error define-exception-type raise-exception))
   #:use-module ((srfi srfi-1) #:select (any every filter))
   #:use-module ((srfi srfi-11) #:select (let-values))
-  #:export (realize-derivation! realize-path!))
+  #:export (realize-derivation! realize-path!
+                                &builder-exit-error builder-exit-error? builder-exit-error-derivation
+                                builder-exit-error-status))
+
+(define-exception-type &builder-exit-error &error
+  make-builder-exit-error builder-exit-error?
+  (derivation builder-exit-error-derivation)
+  (status builder-exit-error-status))
 
 (define (requested-outputs-valid? db drv-path output-names)
   "Return whether DRV-PATH's declared outputs selected by OUTPUT-NAMES are valid.
@@ -69,7 +78,7 @@ invalidation."
      (define exit-code (status:exit-val status))
 
      (unless (and exit-code (zero? exit-code))
-       (error "builder failed" drv-path status))
+       (raise-exception (make-builder-exit-error drv-path status)))
 
      (define output-infos
        (map (lambda (output-path)
