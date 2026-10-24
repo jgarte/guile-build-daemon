@@ -17,7 +17,7 @@
   #:use-module ((gxd build outputs) #:select (missing-output-error? output-permission-error?))
   #:use-module ((gxd database) #:select (call-with-database valid-path?
                                                             invalid-reference?
-                                                            invalid-reference-message)
+                                                            invalid-reference-path)
                 #:prefix database:)
   #:use-module ((gxd store-path)
                 #:select (store-path? store-name-error? store-name-error-message))
@@ -162,7 +162,7 @@ These errors end the request, not the client session; other exceptions propagate
        (cond
         ((store-name-error? exception) (store-name-error-message exception))
         ((database:invalid-reference? exception)
-         (database:invalid-reference-message exception))
+         (format #f "path `~a' is not valid" (database:invalid-reference-path exception)))
         ((derivation-output-error? exception)
          (derivation-output-error-message exception))
         (else (raise-exception exception)))

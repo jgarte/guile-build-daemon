@@ -17,7 +17,6 @@
                 #:select (register-valid-path valid-path-id))
   #:use-module ((ice-9 exceptions)
                 #:select (&error define-exception-type raise-exception with-exception-handler))
-  #:use-module ((ice-9 format) #:select (format))
   #:use-module ((ice-9 match) #:select (match-lambda))
   #:use-module ((srfi srfi-1) #:select (filter-map))
   #:use-module ((srfi srfi-9) #:select (define-record-type))
@@ -30,11 +29,10 @@
                                derivation-outputs
                                &reference-cycle reference-cycle? reference-cycle-path
                                &invalid-reference invalid-reference?
-                               invalid-reference-message invalid-reference-path))
+                               invalid-reference-path))
 
 (define-exception-type &invalid-reference &error
   make-invalid-reference invalid-reference?
-  (message invalid-reference-message)
   (path invalid-reference-path))
 
 (define-record-type <output-info>
@@ -83,8 +81,7 @@
    (lambda (reference)
      (unless (valid-path? db reference)
        (raise-exception
-        (make-invalid-reference
-         (format #f "path `~a' is not valid" reference) reference))))
+        (make-invalid-reference reference))))
    references))
 
 (define (references db path)
