@@ -11,7 +11,10 @@
                                                       initial-options update-options
                                                       unix-peer-trusted? options-build-cores))
   #:use-module ((gxd build)
-                #:select (build-paths! &build-request-error build-request-error-path))
+                #:select (build-paths! &build-request-error build-request-error-path
+                                       build-request-error-cause))
+  #:use-module ((gxd build realization) #:select (builder-exit-error?))
+  #:use-module ((gxd build outputs) #:select (missing-output-error? output-permission-error?))
   #:use-module ((gxd database) #:select (call-with-database valid-path?
                                                             invalid-reference?
                                                             invalid-reference-message)
@@ -125,9 +128,16 @@ Return the session options after the request."
   "Call THUNK, reporting build request errors on CONNECTION without ending the session."
   (with-exception-handler
     (lambda (exception)
+      (define cause (build-request-error-cause exception))
+      (define status
+        (cond
+         ((builder-exit-error? cause) 100)
+         ((or (missing-output-error? cause) (output-permission-error? cause)) 1)
+         (else (raise-exception exception))))
+
       (protocol:write-error
        (format #f "build of `~a' failed" (build-request-error-path exception))
-       100 connection))
+       status connection))
     thunk
     #:unwind? #t
     #:unwind-for-type &build-request-error))

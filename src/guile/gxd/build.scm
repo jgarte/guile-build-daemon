@@ -6,7 +6,8 @@
 (define-module (gxd build)
   #:use-module (gxd prelude)
   #:use-module ((gxd build realization)
-                #:select (realize-path! &builder-exit-error))
+                #:select (realize-path! builder-exit-error?))
+  #:use-module ((gxd build outputs) #:select (missing-output-error? output-permission-error?))
   #:use-module ((gxd store-path) #:select (store-path?))
   #:use-module ((guix remote-procedures) #:select (build-mode))
   #:use-module ((ice-9 exceptions)
@@ -21,13 +22,16 @@
   (cause build-request-error-cause))
 
 (define (call-with-build-error-handling path thunk)
-  "Call THUNK, reporting builder exit errors as build request failures for PATH."
+  "Call THUNK, reporting builder exits and output rejections as request failures for PATH."
   (with-exception-handler
     (lambda (exception)
-      (raise-exception (make-build-request-error path exception)))
+      (if (or (builder-exit-error? exception)
+              (missing-output-error? exception)
+              (output-permission-error? exception))
+          (raise-exception (make-build-request-error path exception))
+          (raise-exception exception)))
     thunk
-    #:unwind? #t
-    #:unwind-for-type &builder-exit-error))
+    #:unwind? #t))
 
 (define (build-paths! db store-directory paths mode build-directory-parent cores log!)
   "Realize PATHS in MODE using DB and STORE-DIRECTORY.
