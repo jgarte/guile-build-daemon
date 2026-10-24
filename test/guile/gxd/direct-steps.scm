@@ -11,6 +11,9 @@
                                             store-protocol-error-status
                                             set-build-options valid-path?))
   #:use-module ((ice-9 exceptions) #:select (raise-exception with-exception-handler))
+  #:use-module ((guix derivations)
+                #:prefix guix-drv:
+                #:select (derivation))
   #:use-module (gxd test-prelude)
   #:export (call-with-client call-with-paired-clients paired-step! direct-steps-fixture))
 
@@ -37,6 +40,8 @@ Close both clients before returning or propagating an exception."
      (lambda (store) (apply add-text-to-store store name text arguments)))
     (('build-things paths . arguments)
      (lambda (store) (apply build-things store paths arguments)))
+    (('derivation name builder arguments . options)
+     (lambda (store) (apply guix-drv:derivation store name builder arguments options)))
     (('set-build-options . arguments)
      (lambda (store)
        (call-with-values
