@@ -23,6 +23,9 @@
   #:use-module ((ice-9 match) #:select (match-lambda))
   #:use-module ((ice-9 exceptions)
                 #:select (&error define-exception-type raise-exception))
+  #:use-module ((ice-9 format) #:select (format))
+  #:use-module ((rnrs bytevectors) #:select (string->utf8))
+  #:use-module ((system foreign) #:select (int pointer->procedure pointer->string))
   #:use-module ((srfi srfi-1) #:select (any every filter))
   #:use-module ((srfi srfi-11) #:select (let-values))
   #:export (realize-derivation! realize-path!
@@ -33,6 +36,19 @@
   make-builder-exit-error builder-exit-error?
   (derivation builder-exit-error-derivation)
   (status builder-exit-error-status))
+
+(define signal-description
+  (pointer->procedure '* (dynamic-func "strsignal" (dynamic-link)) (list int)))
+
+(define (status-description status)
+  (cond
+   ((status:exit-val status)
+    => (lambda (code) (format #f "failed with exit code ~a" code)))
+   ((status:term-sig status)
+    => (lambda (signal)
+         (format #f "failed due to signal ~a (~a)"
+                 signal (pointer->string (signal-description signal)))))
+   (else "died abnormally")))
 
 (define (requested-outputs-valid? db drv-path output-names)
   "Return whether DRV-PATH's declared outputs selected by OUTPUT-NAMES are valid.
@@ -78,6 +94,8 @@ invalidation."
      (define exit-code (status:exit-val status))
 
      (unless (and exit-code (zero? exit-code))
+       (log! (string->utf8
+              (format #f "builder for `~a' ~a~%" drv-path (status-description status))))
        (raise-exception (make-builder-exit-error drv-path status)))
 
      (define output-infos

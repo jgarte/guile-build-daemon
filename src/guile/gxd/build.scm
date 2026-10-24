@@ -5,7 +5,8 @@
 
 (define-module (gxd build)
   #:use-module (gxd prelude)
-  #:use-module ((gxd build realization) #:select (realize-path! &builder-exit-error))
+  #:use-module ((gxd build realization)
+                #:select (realize-path! &builder-exit-error))
   #:use-module ((gxd store-path) #:select (store-path?))
   #:use-module ((guix remote-procedures) #:select (build-mode))
   #:use-module ((ice-9 exceptions)
