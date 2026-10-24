@@ -10,13 +10,20 @@
                 #:select (%store-prefix store-path))
   #:use-module ((ice-9 exceptions) #:select (&error define-exception-type
                                                     raise-exception))
-  #:use-module ((ice-9 format) #:select (format))
   #:export (text-path store-path? check-store-name &store-name-error store-name-error?
-                      store-name-error-message))
+                      store-name-error-name leading-dot-name-error?
+                      invalid-character-name-error? invalid-character-name-error-character))
 
 (define-exception-type &store-name-error &error
   make-store-name-error store-name-error?
-  (message store-name-error-message))
+  (name store-name-error-name))
+
+(define-exception-type &leading-dot-name-error &store-name-error
+  make-leading-dot-name-error leading-dot-name-error?)
+
+(define-exception-type &invalid-character-name-error &store-name-error
+  make-invalid-character-name-error invalid-character-name-error?
+  (character invalid-character-name-error-character))
 
 (define (store-path? store-directory path)
   "Return whether PATH names an immediate item beneath STORE-DIRECTORY."
@@ -28,9 +35,7 @@
 (define (check-store-name name)
   "Raise a store-name error when NAME is invalid."
   (when (string-prefix? "." name)
-    (raise-exception
-     (make-store-name-error
-      (format #f "invalid name: `~a' (can't begin with dot)" name))))
+    (raise-exception (make-leading-dot-name-error name)))
 
   (string-for-each
    (lambda (character)
@@ -38,9 +43,7 @@
                  (char<=? #\a character #\z)
                  (char<=? #\0 character #\9)
                  (string-index "+-._?=" character))
-       (raise-exception
-        (make-store-name-error
-         (format #f "invalid character `~a' in name `~a'" character name)))))
+       (raise-exception (make-invalid-character-name-error name character))))
    name))
 
 (define (text-path store-directory name contents references)

@@ -6,7 +6,8 @@
 (define-module (gxd store-path-test)
   #:use-module ((ares suitbl core) #:select (define-suite is test))
   #:use-module ((gxd store-path)
-                #:select (text-path store-name-error-message))
+                #:select (text-path store-name-error-name leading-dot-name-error?
+                                    invalid-character-name-error-character))
   #:use-module (gxd test-prelude))
 
 (define-suite (store-path-tests)
@@ -14,13 +15,13 @@
     (is (string? (text-path "/gnu/store" "" #vu8() '())))
     (is (string? (text-path "/gnu/store" "AZaz09+-._?=" #vu8() '()))))
 
-  (test "invalid names raise typed native diagnostics" ()
+  (test "invalid names report the rejected name and character" ()
     (let ((dot-error (capture-exception
                       (lambda () (text-path "/gnu/store" ".bad" #vu8() '()))))
           (slash-error (capture-exception
                         (lambda () (text-path "/gnu/store" "a/b" #vu8() '())))))
 
-      (is (equal? "invalid name: `.bad' (can't begin with dot)"
-                  (store-name-error-message dot-error)))
-      (is (equal? "invalid character `/' in name `a/b'"
-                  (store-name-error-message slash-error))))))
+      (is (leading-dot-name-error? dot-error))
+      (is (equal? ".bad" (store-name-error-name dot-error)))
+      (is (equal? "a/b" (store-name-error-name slash-error)))
+      (is (char=? #\/ (invalid-character-name-error-character slash-error))))))

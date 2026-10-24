@@ -20,7 +20,9 @@
                                                             invalid-reference-path)
                 #:prefix database:)
   #:use-module ((gxd store-path)
-                #:select (store-path? store-name-error? store-name-error-message))
+                #:select (store-path? leading-dot-name-error? store-name-error-name
+                                      invalid-character-name-error?
+                                      invalid-character-name-error-character))
   #:use-module ((gxd text-store) #:select (add-text!))
   #:use-module ((gxd derivations)
                 #:select (derivation-output-error? derivation-output-error-message))
@@ -160,7 +162,13 @@ These errors end the request, not the client session; other exceptions propagate
     (lambda (exception)
       (protocol:write-error
        (cond
-        ((store-name-error? exception) (store-name-error-message exception))
+        ((leading-dot-name-error? exception)
+         (format #f "invalid name: `~a' (can't begin with dot)"
+                 (store-name-error-name exception)))
+        ((invalid-character-name-error? exception)
+         (format #f "invalid character `~a' in name `~a'"
+                 (invalid-character-name-error-character exception)
+                 (store-name-error-name exception)))
         ((database:invalid-reference? exception)
          (format #f "path `~a' is not valid" (database:invalid-reference-path exception)))
         ((derivation-output-error? exception)
