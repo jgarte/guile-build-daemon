@@ -26,10 +26,13 @@
                                       invalid-character-name-error?
                                       invalid-character-name-error-character))
   #:use-module ((gxd text-store) #:select (add-text!))
+  #:use-module ((gxd file-store)
+                #:select (add-flat-from-port! add-recursive-from-port!))
   #:use-module ((gxd derivations)
                 #:select (derivation-output-error? derivation-output-error-message))
   #:use-module ((gxd worker-protocol) #:select (read-integer read-string read-options read-text
                                                              read-string-list write-log-bytes
+                                                             read-add-to-store-request
                                                              write-completion write-error write-log)
                 #:prefix protocol:)
   #:use-module ((guix config) #:select (%store-directory
@@ -85,6 +88,17 @@ Return the session options after the request."
           (let ((valid? (database:valid-path? db path)))
             (protocol:write-completion connection)
             (write-value boolean valid? connection)))))
+
+   ((= operation (remote-procedure-id add-to-store))
+    (let* ((request (protocol:read-add-to-store-request connection))
+           (name (get request 'name))
+           (hash-algo (get request 'hash-algo))
+           (path ((if (get request 'recursive?)
+                      add-recursive-from-port!
+                      add-flat-from-port!)
+                  db store-directory name hash-algo connection)))
+      (protocol:write-completion connection)
+      (write-value utf8-string path connection)))
 
    ((= operation (remote-procedure-id add-text-to-store))
     (let* ((request (protocol:read-text connection))
