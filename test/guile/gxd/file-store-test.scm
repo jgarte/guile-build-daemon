@@ -11,9 +11,10 @@
                 #:select (call-with-database))
   #:use-module ((gxd database) #:prefix database: #:select (valid-path?))
   #:use-module ((gxd file-store)
-                #:select (add-recursive! add-recursive-from-port!))
+                #:select (add-recursive! add-recursive-from-port! add-flat-from-port!))
   #:use-module ((gxd store-path) #:select (fixed-output-path))
   #:use-module ((guix utils) #:select (call-with-temporary-directory))
+  #:use-module ((rnrs bytevectors) #:select (string->utf8))
   #:use-module ((rnrs io ports)
                 #:select (get-u8 open-bytevector-input-port
                                  open-bytevector-output-port put-bytevector put-u8))
@@ -66,5 +67,22 @@
                   (destination (add-recursive-from-port!
                                 db dir "item" "sha256" input)))
              (is (database:valid-path? db destination))
-             (is (= 42 (get-u8 input))))))))))
+             (is (= 42 (get-u8 input)))))))))
+
+  (test "flat port import stores regular-file contents" ()
+    (call-with-tmp-dir-and-database
+     (lambda (dir db)
+       (let ((source (string-append dir "/source")))
+         (spit source "contents")
+         (let-values (((output extract) (open-bytevector-output-port)))
+           (put-bytevector output (nar-bytes source))
+           (let* ((input (open-bytevector-input-port (extract)))
+                  (destination (add-flat-from-port!
+                                db dir "item" "sha256" input))
+                  (expected (fixed-output-path
+                             dir "item" (sha256 (string->utf8 "contents"))
+                             #:recursive? #f)))
+             (is (equal? expected destination))
+             (is (database:valid-path? db destination))
+             (is (= #o444 (stat:perms (stat destination)))))))))))
 
