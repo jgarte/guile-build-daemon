@@ -132,4 +132,67 @@
                 filesystem-nars))
 
     ;; Build logs differ; consume completed captures without comparing their bytes.
+    (observe-bytes!))
+
+  (test "when a dependency build fails, the error names the requested consumer and the connection stays usable" (ctx)
+    (define step! (get ctx 'step!))
+    (define observe-db! (get ctx 'observe-db!))
+    (define observe-bytes! (get ctx 'observe-bytes!))
+    (define guile (canonicalize-path (require-program "guile")))
+    (define guile-store-path (direct-store-path guile))
+
+    (define dependency-expression
+      '(begin
+         (umask #o022)
+         ;; Both outputs would be acceptable if the builder exited successfully.
+         (call-with-output-file (getenv "dev")
+           (lambda (port) (display "development\n" port)))
+         (call-with-output-file (getenv "out")
+           (lambda (port) (display "runtime\n" port)))
+         (exit 7)))
+
+    (define dependency-builder
+      (step! `(add-text-to-store "failing-dependency-builder.scm"
+                                 ,(object->string dependency-expression))
+             #:connection 'build))
+
+    (define dependency
+      (step! `(derivation "failing-dependency" ,guile ("--no-auto-compile" ,dependency-builder)
+                          #:outputs ("dev" "out")
+                          #:sources (,dependency-builder ,guile-store-path)
+                          #:substitutable? #f #:local-build? #t)
+             #:connection 'build))
+
+    (define consumer-expression
+      '(call-with-output-file (getenv "out")
+         (lambda (port) (display "consumer\n" port))))
+
+    (define consumer
+      (step! `(derivation "consumer-of-failure" ,guile
+                          ("--no-auto-compile" "-c" ,(object->string consumer-expression))
+                          #:inputs (,(guix-drv:derivation-input dependency '("dev")))
+                          #:sources (,guile-store-path)
+                          #:substitutable? #f #:local-build? #t)
+             #:connection 'build))
+
+    (define dependency-path (guix-drv:derivation-file-name dependency))
+    (define consumer-path (guix-drv:derivation-file-name consumer))
+    (define expected-error
+      `((error/type . store-protocol-error)
+        (error/message . ,(string-append "build of `" consumer-path "' failed"))
+        (error/status . 100)))
+
+    (step! '(set-build-options #:use-substitutes? #f #:offload? #f #:max-build-jobs 1)
+           #:connection 'build)
+
+    (is (equal? expected-error
+                (step! `(build-things (,consumer-path)) #:connection 'build)))
+
+    (define registrations (observe-db! (list dependency-path consumer-path)))
+
+    (is (equal? '() (get-in registrations `(,dependency-path valid-outputs))))
+    (is (equal? '() (get-in registrations `(,consumer-path valid-outputs))))
+
+    (is (step! `(valid-path? ,guile-store-path) #:connection 'build #:terminal? #t))
+
     (observe-bytes!)))
