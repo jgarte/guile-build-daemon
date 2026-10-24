@@ -7,7 +7,10 @@
   #:use-module (gxd prelude)
   #:use-module ((gxd build execution) #:select (execute-builder!))
   #:use-module ((gxd build inputs) #:select (reference-candidates))
-  #:use-module ((gxd build outputs) #:select (prepare-output!))
+  #:use-module ((gxd build outputs)
+                #:select (prepare-output! missing-output-error? missing-output-error-drv-path
+                                          missing-output-error-output-path output-permission-error?
+                                          output-permission-error-output-path))
   #:use-module ((gxd derivations) #:select (read-derivation))
   #:use-module ((gxd database)
                 #:prefix database:
@@ -22,7 +25,7 @@
   #:use-module ((guix build syscalls) #:select (mkdtemp!))
   #:use-module ((ice-9 match) #:select (match-lambda))
   #:use-module ((ice-9 exceptions)
-                #:select (&error define-exception-type raise-exception))
+                #:select (&error define-exception-type raise-exception with-exception-handler))
   #:use-module ((ice-9 format) #:select (format))
   #:use-module ((rnrs bytevectors) #:select (string->utf8))
   #:use-module ((system foreign) #:select (int pointer->procedure pointer->string))
@@ -81,6 +84,26 @@ invalidation."
 
   (realize-selected! drv-path '()))
 
+(define (call-with-output-error-logging log! thunk)
+  "Call THUNK, logging output rejection diagnostics through LOG! before re-raising."
+  (with-exception-handler
+    (lambda (exception)
+      (define diagnostic
+        (cond
+         ((missing-output-error? exception)
+          (format #f "builder for `~a' failed to produce output path `~a'"
+                  (missing-output-error-drv-path exception)
+                  (missing-output-error-output-path exception)))
+         ((output-permission-error? exception)
+          (format #f "suspicious ownership or permission on `~a'; rejecting this build output"
+                  (output-permission-error-output-path exception)))
+         (else (raise-exception exception))))
+
+      (log! (string->utf8 (string-append diagnostic "\n")))
+      (raise-exception exception))
+    thunk
+    #:unwind? #t))
+
 (define (build-and-register! db store-directory drv-path drv output-paths build-directory-parent cores log!)
   (define candidates (reference-candidates db drv-path drv))
 
@@ -99,11 +122,13 @@ invalidation."
        (raise-exception (make-builder-exit-error drv-path status)))
 
      (define output-infos
-       (map (lambda (output-path)
-              (let-values (((references hash nar-size)
-                            (prepare-output! drv-path output-path candidates)))
-                (database:make-output-info output-path hash nar-size references)))
-            output-paths))
+       (call-with-output-error-logging log!
+         (lambda ()
+           (map (lambda (output-path)
+                  (let-values (((references hash nar-size)
+                                (prepare-output! drv-path output-path candidates)))
+                    (database:make-output-info output-path hash nar-size references)))
+                output-paths))))
 
      (database:register-outputs! db store-directory drv-path output-infos)
      'built)))
