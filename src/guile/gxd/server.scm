@@ -10,7 +10,8 @@
   #:use-module ((gxd session) #:select (&option-error option-error-message
                                                       initial-options update-options
                                                       unix-peer-trusted? options-build-cores))
-  #:use-module ((gxd build) #:select (build-paths!))
+  #:use-module ((gxd build)
+                #:select (build-paths! &build-request-error build-request-error-path))
   #:use-module ((gxd database) #:select (call-with-database valid-path?
                                                             invalid-reference?
                                                             invalid-reference-message)
@@ -107,16 +108,29 @@ Return the session options after the request."
         (protocol:write-log-bytes bytes connection)
         (force-output connection))
 
-      (build-paths! db store-directory paths mode build-directory-parent
-                    (options-build-cores options) log!)
+      (call-with-build-error-reporting connection
+        (lambda ()
+          (build-paths! db store-directory paths mode build-directory-parent
+                        (options-build-cores options) log!)
 
-      (protocol:write-completion connection)
-      (write-value boolean #t connection)))
+          (protocol:write-completion connection)
+          (write-value boolean #t connection)))))
 
    (else (error "unsupported operation")))
 
   (force-output connection)
   options)
+
+(define (call-with-build-error-reporting connection thunk)
+  "Call THUNK, reporting build request errors on CONNECTION without ending the session."
+  (with-exception-handler
+    (lambda (exception)
+      (protocol:write-error
+       (format #f "build of `~a' failed" (build-request-error-path exception))
+       100 connection))
+    thunk
+    #:unwind? #t
+    #:unwind-for-type &build-request-error))
 
 (define (call-with-option-error-reporting connection thunk)
   "Call THUNK, reporting option errors on CONNECTION before re-raising them."
