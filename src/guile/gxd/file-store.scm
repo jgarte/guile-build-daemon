@@ -10,6 +10,7 @@
   #:use-module ((gxd path-locks) #:select (call-with-destination-lock))
   #:use-module ((gxd store-files) #:select (delete-path!))
   #:use-module ((gxd store-path) #:select (fixed-output-path))
+  #:use-module ((gxd text-store) #:select (write-text!))
   #:use-module ((gcrypt hash) #:select (bytevector-hash lookup-hash-algorithm))
   #:use-module ((guix serialization) #:select (fold-archive restore-file))
   #:use-module ((guix store deduplication) #:select (nar-sha256))
@@ -21,15 +22,17 @@
                                              put-bytevector))
   #:use-module ((ice-9 match) #:select (match))
   #:use-module ((srfi srfi-11) #:select (let-values))
-  #:export (add-recursive! add-recursive-from-port!))
+  #:export (add-recursive! add-recursive-from-port!
+                           add-flat! add-flat-from-port!))
 
-(define (drain port size)
-  "Read exactly SIZE bytes from PORT."
+(define* (drain port size #:optional output)
+  "Read exactly SIZE bytes from PORT, copying them to OUTPUT when supplied."
   (let loop ((remaining size))
     (unless (zero? remaining)
       (let ((bytes (get-bytevector-n port (min remaining 65536))))
         (when (eof-object? bytes)
           (error "unexpected end-of-file in NAR contents"))
+        (when output (put-bytevector output bytes))
         (loop (- remaining (bytevector-length bytes)))))))
 
 (define (tee-input-port input output)
@@ -82,6 +85,55 @@
     (let* ((nar (read-nar port))
            (hash (bytevector-hash nar gcrypt-algorithm)))
       (add-recursive! db store-directory name hash algorithm nar))))
+
+(define (flat-nar-contents nar)
+  "Return NAR's top-level regular-file contents, or raise otherwise."
+  (let-values (((output extract) (open-bytevector-output-port)))
+    (define regular? #f)
+    (call-with-cleanup
+     (lambda () (close-port output))
+     (lambda ()
+       (let ((input (open-bytevector-input-port nar)))
+         (fold-archive
+          (lambda (file type contents result)
+            (match type
+              ((or 'regular 'executable)
+               (if (string-null? file)
+                   (begin
+                     (set! regular? #t)
+                     (drain (car contents) (cdr contents) output))
+                   (drain (car contents) (cdr contents))))
+              ((or 'directory 'directory-complete 'symlink) #t))
+            result)
+          #t input "")
+         (unless regular?
+           (error "regular file expected"))
+         (extract))))))
+
+(define (add-flat! db store-directory name hash hash-algo contents)
+  "Add bytevector CONTENTS as a flat fixed-output item named NAME."
+  (let ((destination
+         (fixed-output-path store-directory name hash
+                            #:hash-algo hash-algo #:recursive? #f)))
+    (unless (database:valid-path? db destination)
+      (call-with-destination-lock destination
+        (lambda ()
+          (unless (database:valid-path? db destination)
+            (delete-path! destination)
+            (let-values (((nar-hash nar-size)
+                          (write-text! destination contents)))
+              (database:register-item!
+               db store-directory destination nar-hash nar-size '()))))))
+    destination))
+
+(define (add-flat-from-port! db store-directory name hash-algo port)
+  "Read one flat-file NAR from PORT and add it as NAME to STORE-DIRECTORY."
+  (let-values (((algorithm gcrypt-algorithm)
+                (fixed-output-hash-algorithm hash-algo)))
+    (let* ((nar (read-nar port))
+           (contents (flat-nar-contents nar))
+           (hash (bytevector-hash contents gcrypt-algorithm)))
+      (add-flat! db store-directory name hash algorithm contents))))
 
 (define (add-recursive! db store-directory name hash hash-algo nar)
   "Restore buffered NAR as a recursive fixed-output item named NAME.
