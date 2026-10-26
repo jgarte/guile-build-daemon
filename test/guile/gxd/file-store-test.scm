@@ -71,6 +71,32 @@
              (is (database:valid-path? db destination))
              (is (= 42 (get-u8 input)))))))))
 
+  (test "recursive import rejects NARs deeper than nixd's limit" ()
+    (call-with-tmp-dir-and-database
+     (lambda (dir db)
+       (define source (string-append dir "/source"))
+       (define deepest source)
+       (mkdir source)
+
+       (let loop ((parent source) (depth 0))
+         (when (< depth 255)
+           (let ((child (string-append parent "/dir")))
+             (mkdir child)
+             (set! deepest child)
+             (loop child (1+ depth)))))
+
+       (define (dir-nesting-too-deep? source)
+         (capture-exception
+          (lambda ()
+            (let (input (open-bytevector-input-port (nar-bytes source)))
+              (add-nar-to-store db dir "item" #t "sha256" input)))))
+       
+       (is (not (dir-nesting-too-deep? source)))
+
+       (mkdir (string-append deepest "/dir"))
+       
+       (is (dir-nesting-too-deep? source)))))
+
   (test "flat port import stores regular-file contents" ()
     (call-with-tmp-dir-and-database
      (lambda (dir db)
