@@ -308,9 +308,8 @@ ENVIRONMENT overrides inherited string name/value pairs in the child only."
   (let* ((program (canonicalize-path (require-program "guix-daemon")))
          (arguments
           (case (get (testbox-manifest box) 'testbox/daemon-mode)
-            ((rootless) '("--disable-chroot" "--build-users-group="))
-            ((rootful) '("--disable-chroot"
-                         "--build-users-group=gxdbuild"))))
+            ((rootless) '("--build-users-group="))
+            ((rootful) '("--build-users-group=gxdbuild"))))
          (in-box-program (string-append (testbox-root box) program)))
     (unless (and (executable-file? in-box-program)
                  (eq? 'regular (stat:type (stat in-box-program))))
@@ -323,7 +322,7 @@ ENVIRONMENT overrides inherited string name/value pairs in the child only."
          (source (get-in (testbox-manifest box) '(testbox/sources gxd))))
     (start-testbox-process! box 'daemon guix
                             (list "repl" "-L" (string-append source "/guile")
-                                  "--" (string-append source "/main.scm") "--disable-chroot"))))
+                                  "--" (string-append source "/main.scm")))))
 
 (define (start-guix-command! box role arguments)
   "Start Guix with ARGUMENTS as ROLE against BOX's daemon; return its process.
