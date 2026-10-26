@@ -16,14 +16,30 @@
   #:use-module ((guix store deduplication) #:select (nar-sha256))
   #:use-module ((rnrs bytevectors) #:select (bytevector-length))
   #:use-module ((rnrs io ports) #:select (get-bytevector-n get-bytevector-n!
-                                             make-custom-binary-input-port
-                                             open-bytevector-input-port
-                                             open-bytevector-output-port
-                                             put-bytevector))
+                                                           make-custom-binary-input-port
+                                                           open-bytevector-input-port
+                                                           open-bytevector-output-port
+                                                           put-bytevector))
   #:use-module ((ice-9 match) #:select (match))
   #:use-module ((srfi srfi-11) #:select (let-values))
   #:export (add-nar-as-recursive! add-nar-as-recursive-from-port!
-                           add-nar-as-flat-file! add-nar-as-flat-file-from-port!))
+                                  add-nar-as-flat-file! add-nar-as-flat-file-from-port!))
+
+(define (call-with-bytevector-output-port proc)
+  "Call PROC with an output port and return its accumulated bytevector."
+  (let-values (((output extract) (open-bytevector-output-port)))
+    (call-with-cleanup
+     (lambda () (close-port output))
+     (lambda ()
+       (proc output)
+       (extract)))))
+
+(define (call-with-bytevector-input-port bytes proc)
+  "Call PROC with an input port over BYTES."
+  (let ((port (open-bytevector-input-port bytes)))
+    (call-with-cleanup
+     (lambda () (close-port port))
+     (lambda () (proc port)))))
 
 (define* (drain port size #:optional output)
   "Read exactly SIZE bytes from PORT, copying them to OUTPUT when supplied."
@@ -54,22 +70,18 @@
 
 (define (read-nar port)
   "Read, validate, and return one normalized NAR from PORT."
-  (let-values (((output extract) (open-bytevector-output-port)))
-    ;; OUTPUT owns an in-memory buffer and must be closed after EXTRACT has
-    ;; returned it.  INPUT is a custom view of PORT and does not own PORT.
-    (call-with-cleanup
-     (lambda () (close-port output))
-     (lambda ()
-       (let ((input (tee-input-port port output)))
-         (fold-archive
-          (lambda (_ type contents result)
-            (match type
-              ((or 'regular 'executable)
-               (drain (car contents) (cdr contents)))
-              (_ #t))
-            result)
-          #t input "")
-         (extract))))))
+  (call-with-bytevector-output-port
+   (lambda (output)
+     ;; INPUT is a custom view of PORT and does not own PORT.
+     (let ((input (tee-input-port port output)))
+       (fold-archive
+        (lambda (_ type contents result)
+          (match type
+            ((or 'regular 'executable)
+             (drain (car contents) (cdr contents)))
+            (_ #t))
+          result)
+        #t input "")))))
 
 (define (fixed-output-hash-algorithm name)
   "Return NAME as a supported fixed-output hash-algorithm and gcrypt value."
@@ -80,12 +92,11 @@
 
 (define (read-content-of-flat-file-nar nar)
   "Return NAR's top-level regular file contents, or raise otherwise."
-  (let-values (((output extract) (open-bytevector-output-port)))
-    (define regular? #f)
-    (call-with-cleanup
-     (lambda () (close-port output))
-     (lambda ()
-       (let ((input (open-bytevector-input-port nar)))
+  (call-with-bytevector-output-port
+   (lambda (output)
+     (define regular? #f)
+     (call-with-bytevector-input-port nar
+       (lambda (input)
          (fold-archive
           (lambda (file type contents result)
             (match type
@@ -97,10 +108,9 @@
                    (drain (car contents) (cdr contents))))
               ((or 'directory 'directory-complete 'symlink) #t))
             result)
-          #t input "")
-         (unless regular?
-           (error "regular file expected"))
-         (extract))))))
+          #t input "")))
+     (unless regular?
+       (error "regular file expected")))))
 
 (define (add-nar-as-flat-file! db store-directory name hash hash-algo contents)
   "Add bytevector CONTENTS as a flat fixed-output item named NAME."
@@ -143,10 +153,9 @@ unchanged.  The caller excludes concurrent GC."
           ;; destination lock
           (unless (database:valid-path? db destination)
             (delete-path! destination)
-            (let ((port (open-bytevector-input-port nar)))
-              (call-with-cleanup
-               (lambda () (close-port port))
-               (lambda () (restore-file port destination))))
+            (call-with-bytevector-input-port nar
+              (lambda (input)
+                (restore-file input destination)))
             (let-values (((nar-hash nar-size) (nar-sha256 destination)))
               (database:register-item!
                db store-directory destination nar-hash nar-size '()))))))
