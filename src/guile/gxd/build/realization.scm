@@ -6,12 +6,14 @@
 (define-module (gxd build realization)
   #:use-module (gxd prelude)
   #:use-module ((gxd build execution) #:select (execute-builder!))
-  #:use-module ((gxd build inputs) #:select (reference-candidates))
+  #:use-module ((gxd build inputs) #:select (reference-candidates input-closure))
   #:use-module ((gxd build outputs)
-                #:select (prepare-output! missing-output-error? missing-output-error-drv-path
+                #:select (prepare-output! prepare-sandboxed-output! preserve-failed-output!
+                                          missing-output-error? missing-output-error-drv-path
                                           missing-output-error-output-path output-permission-error?
                                           output-permission-error-output-path))
   #:use-module ((gxd derivations) #:select (read-derivation))
+  #:use-module ((gxd build sandbox) #:select (call-with-build-sandbox sandbox-root))
   #:use-module ((gxd database)
                 #:prefix database:
                 #:select (valid-path? make-output-info register-outputs! derivation-outputs))
@@ -65,10 +67,11 @@ the consuming derivation's reference-candidate check."
           #t)))
    (database:derivation-outputs db drv-path)))
 
-(define (realize-path! db store-directory drv-path build-directory-parent cores log!)
+(define* (realize-path! db store-directory drv-path build-directory-parent cores log!
+                        #:optional (sandboxed? #f))
   "Realize registered DRV-PATH and its required input outputs.
 Build all outputs when selected outputs are missing.  BUILD-DIRECTORY-PARENT,
-CORES and LOG! follow `realize-derivation!'.  The caller excludes concurrent
+CORES, LOG! and SANDBOXED? follow `realize-derivation!'.  The caller excludes concurrent
 invalidation."
   (define (realize-input! input)
     (realize-selected! (guix-drv:derivation-input-derivation input)
@@ -80,7 +83,7 @@ invalidation."
         (let ((drv (call-with-input-file path read-derivation)))
           (for-each realize-input! (guix-drv:derivation-inputs drv))
           (realize-derivation! db store-directory path drv
-                               build-directory-parent cores log!))))
+                               build-directory-parent cores log! sandboxed?))))
 
   (realize-selected! drv-path '()))
 
@@ -104,7 +107,49 @@ invalidation."
     thunk
     #:unwind? #t))
 
-(define (build-and-register! db store-directory drv-path drv output-paths build-directory-parent cores log!)
+(define (preserve-failed-outputs! output-paths sandbox-root-directory log!)
+  "Move failed OUTPUT-PATHS out of SANDBOX-ROOT-DIRECTORY, logging errors to LOG!."
+  (for-each
+   (lambda (output-path)
+     (with-exception-handler
+       (lambda (exception)
+         (log! (string->utf8
+                (format #f "failed to preserve output `~a': ~s~%" output-path exception))))
+       (lambda ()
+         (preserve-failed-output! output-path (string-append sandbox-root-directory output-path)))
+       #:unwind? #t))
+   output-paths))
+
+(define (build-and-prepare-outputs! drv-path drv store-directory build-directory
+                                    output-paths candidates cores log! sandbox)
+  "Execute DRV, prepare OUTPUT-PATHS, and return their metadata for registration.
+Preserve failed sandbox outputs before reporting the builder's failure."
+  (define status (execute-builder! drv store-directory build-directory cores log! sandbox))
+  (define exit-code (status:exit-val status))
+
+  (unless (and exit-code (zero? exit-code))
+    (when sandbox
+      (preserve-failed-outputs! output-paths (sandbox-root sandbox) log!))
+    (log! (string->utf8
+           (format #f "builder for `~a' ~a~%" drv-path (status-description status))))
+    (raise-exception (make-builder-exit-error drv-path status)))
+
+  (define (prepare-output-info output-path)
+    (let-values (((references hash nar-size)
+                  (if sandbox
+                      (prepare-sandboxed-output!
+                       drv-path output-path candidates
+                       (string-append (sandbox-root sandbox) output-path))
+                      (prepare-output! drv-path output-path candidates))))
+      (database:make-output-info output-path hash nar-size references)))
+
+  (call-with-output-error-logging log!
+    (lambda () (map prepare-output-info output-paths))))
+
+(define (build-and-register! db store-directory drv-path drv output-paths build-directory-parent cores log!
+                             sandboxed?)
+  "Build DRV and register its outputs, owning temporary workspace and sandbox cleanup.
+The caller holds the output locks; SANDBOXED? selects isolated execution."
   (define candidates (reference-candidates db drv-path drv))
 
   (for-each delete-path! output-paths)
@@ -113,34 +158,29 @@ invalidation."
   (call-with-cleanup
    (lambda () (delete-path! build-directory))
    (lambda ()
-     (define status (execute-builder! drv store-directory build-directory cores log!))
-     (define exit-code (status:exit-val status))
-
-     (unless (and exit-code (zero? exit-code))
-       (log! (string->utf8
-              (format #f "builder for `~a' ~a~%" drv-path (status-description status))))
-       (raise-exception (make-builder-exit-error drv-path status)))
+     (define (prepare! sandbox)
+       (build-and-prepare-outputs! drv-path drv store-directory build-directory
+                                   output-paths candidates cores log! sandbox))
 
      (define output-infos
-       (call-with-output-error-logging log!
-         (lambda ()
-           (map (lambda (output-path)
-                  (let-values (((references hash nar-size)
-                                (prepare-output! drv-path output-path candidates)))
-                    (database:make-output-info output-path hash nar-size references)))
-                output-paths))))
+       (if sandboxed?
+           (call-with-build-sandbox drv-path store-directory (input-closure db drv-path drv)
+                                    30001 30000 prepare!)
+           (prepare! #f)))
 
      (database:register-outputs! db store-directory drv-path output-infos)
      'built)))
 
-(define (realize-derivation! db store-directory drv-path drv build-directory-parent cores log!)
+(define* (realize-derivation! db store-directory drv-path drv build-directory-parent cores log!
+                              #:optional (sandboxed? #f))
   "Realize admitted ordinary DRV at DRV-PATH with already-realized inputs.
 Use DB and STORE-DIRECTORY for acceptance and create a temporary workspace under
 existing BUILD-DIRECTORY-PARENT.  Advertise CORES to the builder and deliver its
 binary log chunks to LOG!.  Return `already-valid' or `built'.
 DRV has distinct output paths.  Input derivations in DRV are represented by
 filenames, not resolved derivation records.  The caller excludes concurrent GC;
-execution is same-owner and unsandboxed.  Failed builds may leave
+execution is same-owner.  With SANDBOXED?, use mapped rootless namespaces and a
+private filesystem; otherwise execute unsandboxed.  Failed builds may leave
 unregistered output files; temporary build directories are removed."
   (define outputs (guix-drv:derivation-outputs drv))
   (define output-paths
@@ -164,4 +204,4 @@ unregistered output files; temporary build directories are removed."
             (todo! "partially valid output realization" drv-path))
            (else
             (build-and-register! db store-directory drv-path drv output-paths
-                                 build-directory-parent cores log!)))))))
+                                 build-directory-parent cores log! sandboxed?)))))))
