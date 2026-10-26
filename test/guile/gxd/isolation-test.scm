@@ -14,7 +14,10 @@
   #:use-module ((ares suitbl core) #:select (define-suite is test))
   #:use-module ((ares suitbl checks) #:select (throws-exception?))
   #:use-module ((guix build utils) #:select (delete-file-recursively))
-  #:use-module ((guix build syscalls) #:select (mount MS_SHARED))
+  #:use-module ((guix build syscalls)
+                #:select (mount MS_SHARED MS_RDONLY MS_NOSUID MS_NODEV MS_NOEXEC
+                                statfs file-system-mount-flags
+                                statfs-flags->mount-flags))
   #:use-module ((guix utils) #:select (call-with-temporary-directory))
   #:use-module ((gxd isolation) #:select (child-proc
                                           make-mounts-private!
@@ -246,27 +249,8 @@ IDs."
       (lambda ()
         (delete-file-recursively root)))))
 
-(define (observe-read-only-bind-mount source target)
-  "Return the source content and whether TARGET accepts a write after mounting."
-  (call-with-child-proc
-   (logior CLONE_NEWUSER CLONE_NEWNS SIGCHLD)
-   (lambda (=> <=)
-     (<= 'ids-mapped)
-     (make-mounts-private!)
-     (bind-mount-read-only! source target)
-     (=> 'observed
-         `((content . ,(slurp (string-append target "/file")))
-           (writable? . ,(not (throws-exception?
-                               (spit (string-append target "/written")
-                                     "written")))))))
-   (lambda (child-pid => <=)
-     (let-values (((uid-ranges gid-ranges) (current-root-id-map-ranges 1)))
-       (write-id-map-ranges! child-pid uid-ranges gid-ranges))
-     (=> 'ids-mapped)
-     (<= 'observed))))
-
 (define-suite (bind-mount-read-only-tests)
-  (test "source contents are exposed read-only at the target" ()
+  (test "read-only binds preserve source mount flags and reject writes" ()
     (define content "source content")
     (define observed
       (call-with-temporary-directory
@@ -274,11 +258,40 @@ IDs."
          (let ((source (string-append directory "/source"))
                (target (string-append directory "/target")))
            (mkdir source)
-           (spit (string-append source "/file") content)
-           (observe-read-only-bind-mount source target)))))
+           (call-with-private-mount-in-container
+            (lambda ()
+              (mount "none" source "tmpfs"
+                     (logior MS_NOSUID MS_NODEV MS_NOEXEC))
+              (spit (string-append source "/file") content)
+              (bind-mount-read-only! source target))
+            (lambda ()
+              (list (slurp (string-append target "/file"))
+                    (statfs-flags->mount-flags
+                     (file-system-mount-flags (statfs source)))
+                    (statfs-flags->mount-flags
+                     (file-system-mount-flags (statfs target)))
+                    (throws-exception?
+                     (spit (string-append target "/written") "written")))))))))
 
-    (is (string=? content (get observed 'content)))
-    (is (not (get observed 'writable?)))))
+    (match-let (((target-content source-flags target-flags write-rejected?) observed))
+      (is (string=? content target-content))
+      (is (= (logior source-flags MS_RDONLY) target-flags))
+      (is write-rejected?)))
+
+  (test "a dangling relative source symlink is copied even for a read-only bind" ()
+    (define link-text "missing-relative-file")
+    (define observed
+      (call-with-temporary-directory
+       (lambda (directory)
+         (let ((source (string-append directory "/source"))
+               (target (string-append directory "/target")))
+           (symlink link-text source)
+           (call-with-private-mount-in-container
+            (lambda () (bind-mount-read-only! source target))
+            (lambda ()
+              (list (stat:type (lstat target)) (readlink target))))))))
+
+    (is (equal? (list 'symlink link-text) observed))))
 
 
 (define (call-with-private-mount-in-container setup! thunk)
@@ -385,7 +398,49 @@ IDs."
 
     (is (string=? initial-content target-content-before-write))
     (is (string=? updated-content target-content-after-write))
-    (is (string=? updated-content source-content-after-target-write))))
+    (is (string=? updated-content source-content-after-target-write)))
+
+  (test "a bind includes files from mounts nested beneath the source" ()
+    (define expected-content "nested mount content")
+    (define target-content
+      (call-with-temporary-directory
+       (lambda (directory)
+         (let* ((source (string-append directory "/source"))
+                (nested (string-append source "/nested"))
+                (target (string-append directory "/target")))
+           (mkdir source)
+           (mkdir nested)
+           (call-with-private-mount-in-container
+            (lambda ()
+              (mount-tmpfs! nested)
+              (spit (string-append nested "/marker") expected-content)
+              (bind-mount! source target))
+            (lambda ()
+              (let ((path (string-append target "/nested/marker")))
+                (and (file-exists? path) (slurp path)))))))))
+
+    (is (equal? expected-content target-content)))
+
+  (test "a bind rejects a symlink mountpoint and leaves the linked file unchanged" ()
+    (define content "referent must remain unchanged")
+    (define observed
+      (call-with-temporary-directory
+       (lambda (directory)
+         (let ((source (string-append directory "/source"))
+               (target (string-append directory "/target"))
+               (referent (string-append directory "/referent")))
+           (spit source "source content")
+           (spit referent content)
+           (symlink referent target)
+           (call-with-private-mount-in-container
+            (lambda () #t)
+            (lambda ()
+              (let ((rejected? (throws-exception? (bind-mount! source target))))
+                (list rejected? (slurp referent)))))))))
+
+    (match-let (((rejected? referent-content) observed))
+      (is rejected?)
+      (is (string=? content referent-content)))))
 
 (define (observe-pivoted-root root)
   "Return the entries and PID visible after pivoting into ROOT."
