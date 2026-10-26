@@ -23,6 +23,8 @@
   #:use-module ((ice-9 match) #:select (match))
   #:use-module ((srfi srfi-11) #:select (let-values))
   #:export (add-nar-to-store
+            call-with-bytevector-input-port
+            call-with-bytevector-output-port
             register-store-path!
             restore-nar!
             ensure-store-path!
