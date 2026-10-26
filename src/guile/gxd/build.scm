@@ -36,10 +36,11 @@
     thunk
     #:unwind? #t))
 
-(define (build-paths! db store-directory paths mode build-directory-parent cores log!)
+(define (build-paths! db store-directory paths mode build-directory-parent cores log! sandboxed?)
   "Realize PATHS in MODE using DB and STORE-DIRECTORY.
 Use BUILD-DIRECTORY-PARENT for workspaces, advertise CORES to builders, and
-deliver binary log chunks to LOG!.  The caller excludes concurrent GC."
+deliver binary log chunks to LOG!.  SANDBOXED? selects isolated execution.
+The caller excludes concurrent GC."
   (unless (= mode (build-mode normal))
     (todo! "non-normal build modes" mode))
 
@@ -61,5 +62,5 @@ deliver binary log chunks to LOG!.  The caller excludes concurrent GC."
      (lambda (path)
        (call-with-build-error-handling path
          (lambda ()
-           (realize-path! db store-directory path build-directory-parent cores log!))))
+           (realize-path! db store-directory path build-directory-parent cores log! sandboxed?))))
      _)))

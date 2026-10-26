@@ -9,7 +9,8 @@
   #:use-module ((gxd socket) #:select (peer-uid))
   #:use-module ((gxd session) #:select (&option-error option-error-message
                                                       initial-options update-options
-                                                      unix-peer-trusted? options-build-cores))
+                                                      unix-peer-trusted? options-build-cores
+                                                      options-use-chroot?))
   #:use-module ((gxd build)
                 #:select (build-paths! build-request-error? build-request-error-path
                                        build-request-error-cause))
@@ -118,7 +119,7 @@ Return the session options after the request."
       (call-with-build-error-reporting connection
         (lambda ()
           (build-paths! db store-directory paths mode build-directory-parent
-                        (options-build-cores options) log!)
+                        (options-build-cores options) log! (options-use-chroot? options))
 
           (protocol:write-completion connection)
           (write-value boolean #t connection)))))
@@ -188,7 +189,7 @@ These errors end the request, not the client session; other exceptions propagate
     thunk
     #:unwind? #t))
 
-(define (serve-client connection store-directory database-file)
+(define (serve-client connection store-directory database-file use-chroot?)
   "Serve supported requests until CONNECTION ends, using STORE-DIRECTORY and DATABASE-FILE."
   (greet-client connection)
   ;; LocalStore creates this index even when automatic deduplication is disabled.
@@ -197,7 +198,7 @@ These errors end the request, not the client session; other exceptions propagate
     (lambda (db)
       (define uid (peer-uid connection))
       (define trusted? (unix-peer-trusted? uid (getuid)))
-      (define options (initial-options #t))
+      (define options (initial-options #t use-chroot?))
       (unless (user-exists? uid)
         (protocol:write-log (format #f "user with UID ~a not found~%" uid)
                             connection))
@@ -209,8 +210,8 @@ These errors end the request, not the client session; other exceptions propagate
              (set! options
                    (serve-request connection store-directory db options trusted?))))))
 
-(define (run-server socket-path)
-  "Serve one client session at SOCKET-PATH against the configured store."
+(define* (run-server socket-path #:optional (use-chroot? #t))
+  "Serve one client session at SOCKET-PATH; USE-CHROOT? selects build sandboxing."
   (define listener (socket AF_UNIX SOCK_STREAM 0))
 
   ;; Make new files and directories non-group/world-writable, as in nixd.
@@ -240,5 +241,5 @@ These errors end the request, not the client session; other exceptions propagate
          (lambda () (close-port connection))
          (lambda ()
            (serve-client connection %store-directory
-                         (string-append %store-database-directory
-                                        "/db.sqlite")))))))))
+                         (string-append %store-database-directory "/db.sqlite")
+                         use-chroot?))))))))
