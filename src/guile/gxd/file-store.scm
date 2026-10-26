@@ -73,10 +73,21 @@
     (setvbuf port 'none)
     port))
 
+(define %directory-nesting-limit
+  ;; Consult with Nix's DIRECTORY_NESTING_LIMIT
+  (let ((value (getenv "DIRECTORY_NESTING_LIMIT")))
+    (if value
+        (let ((limit (string->number value)))
+          (if (and (integer? limit) (positive? limit)) limit 256))
+        256)))
+
 (define (check-nar-depth file)
-  "Reject a NAR entry deeper than nixd's 256-directory limit."
+  "Reject a NAR entry deeper than Nix's directory nesting limit."
   (let loop ((index 0) (depth 0))
-    (when (> depth 255) (error "nar directory nesting limit reached"))
+    ;; FILE starts at the NAR root.  Each slash is one directory below it,
+    ;; whereas Nix counts the root as the first directory.
+    (when (>= depth %directory-nesting-limit)
+      (error "nar directory nesting limit reached"))
     (match (string-index file #\/ index)
       (#f #t)
       (next (loop (1+ next) (1+ depth))))))
