@@ -5,13 +5,18 @@
 
 (define-module (gxd build process)
   #:use-module (gxd prelude)
+  #:use-module ((gxd isolation)
+                #:select (write-self-id-maps! CLONE_NEWUSER CLONE_NEWPID
+                                              CLONE_NEWNS CLONE_NEWNET CLONE_NEWIPC CLONE_NEWUTS))
   #:use-module ((guix build syscalls) #:select (safe-clone))
   #:use-module ((ice-9 exceptions)
                 #:select (with-exception-handler raise-exception
                                                  exception-kind exception-args))
   #:use-module ((ice-9 format) #:select (format))
   #:use-module ((ice-9 ftw) #:select (scandir))
-  #:use-module ((ice-9 match) #:select (match))
+  #:use-module ((ice-9 match) #:select (match match-let))
+  #:use-module ((rnrs bytevectors) #:select (u8-list->bytevector))
+  #:use-module ((rnrs io ports) #:select (get-u8))
   #:use-module ((srfi srfi-9) #:select (define-record-type))
   #:export (call-with-builder-process builder-pid builder-output wait-builder!))
 
@@ -103,29 +108,60 @@
       (apply execl builder (basename builder) arguments))
     #:unwind? #t))
 
-(define (start-builder builder arguments environment directory)
-  (define ports (pipe))
-  (define input (car ports))
-  (define output (cdr ports))
+(define namespace-clone-flags
+  (logior SIGCHLD CLONE_NEWUSER CLONE_NEWPID CLONE_NEWNS CLONE_NEWNET CLONE_NEWIPC CLONE_NEWUTS))
+
+;; Linux send flag: a closed map-barrier peer must raise, not terminate the daemon.
+(define MSG_NOSIGNAL #x4000)
+
+(define id-maps-ready 1)
+
+(define* (start-builder builder arguments environment directory #:optional isolated?)
+  (define child-control #f)
+  (define parent-control #f)
+  (define ports #f)
+  (define input #f)
+  (define output #f)
   (define pid #f)
   (with-exception-handler
     (lambda (exception)
       (when (and pid (> pid 0))
-        (false-if-exception (kill (- pid) SIGKILL))
+        (false-if-exception (kill (if isolated? pid (- pid)) SIGKILL))
         (false-if-exception (waitpid pid)))
-      (false-if-exception (close-port input))
-      (false-if-exception (close-port output))
+      (when input (false-if-exception (close-port input)))
+      (when output (false-if-exception (close-port output)))
+      (when child-control (false-if-exception (close-port child-control)))
+      (when parent-control (false-if-exception (close-port parent-control)))
       (raise-exception exception))
     (lambda ()
+      (when isolated?
+        (match-let (((child . parent) (socketpair PF_UNIX (logior SOCK_STREAM SOCK_CLOEXEC) 0)))
+          (set! child-control child)
+          (set! parent-control parent)))
+      (set! ports (pipe))
+      (set! input (car ports))
+      (set! output (cdr ports))
       (flush-all-ports)
       (set! pid
             (safe-clone
-             SIGCHLD
+             (if isolated? namespace-clone-flags SIGCHLD)
              (lambda ()
-               (exec-builder builder arguments environment directory input output)
-               (primitive-_exit 1))
+               (call-with-cleanup
+                (lambda () (primitive-_exit 1))
+                (lambda ()
+                  (when child-control
+                    (close-port parent-control)
+                    (unless (eqv? id-maps-ready (get-u8 child-control))
+                      (error "identity-map acknowledgement missing"))
+                    (close-port child-control))
+                  (exec-builder builder arguments environment directory input output))))
              (lambda (pid) pid)))
       (close-port output)
+      (when parent-control
+        (close-port child-control)
+        (write-self-id-maps! pid 30001 30000)
+        (send parent-control (u8-list->bytevector (list id-maps-ready)) MSG_NOSIGNAL)
+        (close-port parent-control))
       (make-builder-process pid input #f))
     #:unwind? #t))
 
@@ -145,12 +181,14 @@ Drain `builder-output' before waiting to avoid blocking a writer on its log pipe
        (kill (- (builder-pid process)) SIGKILL)
        (wait-builder! process)))))
 
-(define (call-with-builder-process builder arguments environment directory proc)
+(define* (call-with-builder-process builder arguments environment directory proc
+                                    #:optional (isolated? #f))
   "Run BUILDER with ARGUMENTS, environment alist ENVIRONMENT and cwd DIRECTORY.
 Call PROC with its process handle; return PROC's values.  On exit close its
 output, kill its process group and reap the direct child unless already waited
-through `wait-builder!'.  The caller owns DIRECTORY."
-  (define process (start-builder builder arguments environment directory))
+through `wait-builder!'.  The caller owns DIRECTORY.
+With ISOLATED?, launch as PID 1 in mapped rootless namespaces."
+  (define process (start-builder builder arguments environment directory isolated?))
 
   (call-with-cleanup
    (lambda () (release-builder! process))
