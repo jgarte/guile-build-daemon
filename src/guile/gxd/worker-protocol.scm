@@ -11,7 +11,8 @@
   #:use-module ((rnrs io ports) #:select (get-bytevector-n))
   #:use-module ((srfi srfi-1) #:select (delete-duplicates))
   #:export (read-integer read-boolean read-bytevector read-string read-string-pairs read-options
-                         read-text read-string-list read-add-to-store-request
+                         read-text read-string-list
+                         read-header-of-add-to-store-op
                          write-completion write-error write-log write-log-bytes))
 
 (define STDERR_LAST #x616c7473)
@@ -92,7 +93,7 @@ The operation number is already consumed."
                (value (read-string port)))
           (loop (1- remaining) (cons (cons name value) pairs))))))
 
-(define (read-add-to-store-request port)
+(define (read-header-of-add-to-store-op port)
   "Read an add-to-store header from PORT as keyed data.
 The operation number is already consumed.  The following NAR is deliberately
 left unread.  FIXED is obsolete: as in nixd, a value other than one forces
