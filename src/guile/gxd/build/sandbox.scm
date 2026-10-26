@@ -5,6 +5,7 @@
 
 (define-module (gxd build sandbox)
   #:use-module (gxd prelude)
+  #:use-module ((gxd store-files) #:select (delete-path!))
   #:use-module ((gxd isolation)
                 #:select (bind-mount! bind-mount-read-only! child-proc
                                       make-mounts-private! pivot-into!
@@ -17,6 +18,7 @@
   #:use-module ((ice-9 match) #:select (match-lambda match-let))
   #:use-module ((srfi srfi-9) #:select (define-record-type))
   #:export (sandbox-config sandbox-root sandbox-input-paths sandbox-build-directory
+                           call-with-build-sandbox
                            prepare-sandbox-root! mount-build-inputs! mount-build-devices!
                            enter-sandbox-filesystem! lock-build-mounts!))
 
@@ -73,6 +75,26 @@ The caller owns SANDBOX-ROOT and its cleanup; no mounts are established."
 
   (mkdir-p root-store)
   (chmod root-store #o1775))
+
+(define (call-with-build-sandbox drv-path store-directory input-paths uid gid proc)
+  "Call PROC with the sandbox-config of a prepared sandbox for DRV-PATH.
+Create its root beneath DRV-PATH.chroot on the store filesystem, with a private
+STORE-DIRECTORY and account files for UID and GID.  Return PROC's values and
+remove the chroot directory on return or exception.  INPUT-PATHS are realized.
+The caller holds the output locks and ensures sandbox processes have terminated
+before PROC returns or raises."
+  (define chroot-directory (string-append drv-path ".chroot"))
+  (define root-directory (string-append chroot-directory "/top"))
+  (define build-directory (string-append "/tmp/guix-build-" (basename drv-path) "-0"))
+
+  (delete-path! chroot-directory)
+  (mkdir chroot-directory #o750)
+  (call-with-cleanup
+   (lambda () (delete-path! chroot-directory))
+   (lambda ()
+     (mkdir root-directory #o750)
+     (prepare-sandbox-root! root-directory store-directory uid gid)
+     (proc (sandbox-config root-directory input-paths build-directory)))))
 
 (define (mount-build-inputs! sandbox-root input-paths)
   "Expose INPUT-PATHS read-only at their original paths beneath SANDBOX-ROOT.
