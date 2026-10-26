@@ -220,9 +220,12 @@
              #:connection 'build))
 
     (define output-path (guix-drv:derivation->output-path drv))
+    (define staged-output-path
+      (string-append (guix-drv:derivation-file-name drv) ".chroot/top" output-path))
+
     (define expected-error
       `((error/type . store-protocol-error)
-        (error/message . ,(string-append "file `" output-path "' has an unsupported type"))
+        (error/message . ,(string-append "file `" staged-output-path "' has an unsupported type"))
         (error/status . 1)))
 
     (step! '(set-build-options #:use-substitutes? #f #:offload? #f #:max-build-jobs 1)
