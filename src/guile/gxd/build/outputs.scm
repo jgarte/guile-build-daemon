@@ -9,7 +9,8 @@
   #:use-module ((guix build utils) #:select (false-if-file-not-found))
   #:use-module ((ice-9 exceptions)
                 #:select (&error define-exception-type raise-exception))
-  #:export (canonicalize-output! prepare-output! &missing-output-error missing-output-error?
+  #:export (canonicalize-output! prepare-output! prepare-sandboxed-output!
+                                 &missing-output-error missing-output-error?
                                  missing-output-error-drv-path missing-output-error-output-path
                                  &output-permission-error output-permission-error?
                                  output-permission-error-output-path))
@@ -49,4 +50,21 @@ using CANDIDATES.  The caller holds the output lock, excludes concurrent GC,
 and prevents concurrent modification of the output.  The output is owned by
 the caller."
   (canonicalize-output! drv-path output-path output-path)
+  (scan-nar output-path candidates))
+
+(define (prepare-sandboxed-output! drv-path output-path candidates actual-path)
+  "Canonicalize ACTUAL-PATH from DRV-PATH, move it to OUTPUT-PATH, and scan it
+using CANDIDATES; return references, NAR SHA-256 and size.
+The caller holds OUTPUT-PATH's lock, excludes GC, and prevents concurrent writes
+to ACTUAL-PATH's tree.  OUTPUT-PATH is absent; the staged output belongs to the
+caller.  Failure after the move leaves the output at OUTPUT-PATH."
+  (canonicalize-output! drv-path output-path actual-path)
+
+  ;; Like nixd, temporarily allow moving a canonicalized directory to its new parent.
+  (define info (lstat actual-path))
+  (define directory? (eq? 'directory (stat:type info)))
+  (when directory? (chmod actual-path (logior (stat:perms info) #o700)))
+  (rename-file actual-path output-path)
+  (when directory? (chmod output-path (stat:perms info)))
+
   (scan-nar output-path candidates))
