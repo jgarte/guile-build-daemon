@@ -71,6 +71,14 @@
     (setvbuf port 'none)
     port))
 
+(define (check-nar-depth file)
+  "Reject a NAR entry deeper than nixd's 256-directory limit."
+  (let loop ((index 0) (depth 0))
+    (when (> depth 255) (error "nar directory nesting limit reached"))
+    (match (string-index file #\/ index)
+      (#f #t)
+      (next (loop (1+ next) (1+ depth))))))
+
 (define (fold-nar port regular-file-callback other-files-callback)
   "Fold one NAR from PORT with file-type callbacks.
 
@@ -79,6 +87,7 @@ port, and size.  OTHER-FILES-CALLBACK receives every directory or symlink's
 path, type, and contents.  Callback return values are ignored."
   (fold-archive
    (lambda (file type contents _)
+     (check-nar-depth file)
      (match type
        ((or 'regular 'executable)
         (regular-file-callback file (car contents) (cdr contents)))
