@@ -1,6 +1,7 @@
 (define-module (gxd isolation)
   #:use-module ((ice-9 match) #:select (match-lambda match-let))
-  #:use-module ((ice-9 exceptions) #:select (make-exception-with-message))
+  #:use-module ((ice-9 exceptions) #:select (make-exception-with-message
+                                             exception-kind exception-args))
   #:use-module ((rnrs bytevectors)
                 #:select (bytevector-copy!
                           bytevector-length
@@ -14,8 +15,10 @@
                           subid-entry-count
                           subid-entry-name
                           subid-entry-start))
-  #:use-module ((guix build utils) #:select (invoke mkdir-p))
+  #:use-module ((guix build utils) #:select (invoke mkdir-p false-if-file-not-found))
   #:use-module ((guix build syscalls) #:select (mount
+                                                statfs file-system-mount-flags
+                                                statfs-flags->mount-flags
                                                 pivot-root
                                                 safe-clone
                                                 umount
@@ -245,23 +248,52 @@ PID must wait for these maps before continuing namespace setup."
   (mkdir-p target)
   (mount "none" target "tmpfs" flags (format #f "mode=~o" mode)))
 
+(define (make-mount-file! target)
+  "Create a regular mountpoint at TARGET, or accept an existing regular file."
+  (let ((info (false-if-file-not-found (lstat target))))
+    (if info
+        (unless (eq? 'regular (stat:type info))
+          (error "mount target is not a regular file" target))
+        (with-exception-handler
+          (lambda (exception)
+            (if (and (eq? 'system-error (exception-kind exception))
+                     (= EEXIST (system-error-errno
+                                (cons (exception-kind exception) (exception-args exception)))))
+                (make-mount-file! target)
+                (raise-exception exception)))
+          (lambda ()
+            (close-fdes (open-fdes target (logior O_WRONLY O_CREAT O_EXCL O_NOFOLLOW) #o600)))
+          #:unwind? #t))))
+
+(define (bind-mount source target read-only?)
+  (define type (stat:type (lstat source)))
+  (if (eq? type 'symlink)
+      (begin
+        ;; A bind follows the source link; preserve the link itself instead.
+        (mkdir-p (dirname target))
+        (symlink (readlink source) target))
+      (begin
+        (if (eq? type 'directory)
+            (mkdir-p target)
+            (begin
+              (mkdir-p (dirname target))
+              (make-mount-file! target)))
+        (mount source target #f (logior MS_BIND MS_REC))
+        (when read-only?
+          ;; A bind remount replaces flags; retain restrictions inherited at bind.
+          (mount #f target #f
+                 (logior MS_BIND MS_REMOUNT MS_RDONLY
+                         (statfs-flags->mount-flags
+                          (file-system-mount-flags (statfs target)))))))))
+
 (define (bind-mount! source target)
-  "Bind-mount SOURCE at TARGET."
-  (case (stat:type (stat source))
-    ((directory) (mkdir-p target))
-    (else
-     (mkdir-p (dirname target))
-     (unless (file-exists? target)
-       (call-with-output-file target (lambda (_) #t)))))
-  (mount source target #f MS_BIND))
+  "Bind SOURCE and its submounts at TARGET; copy SOURCE itself if it is a symlink."
+  (bind-mount source target #f))
 
 (define (bind-mount-read-only! source target)
-  "Bind-mount SOURCE read-only at TARGET."
-  (bind-mount! source target)
-  ;; Bind mounts inherit flags; remount to add MS_RDONLY.  Preserve locked
-  ;; MS_NOSUID and MS_NODEV, or the kernel rejects the remount with EPERM.
-  (mount #f target #f
-         (logior MS_BIND MS_REMOUNT MS_RDONLY MS_NOSUID MS_NODEV)))
+  "Bind SOURCE at TARGET read-only, preserving inherited mount flags.
+Copy symlink sources without mounting their referents."
+  (bind-mount source target #t))
 
 (define (pivot-into! root)
   "Make ROOT this process's root, detach the previous root, and mount procfs
