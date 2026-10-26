@@ -42,7 +42,7 @@
         (define result
           (call-with-builder-process
            guile (list "--no-auto-compile" "-c" (object->string builder-expression))
-           '() "/tmp"
+           '() "/tmp" #f
            (lambda (process)
              (set! output (builder-output process))
              ;; Return a small comparison result through the deadline helper.
@@ -87,7 +87,7 @@
            (lambda ()
              (call-with-builder-process
               guile (list "--no-auto-compile" "-c" (object->string builder-expression))
-              '() "/tmp"
+              '() "/tmp" #f
               (lambda (process)
                 (set! pid (builder-pid process))
                 (set! output (builder-output process))
