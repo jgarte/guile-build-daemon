@@ -5,13 +5,17 @@
 
 (define-module (gxd build sandbox)
   #:use-module (gxd prelude)
-  #:use-module ((gxd isolation) #:select (bind-mount! bind-mount-read-only!))
+  #:use-module ((gxd isolation)
+                #:select (bind-mount! bind-mount-read-only! child-proc
+                                      write-self-id-maps! CLONE_NEWUSER CLONE_NEWNS))
   #:use-module ((gnu build accounts)
                 #:select (password-entry group-entry write-passwd write-group))
   #:use-module ((guix build utils) #:select (mkdir-p))
-  #:use-module ((guix build syscalls) #:select (mount))
-  #:use-module ((ice-9 match) #:select (match-lambda))
-  #:export (prepare-sandbox-root! mount-build-inputs! mount-build-devices!))
+  #:use-module ((guix build syscalls) #:select (mount umount unshare))
+  #:use-module ((ice-9 exceptions) #:select (exception-kind exception-args))
+  #:use-module ((ice-9 match) #:select (match-lambda match-let))
+  #:export (prepare-sandbox-root! mount-build-inputs! mount-build-devices!
+                                  lock-build-mounts!))
 
 (define (write-root-file sandbox-root name contents)
   (define port (open-output-file (string-append sandbox-root name)))
@@ -103,3 +107,51 @@ supported by the host, pseudo-terminals.  SANDBOX-ROOT is freshly prepared."
     (mount "none" pts "devpts" 0 "newinstance,mode=0620")
     (symlink "/dev/pts/ptmx" (string-append dev "/ptmx"))
     (chmod (string-append pts "/ptmx") #o666)))
+
+(define (lock-build-mounts!)
+  "Enter user and mount namespaces that lock the inherited build mounts.
+Preserve the caller's UID and GID.  Call after pivoting into the build filesystem
+and closing unwanted descriptors, before executing the builder."
+  (define owner (getpid))
+  (define uid (getuid))
+  (define gid (getgid))
+
+  ;; The helper retains authority in the preceding user namespace to write maps.
+  (match-let (((pid => <= disconnect!)
+               (child-proc
+                SIGCHLD
+                (lambda (=> <=)
+                  (<= 'namespace-ready)
+                  (write-self-id-maps! owner uid gid)
+                  (=> 'ids-mapped)))))
+    (define waited? #f)
+    (call-with-cleanup
+     (lambda ()
+       (call-with-cleanup
+        disconnect!
+        (lambda ()
+          (unless waited?
+            (false-if-exception (kill pid SIGKILL))
+            (waitpid pid)))))
+     (lambda ()
+       (unshare (logior CLONE_NEWUSER CLONE_NEWNS))
+       (=> 'namespace-ready)
+       (<= 'ids-mapped)
+       (define status (cdr (waitpid pid)))
+       (set! waited? #t)
+       (unless (zero? status)
+         (error "identity-map helper failed" status)))))
+
+  ;; Like nixd, require inherited mounts to be locked together before exec.
+  (define locked?
+    (with-exception-handler
+      (lambda (exception)
+        (if (and (eq? 'system-error (exception-kind exception))
+                 (= EINVAL (system-error-errno
+                            (cons (exception-kind exception) (exception-args exception)))))
+            #t
+            (raise-exception exception)))
+      (lambda () (umount "/proc") #f)
+      #:unwind? #t))
+
+  (unless locked? (error "build mounts are not locked")))
