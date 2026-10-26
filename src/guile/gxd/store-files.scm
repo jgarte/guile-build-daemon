@@ -9,7 +9,7 @@
   #:use-module ((ice-9 ftw) #:select (scandir))
   #:use-module ((ice-9 exceptions)
                 #:select (&error define-exception-type raise-exception))
-  #:export (delete-path! canonicalize-metadata!
+  #:export (delete-path! canonicalize-metadata! secure-file-permissions!
                          &unsupported-file-type-error unsupported-file-type-error?
                          unsupported-file-type-error-path unsupported-file-type-error-type))
 
@@ -47,6 +47,22 @@ follow symlinks.  Errors leave earlier metadata changes intact."
   (canonicalize-entry! path info)
   (when (eq? 'directory (stat:type info))
     (for-each canonicalize-metadata! (directory-children path))))
+
+(define (secure-file-permissions! path)
+  "Remove setuid, setgid and world-write permissions from PATH's tree.
+Do not follow symlinks; reject types other than regular files and directories.
+PATH and its descendants belong to the caller and have no concurrent writers.
+Preserve mtimes and other permission bits; propagate filesystem errors."
+  (define info (lstat path))
+
+  (case (stat:type info)
+    ((symlink) #t)
+    ((regular directory)
+     (when (eq? 'directory (stat:type info))
+       (for-each secure-file-permissions! (directory-children path)))
+     (chmod path (logand (stat:perms info) (lognot #o6002))))
+    (else
+     (raise-exception (make-unsupported-file-type-error path (stat:type info))))))
 
 (define (delete-path! path)
   "Remove PATH without following symlinks; do nothing if it is absent.
