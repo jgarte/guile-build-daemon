@@ -245,6 +245,13 @@
       (is (eq? #t (step! `(valid-path? ,path)
                          #:connection 'add #:terminal? #t)))))
 
+  (test "flat ingress registers a matching store path" (ctx)
+    (let ((step! (get ctx 'step!)))
+      (call-with-temporary-regular-source
+       "contents"
+       (lambda (source)
+         (is (string? (step! `(add-to-store "source" #f "sha256" ,source))))))))
+
   (test "unregistered path is invalid on nixd and gxd" (ctx)
     (let ((step! (get ctx 'step!)))
       (is (eq? #f (step! '(valid-path? "/gnu/store/00000000000000000000000000000000-gxd-absent"))))))
