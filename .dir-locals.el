@@ -49,6 +49,8 @@
      (eval . (put 'with-tmpfs-mount-in-container 'scheme-indent-function 1))
      (eval . (put 'with-bind-mount-in-container 'scheme-indent-function 2))
      (eval . (put 'call-with-bytevector-input-port 'scheme-indent-function 1))
+     (eval . (put 'fold-nar 'scheme-indent-function 1))
+     
 
      ;; Guix data forms used by the development manifests/packages.
      (eval . (put 'substitute-keyword-arguments 'scheme-indent-function 1))
