@@ -22,8 +22,7 @@
                                                            put-bytevector))
   #:use-module ((ice-9 match) #:select (match))
   #:use-module ((srfi srfi-11) #:select (let-values))
-  #:export (add-nar-as-recursive! add-nar-as-recursive-from-port!
-                                  add-nar-as-flat-file! add-nar-as-flat-file-from-port!))
+  #:export (add-nar-to-store))
 
 (define (call-with-bytevector-output-port proc)
   "Call PROC with an output port and return its accumulated bytevector."
@@ -116,59 +115,29 @@ path, type, and contents.  Callback return values are ignored."
              (error "flat NAR must contain one root regular file" type file))))))))
 
 
-(define (add-nar-as-flat-file! db store-directory name hash hash-algo contents)
-  "Add bytevector CONTENTS as a flat fixed-output item named NAME."
-  (let ((destination
-         (fixed-output-path store-directory name hash
-                            #:hash-algo hash-algo #:recursive? #f)))
-    (unless (database:valid-path? db destination)
-      (call-with-destination-lock destination
-        (lambda ()
-          (unless (database:valid-path? db destination)
-            (delete-path! destination)
-            (let-values (((nar-hash nar-size)
-                          (write-text! destination contents)))
-              (database:register-item!
-               db store-directory destination nar-hash nar-size '()))))))
-    destination))
-
-(define (add-nar-as-flat-file-from-port! db store-directory name hash-algo port)
-  "Read one flat-file NAR from PORT and add it as NAME to STORE-DIRECTORY."
+(define (add-nar-to-store db store-directory name recursive? hash-algo port)
+  "Read one NAR from PORT and add it as the fixed-output item NAME.
+When RECURSIVE? is true, hash the NAR and restore its file tree; otherwise,
+hash and store its root regular file's contents.  Return the store path."
   (let-values (((algorithm gcrypt-algorithm)
                 (fixed-output-hash-algorithm hash-algo)))
     (let* ((nar (read-nar port))
-           (contents (read-content-of-flat-file-nar nar))
-           (hash (bytevector-hash contents gcrypt-algorithm)))
-      (add-nar-as-flat-file! db store-directory name hash algorithm contents))))
-
-(define (add-nar-as-recursive! db store-directory name hash hash-algo nar)
-  "Restore buffered NAR as a recursive fixed-output item named NAME.
-HASH is NAR's digest according to HASH-ALGO.  Return its store path.  NAR must
-contain one valid normalized NAR.  An already-valid destination is left
-unchanged.  The caller excludes concurrent GC."
-  (let ((destination
-         (fixed-output-path store-directory name hash
-                            #:hash-algo hash-algo #:recursive? #t)))
-    (unless (database:valid-path? db destination)
-      (call-with-destination-lock destination
-        (lambda ()
-          ;; Recheck the db one more time in case another daemon session was
-          ;; doing the same import while this one was waiting for the
-          ;; destination lock
-          (unless (database:valid-path? db destination)
-            (delete-path! destination)
-            (call-with-bytevector-input-port nar
-              (lambda (input)
-                (restore-file input destination)))
-            (let-values (((nar-hash nar-size) (nar-sha256 destination)))
-              (database:register-item!
-               db store-directory destination nar-hash nar-size '()))))))
-    destination))
-
-(define (add-nar-as-recursive-from-port! db store-directory name hash-algo port)
-  "Read one recursive NAR from PORT and add it as NAME to STORE-DIRECTORY."
-  (let-values (((algorithm gcrypt-algorithm)
-                (fixed-output-hash-algorithm hash-algo)))
-    (let* ((nar (read-nar port))
-           (hash (bytevector-hash nar gcrypt-algorithm)))
-      (add-nar-as-recursive! db store-directory name hash algorithm nar))))
+           (contents (and (not recursive?) (read-content-of-flat-file-nar nar)))
+           (hash (bytevector-hash (or contents nar) gcrypt-algorithm))
+           (destination
+            (fixed-output-path store-directory name hash
+                               #:hash-algo algorithm #:recursive? recursive?)))
+      (unless (database:valid-path? db destination)
+        (call-with-destination-lock destination
+          (lambda ()
+            ;; Another session may have imported this item while we waited.
+            (unless (database:valid-path? db destination)
+              (delete-path! destination)
+              (if recursive?
+                  (call-with-bytevector-input-port nar
+                    (lambda (input) (restore-file input destination)))
+                  (write-text! destination contents))
+              (let-values (((nar-hash nar-size) (nar-sha256 destination)))
+                (database:register-item!
+                 db store-directory destination nar-hash nar-size '()))))))
+      destination)))
