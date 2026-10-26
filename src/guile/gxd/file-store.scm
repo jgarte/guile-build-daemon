@@ -22,8 +22,8 @@
                                              put-bytevector))
   #:use-module ((ice-9 match) #:select (match))
   #:use-module ((srfi srfi-11) #:select (let-values))
-  #:export (add-recursive! add-recursive-from-port!
-                           add-flat! add-flat-from-port!))
+  #:export (add-nar-as-recursive! add-nar-as-recursive-from-port!
+                           add-nar-as-flat-file! add-nar-as-flat-file-from-port!))
 
 (define* (drain port size #:optional output)
   "Read exactly SIZE bytes from PORT, copying them to OUTPUT when supplied."
@@ -78,8 +78,8 @@
       (error "unknown hash algorithm" name))
     (values algorithm (lookup-hash-algorithm algorithm))))
 
-(define (flat-nar-contents nar)
-  "Return NAR's top-level regular-file contents, or raise otherwise."
+(define (read-content-of-flat-file-nar nar)
+  "Return NAR's top-level regular file contents, or raise otherwise."
   (let-values (((output extract) (open-bytevector-output-port)))
     (define regular? #f)
     (call-with-cleanup
@@ -102,7 +102,7 @@
            (error "regular file expected"))
          (extract))))))
 
-(define (add-flat! db store-directory name hash hash-algo contents)
+(define (add-nar-as-flat-file! db store-directory name hash hash-algo contents)
   "Add bytevector CONTENTS as a flat fixed-output item named NAME."
   (let ((destination
          (fixed-output-path store-directory name hash
@@ -118,16 +118,16 @@
                db store-directory destination nar-hash nar-size '()))))))
     destination))
 
-(define (add-flat-from-port! db store-directory name hash-algo port)
+(define (add-nar-as-flat-file-from-port! db store-directory name hash-algo port)
   "Read one flat-file NAR from PORT and add it as NAME to STORE-DIRECTORY."
   (let-values (((algorithm gcrypt-algorithm)
                 (fixed-output-hash-algorithm hash-algo)))
     (let* ((nar (read-nar port))
-           (contents (flat-nar-contents nar))
+           (contents (read-content-of-flat-file-nar nar))
            (hash (bytevector-hash contents gcrypt-algorithm)))
-      (add-flat! db store-directory name hash algorithm contents))))
+      (add-nar-as-flat-file! db store-directory name hash algorithm contents))))
 
-(define (add-recursive! db store-directory name hash hash-algo nar)
+(define (add-nar-as-recursive! db store-directory name hash hash-algo nar)
   "Restore buffered NAR as a recursive fixed-output item named NAME.
 HASH is NAR's digest according to HASH-ALGO.  Return its store path.  NAR must
 contain one valid normalized NAR.  An already-valid destination is left
@@ -152,10 +152,10 @@ unchanged.  The caller excludes concurrent GC."
                db store-directory destination nar-hash nar-size '()))))))
     destination))
 
-(define (add-recursive-from-port! db store-directory name hash-algo port)
+(define (add-nar-as-recursive-from-port! db store-directory name hash-algo port)
   "Read one recursive NAR from PORT and add it as NAME to STORE-DIRECTORY."
   (let-values (((algorithm gcrypt-algorithm)
                 (fixed-output-hash-algorithm hash-algo)))
     (let* ((nar (read-nar port))
            (hash (bytevector-hash nar gcrypt-algorithm)))
-      (add-recursive! db store-directory name hash algorithm nar))))
+      (add-nar-as-recursive! db store-directory name hash algorithm nar))))

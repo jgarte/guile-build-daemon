@@ -11,7 +11,8 @@
                 #:select (call-with-database))
   #:use-module ((gxd database) #:prefix database: #:select (valid-path?))
   #:use-module ((gxd file-store)
-                #:select (add-recursive! add-recursive-from-port! add-flat-from-port!))
+                #:select (add-nar-as-recursive! add-nar-as-recursive-from-port!
+                          add-nar-as-flat-file-from-port!))
   #:use-module ((gxd store-path) #:select (fixed-output-path))
   #:use-module ((guix utils) #:select (call-with-temporary-directory))
   #:use-module ((rnrs bytevectors) #:select (string->utf8))
@@ -44,7 +45,7 @@
               (nar (nar-bytes source))
               (hash (sha256 nar))
               (expected (fixed-output-path dir "item" hash))
-              (destination (add-recursive! db dir "item" hash 'sha256 nar)))
+              (destination (add-nar-as-recursive! db dir "item" hash 'sha256 nar)))
          (is (equal? expected destination))
          (is (database:valid-path? db destination))
          (is (file-exists? destination))
@@ -52,7 +53,7 @@
          (is (= #o444 (stat:perms (stat destination))))
          ;; existing item is selected without rereading NAR
          (is (equal? destination
-                     (add-recursive! db dir "item" hash 'sha256 #vu8())))))))
+                     (add-nar-as-recursive! db dir "item" hash 'sha256 #vu8())))))))
 
   (test "recursive port import consumes exactly one NAR" ()
     (call-with-tmp-dir-and-database
@@ -64,7 +65,7 @@
            (put-bytevector output (nar-bytes source))
            (put-u8 output 42)
            (let* ((input (open-bytevector-input-port (extract)))
-                  (destination (add-recursive-from-port!
+                  (destination (add-nar-as-recursive-from-port!
                                 db dir "item" "sha256" input)))
              (is (database:valid-path? db destination))
              (is (= 42 (get-u8 input)))))))))
@@ -77,7 +78,7 @@
          (let-values (((output extract) (open-bytevector-output-port)))
            (put-bytevector output (nar-bytes source))
            (let* ((input (open-bytevector-input-port (extract)))
-                  (destination (add-flat-from-port!
+                  (destination (add-nar-as-flat-file-from-port!
                                 db dir "item" "sha256" input))
                   (expected (fixed-output-path
                              dir "item" (sha256 (string->utf8 "contents"))

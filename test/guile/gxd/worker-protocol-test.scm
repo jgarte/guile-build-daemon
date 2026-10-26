@@ -12,13 +12,13 @@
                                                      get-u8 put-u8))
   #:use-module ((srfi srfi-11) #:select (let-values))
   #:use-module ((gxd worker-protocol)
-                #:select (read-integer read-string read-add-to-store-request)
+                #:select (read-integer read-string read-header-of-add-to-store-op)
                 #:prefix protocol:))
 
-(define (add-to-store-header item fixed recursive hash-algo nar-byte)
+(define (make-header-for-add-to-store-op name fixed recursive hash-algo nar-byte)
   "Return a serialized add-to-store header followed by a sentinel NAR byte."
   (let-values (((port extract) (open-bytevector-output-port)))
-    (write-value utf8-string item port)
+    (write-value utf8-string name port)
     (write-value integer fixed port)
     (write-value integer recursive port)
     (write-value utf8-string hash-algo port)
@@ -65,8 +65,8 @@
 
   (test "add-to-store header leaves its NAR unread" ()
     (let* ((port (open-bytevector-input-port
-                  (add-to-store-header "item" 1 0 "sha512" 42)))
-           (request (protocol:read-add-to-store-request port)))
+                  (make-header-for-add-to-store-op "item" 1 0 "sha512" 42)))
+           (request (protocol:read-header-of-add-to-store-op port)))
       (is (equal? "item" (assoc-ref request 'name)))
       (is (eq? #f (assoc-ref request 'recursive?)))
       (is (equal? "sha512" (assoc-ref request 'hash-algo)))
@@ -74,7 +74,7 @@
 
   (test "obsolete add-to-store fixed field selects recursive SHA-256 mode" ()
     (let* ((port (open-bytevector-input-port
-                  (add-to-store-header "item" 2 0 "sha512" 42)))
-           (request (protocol:read-add-to-store-request port)))
+                  (make-header-for-add-to-store-op "item" 2 0 "sha512" 42)))
+           (request (protocol:read-header-of-add-to-store-op port)))
       (is (eq? #t (assoc-ref request 'recursive?)))
       (is (equal? "sha256" (assoc-ref request 'hash-algo))))))
