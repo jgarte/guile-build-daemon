@@ -5,11 +5,11 @@
 
 (define-module (gxd build outputs)
   #:use-module ((gxd references) #:select (scan-nar))
-  #:use-module ((gxd store-files) #:select (canonicalize-metadata!))
+  #:use-module ((gxd store-files) #:select (canonicalize-metadata! secure-file-permissions!))
   #:use-module ((guix build utils) #:select (false-if-file-not-found))
   #:use-module ((ice-9 exceptions)
                 #:select (&error define-exception-type raise-exception))
-  #:export (canonicalize-output! prepare-output! prepare-sandboxed-output!
+  #:export (canonicalize-output! prepare-output! prepare-sandboxed-output! preserve-failed-output!
                                  &missing-output-error missing-output-error?
                                  missing-output-error-drv-path missing-output-error-output-path
                                  &output-permission-error output-permission-error?
@@ -51,6 +51,13 @@ and prevents concurrent modification of the output.  The output is owned by
 the caller."
   (canonicalize-output! drv-path output-path output-path)
   (scan-nar output-path candidates))
+
+(define (preserve-failed-output! output-path actual-path)
+  "Move ACTUAL-PATH to OUTPUT-PATH after stripping unsafe permission bits.
+Do nothing if ACTUAL-PATH is absent; preserve mtimes and remaining permissions."
+  (when (false-if-file-not-found (lstat actual-path))
+    (secure-file-permissions! actual-path)
+    (rename-file actual-path output-path)))
 
 (define (prepare-sandboxed-output! drv-path output-path candidates actual-path)
   "Canonicalize ACTUAL-PATH from DRV-PATH, move it to OUTPUT-PATH, and scan it
