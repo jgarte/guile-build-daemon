@@ -6,7 +6,7 @@
 (define-module (gxd file-store-test)
   #:use-module ((ares suitbl core) #:select (define-suite is test))
   #:use-module ((gcrypt hash) #:select (sha256))
-  #:use-module ((guix serialization) #:select (write-file))
+  #:use-module ((guix serialization) #:select (write-file write-file-tree))
   #:use-module ((guix store database) #:prefix guix-db:
                 #:select (call-with-database))
   #:use-module ((gxd database) #:prefix database: #:select (valid-path?))
@@ -24,6 +24,15 @@
   "Return SOURCE's normalized NAR as a bytevector."
   (let-values (((port extract) (open-bytevector-output-port)))
     (write-file source port)
+    (extract)))
+
+(define (nar-with-entry name)
+  (let-values (((port extract) (open-bytevector-output-port)))
+    (write-file-tree "root" port
+      #:file-type+size (lambda (file) (values (if (string=? file "root") 'directory 'regular) 0))
+      #:file-port (lambda _ (open-input-string ""))
+      #:directory-entries (lambda _ (list name))
+      #:postprocess-entries identity)
     (extract)))
 
 (define (call-with-tmp-dir-and-database proc)
@@ -55,6 +64,23 @@
                      (add-nar-to-store
                       db dir "item" #t "sha256"
                       (open-bytevector-input-port nar))))))))
+
+  (test "recursive import rejects invalid NAR entry names" ()
+    (call-with-tmp-dir-and-database
+     (lambda (dir db)
+       (define (malformed-nar-raised? name)
+         (capture-exception
+          (lambda ()
+            (add-nar-to-store db dir "item" #t "sha256"
+                              (open-bytevector-input-port (nar-with-entry name))))))
+
+       (is (malformed-nar-raised? ""))
+       (is (malformed-nar-raised? "."))
+       (is (malformed-nar-raised? ".."))
+       (is (malformed-nar-raised? "a/b"))
+       (is (malformed-nar-raised? (string #\nul)))
+       (is (malformed-nar-raised? "../escaped"))
+       (is (not (file-exists? (string-append dir "/escaped")))))))
 
   (test "recursive import canonicalizes tree metadata" ()
     (call-with-tmp-dir-and-database
