@@ -111,7 +111,7 @@
   (with-exception-handler
     (lambda (exception)
       (when (and pid (> pid 0))
-        (false-if-exception (kill pid SIGKILL))
+        (false-if-exception (kill (- pid) SIGKILL))
         (false-if-exception (waitpid pid)))
       (false-if-exception (close-port input))
       (false-if-exception (close-port output))
@@ -142,14 +142,14 @@ Drain `builder-output' before waiting to avoid blocking a writer on its log pipe
    (lambda () (close-port (builder-output process)))
    (lambda ()
      (unless (builder-status process)
-       (kill (builder-pid process) SIGKILL)
+       (kill (- (builder-pid process)) SIGKILL)
        (wait-builder! process)))))
 
 (define (call-with-builder-process builder arguments environment directory proc)
   "Run BUILDER with ARGUMENTS, environment alist ENVIRONMENT and cwd DIRECTORY.
 Call PROC with its process handle; return PROC's values.  On exit close its
-output and kill/reap the direct child if not waited through `wait-builder!'.
-The caller owns DIRECTORY; descendants are not terminated."
+output, kill its process group and reap the direct child unless already waited
+through `wait-builder!'.  The caller owns DIRECTORY."
   (define process (start-builder builder arguments environment directory))
 
   (call-with-cleanup

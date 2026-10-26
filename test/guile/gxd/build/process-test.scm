@@ -60,38 +60,60 @@
       (is child-reaped?)
       (is output-closed?)))
 
-  (test "raising in the callback terminates and reaps its running builder" ()
+  (test "raising in the callback terminates the builder's group and reaps the builder" ()
     (define guile (require-program "guile"))
     (define expected-exception (make-exception-with-message "leave builder scope"))
+    (define builder-expression
+      '(begin
+         (define child (primitive-fork))
+         (if (zero? child)
+             (begin
+               (write (list (getpid) (getpgrp)))
+               (force-output)
+               (sleep 60)
+               ;; Report natural completion so EOF alone proves cleanup killed the writer.
+               (display "descendant completed without being killed\n")
+               (force-output))
+             (waitpid child))))
+
     (define observations
       (deadline 5
         (define pid #f)
         (define output #f)
+        (define descendant-output #f)
         (define running? #f)
         (define failure
           (capture-exception
            (lambda ()
              (call-with-builder-process
-              guile (list "--no-auto-compile" "-c"
-                          (object->string
-                           '(begin
-                              (display "ready\n")
-                              (force-output)
-                              (sleep 60))))
+              guile (list "--no-auto-compile" "-c" (object->string builder-expression))
               '() "/tmp"
               (lambda (process)
                 (set! pid (builder-pid process))
                 (set! output (builder-output process))
+                (setvbuf output 'none)
                 (read-line output)
-                (set! running? (and (equal? "ready" (read-line output))
-                                    (zero? (car (waitpid pid WNOHANG)))))
+
+                ;; Retain a reader after scope cleanup closes the original port.
+                (set! descendant-output (fdopen (dup (fileno output)) "r"))
+
+                (match-let (((_ group) (read output)))
+                  (set! running? (and (= pid group)
+                                      (zero? (car (waitpid pid WNOHANG))))))
+
                 (raise-exception expected-exception))))))
 
-        (list running? (eq? expected-exception failure)
-              (reaped? pid) (port-closed? output))))
+        (define descendant-stopped?
+          (eof-object? (read-char descendant-output)))
 
-    (match-let (((running-before-error? exception-preserved? child-reaped? output-closed?) observations))
+        (close-port descendant-output)
+
+        (list running? (eq? expected-exception failure)
+              (reaped? pid) (port-closed? output) descendant-stopped?)))
+
+    (match-let (((running-before-error? exception-preserved? child-reaped? output-closed? descendant-stopped?) observations))
       (is running-before-error?)
       (is exception-preserved?)
       (is child-reaped?)
-      (is output-closed?))))
+      (is output-closed?)
+      (is descendant-stopped?))))
