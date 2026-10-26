@@ -104,19 +104,17 @@ path, type, and contents.  Callback return values are ignored."
       (error "unknown hash algorithm" name))
     (values algorithm (lookup-hash-algorithm algorithm))))
 
-(define (read-content-of-flat-file-nar nar)
-  "Return NAR's top-level regular file contents, or raise otherwise."
+(define (read-content-of-flat-file-nar port)
+  "Consume one flat NAR from PORT and return its root regular file contents."
   (call-with-bytevector-output-port
    (lambda (output)
-     (call-with-bytevector-input-port nar
-       (lambda (input)
-         (fold-nar input
-           (lambda (file contents size)
-             (unless (string-null? file)
-               (error "flat NAR must contain one root regular file" file))
-             (drain contents size output))
-           (lambda (file type _)
-             (error "flat NAR must contain one root regular file" type file))))))))
+     (fold-nar port
+       (lambda (file contents size)
+         (unless (string-null? file)
+           (error "flat NAR must contain one root regular file" file))
+         (drain contents size output))
+       (lambda (file type _)
+         (error "flat NAR must contain one root regular file" type file))))))
 
 
 (define (register-store-path! db store-directory destination)
@@ -148,9 +146,9 @@ The payload is the NAR when RECURSIVE? is true, otherwise its root file
 contents."
   (let-values (((algorithm gcrypt-algorithm)
                 (fixed-output-hash-algorithm hash-algo)))
-    (let* ((nar (read-nar port))
-           (contents (and (not recursive?) (read-content-of-flat-file-nar nar)))
-           (payload (or contents nar))
+    (let* ((payload (if recursive?
+                        (read-nar port)
+                        (read-content-of-flat-file-nar port)))
            (hash (bytevector-hash payload gcrypt-algorithm))
            (destination
             (fixed-output-path store-directory name hash
