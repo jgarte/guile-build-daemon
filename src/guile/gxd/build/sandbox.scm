@@ -14,8 +14,17 @@
   #:use-module ((guix build syscalls) #:select (mount umount unshare))
   #:use-module ((ice-9 exceptions) #:select (exception-kind exception-args))
   #:use-module ((ice-9 match) #:select (match-lambda match-let))
-  #:export (prepare-sandbox-root! mount-build-inputs! mount-build-devices!
-                                  lock-build-mounts!))
+  #:use-module ((srfi srfi-9) #:select (define-record-type))
+  #:export (sandbox-config sandbox-root sandbox-input-paths sandbox-build-directory
+                           prepare-sandbox-root! mount-build-inputs! mount-build-devices!
+                           lock-build-mounts!))
+
+(define-record-type <sandbox-config>
+  (sandbox-config root input-paths build-directory)
+  sandbox-config?
+  (root sandbox-root)
+  (input-paths sandbox-input-paths)
+  (build-directory sandbox-build-directory))
 
 (define (write-root-file sandbox-root name contents)
   (define port (open-output-file (string-append sandbox-root name)))
