@@ -22,13 +22,15 @@
   #:use-module ((gxd testbox-relay)
                 #:select (client-trust-fixture paired-relay-observers-fixture)))
 
-(define (call-with-temporary-regular-source contents proc)
-  "Write CONTENTS to a temporary regular file and call PROC with its path."
+(define (call-with-hello-world-file proc)
+  "Write 'Hello World!' to a temporary regular file and call PROC with its path."
   (call-with-temporary-directory
-   (lambda (directory)
-     (let ((source (string-append directory "/source")))
-       (call-with-output-file source (lambda (port) (display contents port)))
-       (proc source)))))
+   (lambda (dir)
+     (let* ((name "hello-world-file")
+            (path (string-append dir "/" name))
+            (content "Hello World!"))
+       (spit path content)
+       (proc path)))))
 
 (define (remote-eof? store)
   "Return whether STORE reaches remote EOF within five seconds."
@@ -236,21 +238,20 @@
   (test "recursive file ingress registers the same store path" (ctx)
     (let* ((step! (get ctx 'step!))
            (path
-            (call-with-temporary-regular-source
-             "contents"
-             (lambda (source)
-               (step! `(add-to-store "source" #t "sha256" ,source)
+            (call-with-hello-world-file
+             (lambda (path)
+               (step! `(add-to-store "item" #t "sha256" ,path)
                       #:connection 'add)))))
       (is (string? path))
       (is (eq? #t (step! `(valid-path? ,path)
-                         #:connection 'add #:terminal? #t)))))
+                         #:connection 'add
+                         #:terminal? #t)))))
 
   (test "flat ingress registers a matching store path" (ctx)
     (let ((step! (get ctx 'step!)))
-      (call-with-temporary-regular-source
-       "contents"
-       (lambda (source)
-         (is (string? (step! `(add-to-store "source" #f "sha256" ,source))))))))
+      (call-with-hello-world-file
+       (lambda (path)
+         (is (string? (step! `(add-to-store "item" #f "sha256" ,path))))))))
 
   (test "unregistered path is invalid on nixd and gxd" (ctx)
     (let ((step! (get ctx 'step!)))
