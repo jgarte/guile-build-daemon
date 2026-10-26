@@ -8,6 +8,7 @@
   #:use-module ((ice-9 rdelim) #:select (read-string))
   #:use-module ((guix build utils) #:select (which))
   #:use-module ((guix derivations) #:select (read-derivation))
+  #:use-module ((guix utils) #:select (call-with-temporary-directory))
   #:use-module ((gxd isolation) #:select (child-proc))
   #:use-module ((srfi srfi-1) #:select (filter-map))
   #:use-module (gxd prelude)
@@ -16,6 +17,7 @@
             call-with-resource
             deadline
             empty-derivation
+            call-with-hello-world-file
             require-program
             select-keys
             slurp
@@ -46,6 +48,17 @@ exception.  Require the directory to be configured and the resource to exist."
 (define (select-keys alist keys)
   "Return ALIST's entries for KEYS in key order, omitting absent keys."
   (filter-map (lambda (key) (assoc key alist)) keys))
+
+(define* (call-with-hello-world-file proc
+                                     #:key
+                                     (name "hello-world-file")
+                                     (content "Hello World!"))
+  "Write CONTENT to a temporary regular file named NAME, then call PROC with its path."
+  (call-with-temporary-directory
+   (lambda (dir)
+     (let ((path (string-append dir "/" name)))
+       (spit path content)
+       (proc path)))))
 
 (define (require-program program)
   "Return the complete file name of PROGRAM on $PATH, or raise an error."
