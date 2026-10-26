@@ -5,6 +5,9 @@
 
 (define-module (gxd build process)
   #:use-module (gxd prelude)
+  #:use-module ((gxd build sandbox)
+                #:select (sandbox-build-directory
+                          enter-sandbox-filesystem! lock-build-mounts!))
   #:use-module ((gxd isolation)
                 #:select (write-self-id-maps! CLONE_NEWUSER CLONE_NEWPID
                                               CLONE_NEWNS CLONE_NEWNET CLONE_NEWIPC CLONE_NEWUTS))
@@ -83,7 +86,7 @@
   (match binding
     ((name . value) (string-append name "=" value))))
 
-(define (exec-builder builder arguments environment directory input output)
+(define (exec-builder builder arguments environment directory input output sandbox)
   (define error-port #f)
   (with-exception-handler
     (lambda (exception)
@@ -97,8 +100,11 @@
       (set! error-port (fdopen 2 "w"))
 
       (setsid)
-      (chdir directory)
+      (when sandbox
+        (enter-sandbox-filesystem! sandbox directory))
+      (chdir (if sandbox (sandbox-build-directory sandbox) directory))
       (set-exec-descriptor-flags!)
+      (when sandbox (lock-build-mounts!))
       (sigaction SIGPIPE SIG_DFL)
       (environ (map environment-entry environment))
 
@@ -116,7 +122,7 @@
 
 (define id-maps-ready 1)
 
-(define* (start-builder builder arguments environment directory #:optional isolated?)
+(define (start-builder builder arguments environment directory sandbox)
   (define child-control #f)
   (define parent-control #f)
   (define ports #f)
@@ -126,7 +132,7 @@
   (with-exception-handler
     (lambda (exception)
       (when (and pid (> pid 0))
-        (false-if-exception (kill (if isolated? pid (- pid)) SIGKILL))
+        (false-if-exception (kill (if sandbox pid (- pid)) SIGKILL))
         (false-if-exception (waitpid pid)))
       (when input (false-if-exception (close-port input)))
       (when output (false-if-exception (close-port output)))
@@ -134,7 +140,7 @@
       (when parent-control (false-if-exception (close-port parent-control)))
       (raise-exception exception))
     (lambda ()
-      (when isolated?
+      (when sandbox
         (match-let (((child . parent) (socketpair PF_UNIX (logior SOCK_STREAM SOCK_CLOEXEC) 0)))
           (set! child-control child)
           (set! parent-control parent)))
@@ -144,7 +150,7 @@
       (flush-all-ports)
       (set! pid
             (safe-clone
-             (if isolated? namespace-clone-flags SIGCHLD)
+             (if sandbox namespace-clone-flags SIGCHLD)
              (lambda ()
                (call-with-cleanup
                 (lambda () (primitive-_exit 1))
@@ -154,7 +160,7 @@
                     (unless (eqv? id-maps-ready (get-u8 child-control))
                       (error "identity-map acknowledgement missing"))
                     (close-port child-control))
-                  (exec-builder builder arguments environment directory input output))))
+                  (exec-builder builder arguments environment directory input output sandbox))))
              (lambda (pid) pid)))
       (close-port output)
       (when parent-control
@@ -181,14 +187,16 @@ Drain `builder-output' before waiting to avoid blocking a writer on its log pipe
        (kill (- (builder-pid process)) SIGKILL)
        (wait-builder! process)))))
 
-(define* (call-with-builder-process builder arguments environment directory proc
-                                    #:optional (isolated? #f))
+(define (call-with-builder-process builder arguments environment directory sandbox proc)
   "Run BUILDER with ARGUMENTS, environment alist ENVIRONMENT and cwd DIRECTORY.
 Call PROC with its process handle; return PROC's values.  On exit close its
 output, kill its process group and reap the direct child unless already waited
 through `wait-builder!'.  The caller owns DIRECTORY.
-With ISOLATED?, launch as PID 1 in mapped rootless namespaces."
-  (define process (start-builder builder arguments environment directory isolated?))
+With a SANDBOX configuration, launch as PID 1 in mapped rootless namespaces,
+enter its prepared root with its realized inputs, and expose DIRECTORY at its
+build directory.  With #f, run without sandbox isolation."
+  (define process
+    (start-builder builder arguments environment directory sandbox))
 
   (call-with-cleanup
    (lambda () (release-builder! process))

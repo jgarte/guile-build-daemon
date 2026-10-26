@@ -47,7 +47,7 @@ The caller owns BUILD-DIRECTORY.  Outputs are not validated or registered."
 
   (call-with-builder-process
    (derivation-builder drv) (derivation-builder-arguments drv)
-   environment build-directory
+   environment build-directory #f
    (lambda (process)
      (define output (builder-output process))
      (check-builder-setup! output)
