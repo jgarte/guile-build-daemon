@@ -7,17 +7,18 @@
   #:use-module (gxd prelude)
   #:use-module ((gxd isolation)
                 #:select (bind-mount! bind-mount-read-only! child-proc
+                                      make-mounts-private! pivot-into!
                                       write-self-id-maps! CLONE_NEWUSER CLONE_NEWNS))
   #:use-module ((gnu build accounts)
                 #:select (password-entry group-entry write-passwd write-group))
   #:use-module ((guix build utils) #:select (mkdir-p))
-  #:use-module ((guix build syscalls) #:select (mount umount unshare))
+  #:use-module ((guix build syscalls) #:select (mount umount unshare set-network-interface-up))
   #:use-module ((ice-9 exceptions) #:select (exception-kind exception-args))
   #:use-module ((ice-9 match) #:select (match-lambda match-let))
   #:use-module ((srfi srfi-9) #:select (define-record-type))
   #:export (sandbox-config sandbox-root sandbox-input-paths sandbox-build-directory
                            prepare-sandbox-root! mount-build-inputs! mount-build-devices!
-                           lock-build-mounts!))
+                           enter-sandbox-filesystem! lock-build-mounts!))
 
 (define-record-type <sandbox-config>
   (sandbox-config root input-paths build-directory)
@@ -116,6 +117,22 @@ supported by the host, pseudo-terminals.  SANDBOX-ROOT is freshly prepared."
     (mount "none" pts "devpts" 0 "newinstance,mode=0620")
     (symlink "/dev/pts/ptmx" (string-append dev "/ptmx"))
     (chmod (string-append pts "/ptmx") #o666)))
+
+(define (enter-sandbox-filesystem! sandbox build-directory)
+  "Enter SANDBOX's prepared root, detaching the old root.
+Populate its private store with read-only mounts of SANDBOX's input paths, expose
+host workspace BUILD-DIRECTORY at its sandbox build directory, and install build
+devices and procfs.  The caller has private user, mount, PID and network namespaces."
+  (define root-directory (sandbox-root sandbox))
+
+  (make-mounts-private!)
+  (set-network-interface-up "lo") ;; Allow sandbox-local connections, not external access.
+  (sethostname "localhost")
+  (bind-mount! build-directory (string-append root-directory (sandbox-build-directory sandbox)))
+  (mount-build-inputs! root-directory (sandbox-input-paths sandbox))
+  (mount-build-devices! root-directory)
+  (pivot-into! root-directory)
+  (chmod "/" #o555))
 
 (define (lock-build-mounts!)
   "Enter user and mount namespaces that lock the inherited build mounts.
