@@ -85,14 +85,13 @@ path, type, and contents.  Callback return values are ignored."
    #t port ""))
 
 (define (read-nar port)
-  "Read, validate, and return one normalized NAR from PORT."
+  "Consume one NAR from PORT and return its bytes."
   (call-with-bytevector-output-port
    (lambda (output)
      ;; INPUT is a custom view of PORT and does not own PORT.
      (let ((input (tee-input-port port output)))
        (fold-nar input
-         (lambda (_ contents size)
-           (drain contents size))
+         (lambda (_ contents size) (drain contents size))
          (lambda _ #t))))))
 
 (define (fixed-output-hash-algorithm name)
