@@ -106,19 +106,16 @@ path, type, and contents.  Callback return values are ignored."
   "Return NAR's top-level regular file contents, or raise otherwise."
   (call-with-bytevector-output-port
    (lambda (output)
-     (define regular? #f)
      (call-with-bytevector-input-port nar
        (lambda (input)
          (fold-nar input
            (lambda (file contents size)
-             (if (string-null? file)
-                 (begin
-                   (set! regular? #t)
-                   (drain contents size output))
-                 (drain contents size)))
-           (lambda _ #t))))
-     (unless regular?
-       (error "regular file expected")))))
+             (unless (string-null? file)
+               (error "flat NAR must contain one root regular file" file))
+             (drain contents size output))
+           (lambda (file type _)
+             (error "flat NAR must contain one root regular file" type file))))))))
+
 
 (define (add-nar-as-flat-file! db store-directory name hash hash-algo contents)
   "Add bytevector CONTENTS as a flat fixed-output item named NAME."
