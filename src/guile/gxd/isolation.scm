@@ -51,6 +51,7 @@
             pivot-into!
             read-current-id-facts
             start-in-namespaces
+            write-self-id-maps!
             write-id-map-ranges!))
 
 
@@ -206,6 +207,20 @@ GID start.  Each start covers at least REQUIRED-COUNT contiguous ids."
          (id-map-helper helper)
          (number->string pid)
          (id-map-arguments ranges)))
+
+(define (write-self-id-maps! pid uid gid)
+  "Map the caller's UID and GID to UID and GID in PID's new user namespace.
+PID must wait for these maps before continuing namespace setup."
+  (define (write-map name value)
+    (define port (open-output-file (format #f "/proc/~a/~a" pid name)))
+    (call-with-cleanup
+     (lambda () (close-port port))
+     (lambda () (display value port))))
+
+  (write-map "uid_map" (format #f "~a ~a 1\n" uid (getuid)))
+  ;; Unprivileged GID mapping requires disabling subsequent setgroups calls.
+  (write-map "setgroups" "deny\n")
+  (write-map "gid_map" (format #f "~a ~a 1\n" gid (getgid))))
 
 (define (write-id-map-ranges! pid uid-ranges gid-ranges)
   "Install UID-RANGES and GID-RANGES in the user namespace of PID."
