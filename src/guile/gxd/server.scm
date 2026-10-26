@@ -26,9 +26,7 @@
                                       invalid-character-name-error?
                                       invalid-character-name-error-character))
   #:use-module ((gxd text-store) #:select (add-text!))
-  #:use-module ((gxd file-store)
-                #:select (add-nar-as-flat-file-from-port!
-                          add-nar-as-recursive-from-port!))
+  #:use-module ((gxd file-store) #:select (add-nar-to-store))
   #:use-module ((gxd derivations)
                 #:select (derivation-output-error? derivation-output-error-message))
   #:use-module ((gxd worker-protocol) #:select (read-integer read-string read-options read-text
@@ -94,10 +92,8 @@ Return the session options after the request."
     (let* ((request (protocol:read-header-of-add-to-store-op connection))
            (name (get request 'name))
            (hash-algo (get request 'hash-algo))
-           (path ((if (get request 'recursive?)
-                      add-nar-as-recursive-from-port!
-                      add-nar-as-flat-file-from-port!)
-                  db store-directory name hash-algo connection)))
+           (path (add-nar-to-store db store-directory name
+                                   (get request 'recursive?) hash-algo connection)))
       (protocol:write-completion connection)
       (write-value utf8-string path connection)))
 
