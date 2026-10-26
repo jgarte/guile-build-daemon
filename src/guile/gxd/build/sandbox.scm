@@ -5,10 +5,11 @@
 
 (define-module (gxd build sandbox)
   #:use-module (gxd prelude)
+  #:use-module ((gxd isolation) #:select (bind-mount-read-only!))
   #:use-module ((gnu build accounts)
                 #:select (password-entry group-entry write-passwd write-group))
   #:use-module ((guix build utils) #:select (mkdir-p))
-  #:export (prepare-sandbox-root!))
+  #:export (prepare-sandbox-root! mount-build-inputs!))
 
 (define (write-root-file sandbox-root name contents)
   (define port (open-output-file (string-append sandbox-root name)))
@@ -56,3 +57,11 @@ The caller owns SANDBOX-ROOT and its cleanup; no mounts are established."
 
   (mkdir-p root-store)
   (chmod root-store #o1775))
+
+(define (mount-build-inputs! sandbox-root input-paths)
+  "Expose INPUT-PATHS read-only at their original paths beneath SANDBOX-ROOT.
+SANDBOX-ROOT is the prepared host-side sandbox directory.  INPUT-PATHS is the
+realized input closure, and mounts are private to the caller."
+  (for-each (lambda (path)
+              (bind-mount-read-only! path (string-append sandbox-root path)))
+            input-paths))
