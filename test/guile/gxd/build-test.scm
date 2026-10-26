@@ -134,6 +134,93 @@
     ;; Build logs differ; consume completed captures without comparing their bytes.
     (observe-bytes!))
 
+  (test "builders see declared read-only inputs and a private writable workspace, but not an undeclared store item" (ctx)
+    (define step! (get ctx 'step!))
+    (define observe-snapshot! (get ctx 'observe-snapshot!))
+    (define observe-bytes! (get ctx 'observe-bytes!))
+    (define guile (canonicalize-path (require-program "guile")))
+    (define guile-store-path (direct-store-path guile))
+    (define input-path
+      (step! '(add-text-to-store "sandbox-input" "declared input") #:connection 'build))
+
+    (define canary-path
+      (step! '(add-text-to-store "sandbox-canary" "undeclared canary") #:connection 'build))
+
+    (is (equal? "undeclared canary"
+                (observe-snapshot!
+                 (lambda (snapshot-directory)
+                   (slurp (string-append snapshot-directory canary-path))))))
+
+    (define builder-expression
+      '(begin
+         (use-modules (ice-9 exceptions) (ice-9 textual-ports))
+         (define input-path (getenv "input-path"))
+         (define input-contents (call-with-input-file input-path get-string-all))
+         (define input-read-only?
+           (with-exception-handler
+             (lambda (_) #t)
+             (lambda ()
+               (chmod input-path #o644)
+               (call-with-output-file input-path (lambda (port) (display "changed" port)))
+               #f)
+             #:unwind? #t))
+
+         (call-with-output-file "workspace-file"
+           (lambda (port) (display "workspace contents" port)))
+         (define workspace-contents (call-with-input-file "workspace-file" get-string-all))
+         (call-with-output-file (getenv "out")
+           (lambda (port)
+             (write `((pid . ,(getpid))
+                      (uid . ,(getuid))
+                      (gid . ,(getgid))
+                      (hostname . ,(gethostname))
+                      (input-contents . ,input-contents)
+                      (input-read-only? . ,input-read-only?)
+                      (undeclared-input-hidden? . ,(not (file-exists? (getenv "canary-path"))))
+                      (workspace-writable? . ,(string=? "workspace contents" workspace-contents))
+                      (temporary-directory-is-working-directory?
+                       . ,(string=? (getcwd) (getenv "TMPDIR"))))
+                    port)))))
+
+    (define builder
+      (step! `(add-text-to-store "sandbox-builder.scm" ,(object->string builder-expression))
+             #:connection 'build))
+
+    (define drv
+      (step! `(derivation "sandbox-environment" ,guile ("--no-auto-compile" ,builder)
+                          #:sources (,builder ,guile-store-path ,input-path)
+                          #:env-vars (("input-path" . ,input-path) ("canary-path" . ,canary-path))
+                          #:substitutable? #f #:local-build? #t)
+             #:connection 'build))
+
+    (define output-path (guix-drv:derivation->output-path drv))
+
+    (step! '(set-build-options #:use-substitutes? #f #:offload? #f #:max-build-jobs 1)
+           #:connection 'build)
+
+    (is (step! `(build-things (,(guix-drv:derivation-file-name drv)))
+               #:connection 'build #:terminal? #t))
+
+    (define facts
+      (observe-snapshot!
+       (lambda (snapshot-directory)
+         (call-with-input-file (string-append snapshot-directory output-path) read))))
+
+    (define expected-facts
+      '((pid . 1)
+        (uid . 30001)
+        (gid . 30000)
+        (hostname . "localhost")
+        (input-contents . "declared input")
+        (input-read-only? . #t)
+        (undeclared-input-hidden? . #t)
+        (workspace-writable? . #t)
+        (temporary-directory-is-working-directory? . #t)))
+
+    (is (equal? expected-facts facts))
+
+    (observe-bytes!))
+
   (test "when a dependency build fails, the error names the requested consumer and the connection stays usable" (ctx)
     (define step! (get ctx 'step!))
     (define observe-db! (get ctx 'observe-db!))
