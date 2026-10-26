@@ -22,7 +22,11 @@
                                                            put-bytevector))
   #:use-module ((ice-9 match) #:select (match))
   #:use-module ((srfi srfi-11) #:select (let-values))
-  #:export (add-nar-to-store))
+  #:export (add-nar-to-store
+            register-store-path!
+            restore-nar!
+            ensure-store-path!
+            call-with-nar-payload-and-store-path))
 
 (define (call-with-bytevector-output-port proc)
   "Call PROC with an output port and return its accumulated bytevector."
@@ -115,29 +119,55 @@ path, type, and contents.  Callback return values are ignored."
              (error "flat NAR must contain one root regular file" type file))))))))
 
 
-(define (add-nar-to-store db store-directory name recursive? hash-algo port)
-  "Read one NAR from PORT and add it as the fixed-output item NAME.
-When RECURSIVE? is true, hash the NAR and restore its file tree; otherwise,
-hash and store its root regular file's contents.  Return the store path."
+(define (register-store-path! db store-directory destination)
+  "Register DESTINATION in DB with its NAR hash and size."
+  (let-values (((nar-hash nar-size) (nar-sha256 destination)))
+    (database:register-item!
+     db store-directory destination nar-hash nar-size '())))
+
+(define (restore-nar! destination nar)
+  "Restore bytevector NAR at DESTINATION."
+  (call-with-bytevector-input-port nar
+    (lambda (input) (restore-file input destination))))
+
+(define (ensure-store-path! db store-directory destination write-to-store!)
+  "Ensure DESTINATION exists in DB, using WRITE-TO-STORE! to create it when needed."
+  (unless (database:valid-path? db destination)
+    (call-with-destination-lock destination
+      (lambda ()
+        ;; Another session may have imported this item while we waited.
+        (unless (database:valid-path? db destination)
+          (delete-path! destination)
+          (write-to-store!)
+          (register-store-path! db store-directory destination))))))
+
+(define (call-with-nar-payload-and-store-path store-directory name recursive?
+                                           hash-algo port proc)
+  "Read one NAR from PORT and call PROC with its payload and store destination.
+The payload is the NAR when RECURSIVE? is true, otherwise its root file
+contents."
   (let-values (((algorithm gcrypt-algorithm)
                 (fixed-output-hash-algorithm hash-algo)))
     (let* ((nar (read-nar port))
            (contents (and (not recursive?) (read-content-of-flat-file-nar nar)))
-           (hash (bytevector-hash (or contents nar) gcrypt-algorithm))
+           (payload (or contents nar))
+           (hash (bytevector-hash payload gcrypt-algorithm))
            (destination
             (fixed-output-path store-directory name hash
                                #:hash-algo algorithm #:recursive? recursive?)))
-      (unless (database:valid-path? db destination)
-        (call-with-destination-lock destination
-          (lambda ()
-            ;; Another session may have imported this item while we waited.
-            (unless (database:valid-path? db destination)
-              (delete-path! destination)
-              (if recursive?
-                  (call-with-bytevector-input-port nar
-                    (lambda (input) (restore-file input destination)))
-                  (write-text! destination contents))
-              (let-values (((nar-hash nar-size) (nar-sha256 destination)))
-                (database:register-item!
-                 db store-directory destination nar-hash nar-size '()))))))
-      destination)))
+      (proc payload destination))))
+
+(define (add-nar-to-store db store-directory name recursive? hash-algo port)
+  "Read one NAR from PORT and add it as the fixed-output item NAME.
+When RECURSIVE? is true, hash the NAR and restore its file tree; otherwise,
+hash and store its root regular file's contents.  Return the store path."
+  (call-with-nar-payload-and-store-path
+   store-directory name recursive? hash-algo port
+   (lambda (payload destination)
+     (ensure-store-path!
+      db store-directory destination
+      (lambda ()
+        (if recursive?
+            (restore-nar! destination payload)
+            (write-text! destination payload))))
+     destination)))
