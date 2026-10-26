@@ -8,6 +8,7 @@
   #:use-module ((gxd build environment) #:select (build-environment))
   #:use-module ((gxd build process)
                 #:select (call-with-builder-process builder-output wait-builder!))
+  #:use-module ((gxd build sandbox) #:select (sandbox-build-directory))
   #:use-module ((guix derivations)
                 #:select (derivation-builder derivation-builder-arguments))
   #:use-module ((rnrs bytevectors) #:select (u8-list->bytevector utf8->string))
@@ -39,15 +40,20 @@ Raise on EOF before newline.  Leave subsequent builder log bytes untouched."
       (log! bytes)
       (loop))))
 
-(define (execute-builder! drv store-directory build-directory cores log!)
+(define* (execute-builder! drv store-directory build-directory cores log!
+                           #:optional (sandbox #f))
   "Execute DRV with an environment built from STORE-DIRECTORY, BUILD-DIRECTORY and CORES.
 Pass binary output chunks to LOG! after checking setup; return the raw wait status.
-The caller owns BUILD-DIRECTORY.  Outputs are not validated or registered."
-  (define environment (build-environment drv store-directory build-directory cores))
+The caller owns host workspace BUILD-DIRECTORY.  With SANDBOX, use its build
+directory in the environment and execute within its prepared filesystem.
+Outputs are not validated or registered."
+  (define environment
+    (build-environment drv store-directory
+                       (if sandbox (sandbox-build-directory sandbox) build-directory) cores))
 
   (call-with-builder-process
    (derivation-builder drv) (derivation-builder-arguments drv)
-   environment build-directory #f
+   environment build-directory sandbox
    (lambda (process)
      (define output (builder-output process))
      (check-builder-setup! output)
