@@ -22,16 +22,6 @@
   #:use-module ((gxd testbox-relay)
                 #:select (client-trust-fixture paired-relay-observers-fixture)))
 
-(define (call-with-hello-world-file proc)
-  "Write 'Hello World!' to a temporary regular file and call PROC with its path."
-  (call-with-temporary-directory
-   (lambda (dir)
-     (let* ((name "hello-world-file")
-            (path (string-append dir "/" name))
-            (content "Hello World!"))
-       (spit path content)
-       (proc path)))))
-
 (define (remote-eof? store)
   "Return whether STORE reaches remote EOF within five seconds."
   (let ((socket (store-connection-socket store)))
