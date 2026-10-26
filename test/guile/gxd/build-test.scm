@@ -221,6 +221,83 @@
 
     (observe-bytes!))
 
+  (test "builders have working standard devices and descriptor links, but cannot write to the filesystem root" (ctx)
+    (define step! (get ctx 'step!))
+    (define observe-snapshot! (get ctx 'observe-snapshot!))
+    (define observe-bytes! (get ctx 'observe-bytes!))
+    (define guile (canonicalize-path (require-program "guile")))
+    (define guile-store-path (direct-store-path guile))
+    (define builder-expression
+      '(begin
+         (use-modules (ice-9 exceptions) (rnrs bytevectors) (rnrs io ports))
+
+         (define null-port (open-file "/dev/null" "r+"))
+         (put-u8 null-port 42)
+         (force-output null-port)
+         (define dev-null-discards-writes? (eof-object? (get-u8 null-port)))
+         (close-port null-port)
+
+         (define zero-bytes
+           (call-with-input-file "/dev/zero" (lambda (port) (get-bytevector-n port 8))))
+
+         (define root-write-rejected?
+           (with-exception-handler
+             (lambda (exception)
+               (if (and (eq? 'system-error (exception-kind exception))
+                        (= EACCES (system-error-errno
+                                   (cons (exception-kind exception) (exception-args exception)))))
+                   #t
+                   (raise-exception exception)))
+             (lambda ()
+               (call-with-output-file "/sandbox-write-probe" (lambda (port) (display "write" port)))
+               #f)
+             #:unwind? #t))
+
+         (call-with-output-file (getenv "out")
+           (lambda (port)
+             (write `((dev-null-discards-writes? . ,dev-null-discards-writes?)
+                      (dev-zero-returns-zero-bytes? . ,(equal? (make-bytevector 8 0) zero-bytes))
+                      (descriptor-links
+                       . ,(map (lambda (name) (cons name (readlink (string-append "/dev/" name))))
+                               '("fd" "stdin" "stdout" "stderr")))
+                      (root-write-rejected? . ,root-write-rejected?))
+                    port)))))
+
+    (define builder
+      (step! `(add-text-to-store "sandbox-devices-builder.scm" ,(object->string builder-expression))
+             #:connection 'build))
+
+    (define drv
+      (step! `(derivation "sandbox-devices" ,guile ("--no-auto-compile" ,builder)
+                          #:sources (,builder ,guile-store-path)
+                          #:substitutable? #f #:local-build? #t)
+             #:connection 'build))
+
+    (step! '(set-build-options #:use-substitutes? #f #:offload? #f #:max-build-jobs 1)
+           #:connection 'build)
+
+    (is (step! `(build-things (,(guix-drv:derivation-file-name drv)))
+               #:connection 'build #:terminal? #t))
+
+    (define facts
+      (observe-snapshot!
+       (lambda (snapshot-directory)
+         (call-with-input-file
+             (string-append snapshot-directory (guix-drv:derivation->output-path drv)) read))))
+
+    (define expected-facts
+      '((dev-null-discards-writes? . #t)
+        (dev-zero-returns-zero-bytes? . #t)
+        (descriptor-links . (("fd" . "/proc/self/fd")
+                             ("stdin" . "/proc/self/fd/0")
+                             ("stdout" . "/proc/self/fd/1")
+                             ("stderr" . "/proc/self/fd/2")))
+        (root-write-rejected? . #t)))
+
+    (is (equal? expected-facts facts))
+
+    (observe-bytes!))
+
   (test "when a dependency build fails, the error names the requested consumer and the connection stays usable" (ctx)
     (define step! (get ctx 'step!))
     (define observe-db! (get ctx 'observe-db!))
