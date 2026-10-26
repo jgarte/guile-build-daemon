@@ -68,20 +68,32 @@
     (setvbuf port 'none)
     port))
 
+(define (fold-nar port regular-file-callback other-files-callback)
+  "Fold one NAR from PORT with file-type callbacks.
+
+REGULAR-FILE-CALLBACK receives a regular or executable file's path, contents
+port, and size.  OTHER-FILES-CALLBACK receives every directory or symlink's
+path, type, and contents.  Callback return values are ignored."
+  (fold-archive
+   (lambda (file type contents _)
+     (match type
+       ((or 'regular 'executable)
+        (regular-file-callback file (car contents) (cdr contents)))
+       ((or 'directory 'directory-complete 'symlink)
+        (other-files-callback file type contents)))
+     #t)
+   #t port ""))
+
 (define (read-nar port)
   "Read, validate, and return one normalized NAR from PORT."
   (call-with-bytevector-output-port
    (lambda (output)
      ;; INPUT is a custom view of PORT and does not own PORT.
      (let ((input (tee-input-port port output)))
-       (fold-archive
-        (lambda (_ type contents result)
-          (match type
-            ((or 'regular 'executable)
-             (drain (car contents) (cdr contents)))
-            (_ #t))
-          result)
-        #t input "")))))
+       (fold-nar input
+         (lambda (_ contents size)
+           (drain contents size))
+         (lambda _ #t))))))
 
 (define (fixed-output-hash-algorithm name)
   "Return NAME as a supported fixed-output hash-algorithm and gcrypt value."
@@ -97,18 +109,14 @@
      (define regular? #f)
      (call-with-bytevector-input-port nar
        (lambda (input)
-         (fold-archive
-          (lambda (file type contents result)
-            (match type
-              ((or 'regular 'executable)
-               (if (string-null? file)
-                   (begin
-                     (set! regular? #t)
-                     (drain (car contents) (cdr contents) output))
-                   (drain (car contents) (cdr contents))))
-              ((or 'directory 'directory-complete 'symlink) #t))
-            result)
-          #t input "")))
+         (fold-nar input
+           (lambda (file contents size)
+             (if (string-null? file)
+                 (begin
+                   (set! regular? #t)
+                   (drain contents size output))
+                 (drain contents size)))
+           (lambda _ #t))))
      (unless regular?
        (error "regular file expected")))))
 
