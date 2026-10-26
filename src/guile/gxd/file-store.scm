@@ -133,7 +133,7 @@ path, type, and contents.  Callback return values are ignored."
      db store-directory destination nar-hash nar-size '())))
 
 (define (restore-nar! destination nar)
-  "Restore bytevector NAR at DESTINATION."
+  "Restore bytevector NAR at DESTINATION with canonical metadata."
   (call-with-bytevector-input-port nar
     (lambda (input) (restore-file input destination))))
 

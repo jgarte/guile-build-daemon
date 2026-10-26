@@ -56,6 +56,27 @@
                       db dir "item" #t "sha256"
                       (open-bytevector-input-port nar))))))))
 
+  (test "recursive import canonicalizes tree metadata" ()
+    (call-with-tmp-dir-and-database
+     (lambda (dir db)
+       (let* ((source (string-append dir "/source"))
+              (program (string-append source "/program"))
+              (link (string-append source "/link")))
+         (mkdir source)
+         (spit program "contents")
+         (chmod program #o777)
+         (symlink "program" link)
+         (let ((destination
+                (add-nar-to-store db dir "item" #t "sha256"
+                                  (open-bytevector-input-port (nar-bytes source)))))
+           (for-each
+            (lambda (path) (is (= 1 (stat:mtime (lstat path)))))
+            (list destination (string-append destination "/program")
+                  (string-append destination "/link")))
+           (is (= #o555 (stat:perms (stat destination))))
+           (is (= #o555 (stat:perms (stat (string-append destination "/program")))))
+           (chmod destination #o755))))))
+
   (test "recursive port import consumes exactly one NAR" ()
     (call-with-tmp-dir-and-database
      (lambda (dir db)
