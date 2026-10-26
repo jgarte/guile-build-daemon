@@ -15,7 +15,7 @@
   #:use-module ((srfi srfi-9) #:select (define-record-type))
   #:use-module ((system foreign) #:select (sizeof unsigned-int unsigned-long))
   #:export (unix-peer-trusted? initial-options update-options
-                               options-build-cores
+                               options-build-cores options-use-chroot?
                                &option-error option-error? option-error-message))
 
 (define-record-type <options>
@@ -31,11 +31,13 @@
   (print-build-trace? options-print-build-trace?)
   (settings options-settings))
 
-(define (initial-options offload?)
+(define (initial-options offload? use-chroot?)
   "Return initial session options with OFFLOAD? indicating build-hook availability.
-Retain named settings as unique string pairs; substitution starts enabled."
+Retain named settings as unique string pairs; substitution starts enabled and
+USE-CHROOT? selects the initial build sandbox setting."
   (make-options #f #f 1 offload? 0 0 #f
-                '(("build-use-substitutes" . "true"))))
+                `(("build-use-substitutes" . "true")
+                  ("build-use-chroot" . ,(if use-chroot? "true" "false")))))
 
 (define (unix-peer-trusted? peer-uid daemon-uid)
   (or (zero? peer-uid) (= peer-uid daemon-uid)))
@@ -150,6 +152,11 @@ Prefix non-public names with untrusted- unless TRUSTED?.  Preserve other setting
   "Return the number of build cores advertised by OPTIONS."
   (define value (assoc-ref (options-settings options) "build-cores"))
   (if value (parse-option-integer "build-cores" value 'unsigned-int) 1))
+
+(define (options-use-chroot? options)
+  "Return whether OPTIONS enables build sandboxing."
+  (parse-option-boolean "build-use-chroot"
+                        (assoc-ref (options-settings options) "build-use-chroot")))
 
 (define (parse-option-integer name value type)
   "Return VALUE as C++ integer TYPE; raise an option error naming NAME if invalid."
