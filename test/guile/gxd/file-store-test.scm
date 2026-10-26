@@ -48,22 +48,23 @@
      (lambda (dir db)
        (call-with-hello-world-file
         (lambda (source)
-          (let* ((nar (nar-bytes source))
-                 (hash (sha256 nar))
-                 (expected (fixed-output-path dir "item" hash))
-                 (destination
-                  (call-with-bytevector-input-port nar
-                    (lambda (input)
-                      (add-nar-to-store db dir "item" #t "sha256" input))))
-                 (is (equal? expected destination))
-                 (is (database:valid-path? db destination))
-                 (is (file-exists? destination))
-                 ;; read-only r--r--r--
-                 (is (= #o444 (stat:perms (stat destination))))
-                 (is (equal? destination
-                             (call-with-bytevector-input-port nar
-                               (lambda (input)
-                                 (add-nar-to-store db dir "item" #t "sha256" input))))))))))))
+
+          (define nar (nar-bytes source))
+          (define hash (sha256 nar))
+          (define expected (fixed-output-path dir "item" hash))
+          (define destination (call-with-bytevector-input-port nar
+                                (lambda (input)
+                                  (add-nar-to-store db dir "item" #t "sha256" input))))
+          
+          (is (equal? expected destination))
+          (is (database:valid-path? db destination))
+          (is (file-exists? destination))
+          ;; read-only r--r--r--
+          (is (= #o444 (stat:perms (stat destination))))
+          (is (equal? destination
+                      (call-with-bytevector-input-port nar
+                        (lambda (input)
+                          (add-nar-to-store db dir "item" #t "sha256" input))))))))))
 
   (test "recursive import rejects invalid NAR entry names" ()
     (call-with-tmp-dir-and-database
@@ -86,42 +87,46 @@
   (test "recursive import canonicalizes tree metadata" ()
     (call-with-tmp-dir-and-database
      (lambda (dir db)
-       (let* ((source (string-append dir "/source"))
-              (program (string-append source "/program"))
-              (link (string-append source "/link")))
-         (mkdir source)
-         (spit program "contents")
-         (chmod program #o777)
-         (symlink "program" link)
-         (let ((destination
-                (call-with-bytevector-input-port (nar-bytes source)
-                  (lambda (input)
-                    (add-nar-to-store db dir "item" #t "sha256" input)))))
-           (for-each
-            (lambda (path) (is (= 1 (stat:mtime (lstat path)))))
-            (list destination (string-append destination "/program")
-                  (string-append destination "/link")))
-           (is (= #o555 (stat:perms (stat destination))))
-           (is (= #o555 (stat:perms (stat (string-append destination "/program")))))
-           (chmod destination #o755))))))
+     (define source (string-append dir "/source"))
+     (define program (string-append source "/program"))
+     (define link (string-append source "/link"))
+     
+     (mkdir source)
+     (spit program "contents")
+     (chmod program #o777)
+     (symlink "program" link)
+     
+     (define destination
+       (call-with-bytevector-input-port (nar-bytes source)
+         (lambda (input)
+           (add-nar-to-store db dir "item" #t "sha256" input))))
+
+     (is (= 1 (stat:mtime (lstat destination))))
+     (is (= 1 (stat:mtime (lstat (string-append destination "/program")))))
+     (is (= 1 (stat:mtime (lstat (string-append destination "/link")))))
+     
+     (is (= #o555 (stat:perms (stat destination))))
+     (is (= #o555 (stat:perms (stat (string-append destination "/program")))))
+     (chmod destination #o755))))
 
   (test "recursive port import consumes exactly one NAR" ()
     (call-with-tmp-dir-and-database
      (lambda (dir db)
        (call-with-hello-world-file
         (lambda (source)
-          (let ((bytes
-                 (call-with-bytevector-output-port
-                  (lambda (output)
-                    ;; The byte after the NAR models the next protocol input.
-                    (put-bytevector output (nar-bytes source))
-                    (put-u8 output 42)))))
-            (call-with-bytevector-input-port bytes
-              (lambda (input)
-                (let ((destination (add-nar-to-store
-                                    db dir "item" #t "sha256" input)))
-                  (is (database:valid-path? db destination))
-                  (is (= 42 (get-u8 input))))))))))))
+          (define bytes
+            (call-with-bytevector-output-port
+             (lambda (output)
+               ;; The byte after the NAR models the next protocol input.
+               (put-bytevector output (nar-bytes source))
+               (put-u8 output 42))))
+
+          (call-with-bytevector-input-port bytes
+            (lambda (input)
+              (define destination (add-nar-to-store db dir "item" #t "sha256" input))
+              
+              (is (database:valid-path? db destination))
+              (is (= 42 (get-u8 input))))))))))
 
   (test "recursive import rejects NARs deeper than nixd's limit" ()
     (call-with-tmp-dir-and-database
@@ -155,19 +160,19 @@
      (lambda (dir db)
        (call-with-hello-world-file
         (lambda (source)
-          (let ((bytes
-                 (call-with-bytevector-output-port
-                  (lambda (output)
-                    (put-bytevector output (nar-bytes source))))))
-            (call-with-bytevector-input-port bytes
-              (lambda (input)
-                (let* ((destination (add-nar-to-store
-                                     db dir "item" #f "sha256" input))
-                       (expected (fixed-output-path
-                                  dir "item" (sha256 (string->utf8 "Hello World!"))
-                                  #:recursive? #f)))
-                  (is (equal? expected destination))
-                  (is (database:valid-path? db destination))
-                  (is (= #o444 (stat:perms (stat destination)))))))))
+          (define bytes
+            (call-with-bytevector-output-port
+             (lambda (output)
+               (put-bytevector output (nar-bytes source)))))
+          (call-with-bytevector-input-port bytes
+            (lambda (input)
+              (define destination (add-nar-to-store db dir "item" #f "sha256" input))
+              (define expected (fixed-output-path
+                                dir "item" (sha256 (string->utf8 "Hello World!"))
+                                #:recursive? #f))
+              
+              (is (equal? expected destination))
+              (is (database:valid-path? db destination))
+              (is (= #o444 (stat:perms (stat destination)))))))
         #:content "Hello World!")))))
 
