@@ -8,7 +8,7 @@
   #:use-module ((guix store)
                 #:select (add-text-to-store
                           add-to-store
-                          build-things close-connection open-connection
+                          build-things built-in-builders close-connection open-connection
                           &store-protocol-error store-protocol-error-message
                           store-protocol-error-status
                           set-build-options valid-path?))
@@ -36,6 +36,7 @@ Close both clients before returning or propagating an exception."
 
 (define (expression->procedure expression)
   (match expression
+    (('built-in-builders) built-in-builders)
     (('valid-path? (? string? path))
      (lambda (store) (valid-path? store path)))
     (('add-to-store (? string? name) (? boolean? recursive?) (? string? hash-algo)
