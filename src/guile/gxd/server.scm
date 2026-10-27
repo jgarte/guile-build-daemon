@@ -15,7 +15,7 @@
                 #:select (build-paths! build-request-error? build-request-error-path
                           build-request-error-cause))
   #:use-module ((gxd build realization)
-                #:select (builder-exit-error?))
+                #:select (builder-exit-error? builder-exit-error-fixed-output?))
   #:use-module ((gxd build config) #:select (build-config))
   #:use-module ((gxd build outputs)
                 #:select (missing-output-error? output-permission-error?
@@ -161,7 +161,8 @@ Return the session options after the request."
         (define cause (build-request-error-cause exception))
         (define status
           (cond
-           ((builder-exit-error? cause) 100)
+           ((builder-exit-error? cause)
+            (if (builder-exit-error-fixed-output? cause) 1 100))
            ((or (missing-output-error? cause) (output-permission-error? cause)
                 (flat-output-type-error? cause) (output-hash-mismatch? cause)
                 (database:invalid-reference? cause)) 1)
