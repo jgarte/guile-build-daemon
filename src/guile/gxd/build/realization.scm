@@ -11,7 +11,9 @@
                 #:select (prepare-output! prepare-sandboxed-output! preserve-failed-output!
                           missing-output-error? missing-output-error-drv-path
                           missing-output-error-output-path output-permission-error?
-                          output-permission-error-output-path))
+                          output-permission-error-output-path
+                          flat-output-type-error? flat-output-type-error-output-path
+                          output-hash-mismatch? output-hash-mismatch-output-path))
   #:use-module ((gxd derivations) #:select (read-derivation))
   #:use-module ((gxd build sandbox) #:select (call-with-build-sandbox sandbox-root))
   #:use-module ((gxd database)
@@ -100,6 +102,12 @@ invalidation."
          ((output-permission-error? exception)
           (format #f "suspicious ownership or permission on `~a'; rejecting this build output"
                   (output-permission-error-output-path exception)))
+         ((flat-output-type-error? exception)
+          (format #f "output path `~a' should be a non-executable regular file"
+                  (flat-output-type-error-output-path exception)))
+         ((output-hash-mismatch? exception)
+          (format #f "hash mismatch for store item '~a'"
+                  (output-hash-mismatch-output-path exception)))
          (else (raise-exception exception))))
 
       (log! (string->utf8 (string-append diagnostic "\n")))
