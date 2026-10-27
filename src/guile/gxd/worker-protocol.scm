@@ -5,7 +5,7 @@
 
 (define-module (gxd worker-protocol)
   #:use-module ((guix serialization) #:select (integer long-long utf8-string bytevector
-                                                       read-value write-value))
+                                               read-value write-value))
   #:use-module ((rnrs bytevectors)
                 #:select (bytevector-length bytevector-u8-ref utf8->string string->utf8))
   #:use-module ((rnrs io ports) #:select (get-bytevector-n))

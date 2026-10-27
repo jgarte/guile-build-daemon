@@ -10,7 +10,7 @@
   #:use-module ((ares suitbl core) #:select (define-suite test is))
   #:use-module ((ice-9 exceptions)
                 #:select (exception-kind exception-args raise-exception
-                                         make-exception-with-message))
+                          make-exception-with-message))
   #:use-module ((ice-9 textual-ports) #:select (get-string-all))
   #:use-module ((ice-9 match) #:select (match-let))
   #:use-module ((ice-9 rdelim) #:select (read-line)))

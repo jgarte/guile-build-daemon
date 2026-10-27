@@ -10,14 +10,14 @@
   #:use-module ((guix derivations)
                 #:prefix guix-drv:
                 #:select (read-derivation derivation-outputs derivation-output-path
-                                          derivation-output-hash derivation-output-hash-algo
-                                          derivation-output-recursive? derivation-hash
-                                          derivation-builder-environment-vars
-                                          derivation-inputs derivation-input-derivation))
+                          derivation-output-hash derivation-output-hash-algo
+                          derivation-output-recursive? derivation-hash
+                          derivation-builder-environment-vars
+                          derivation-inputs derivation-input-derivation))
   #:use-module ((guix store)
                 #:prefix guix-store:
                 #:select (%store-prefix output-path fixed-output-path
-                                        store-path-package-name))
+                          store-path-package-name))
   #:use-module ((ice-9 exceptions)
                 #:select (&error define-exception-type raise-exception))
   #:use-module ((ice-9 format) #:select (format))

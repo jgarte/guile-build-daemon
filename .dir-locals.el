@@ -10,6 +10,29 @@
  (scheme-mode
   . ((indent-tabs-mode . nil)
 
+     (eval
+      . (defun gxd-import-selection-p (opening)
+          "Return non-nil when OPENING starts a list following #:select."
+          (save-excursion
+            (goto-char opening)
+            (forward-comment (- (point)))
+            (let ((end (point)))
+              (condition-case nil
+                  (progn
+                    (backward-sexp)
+                    (equal (buffer-substring-no-properties (point) end) "#:select"))
+                (scan-error nil))))))
+     (eval
+      . (defun gxd-scheme-indent (indent-point state)
+          "Indent import selections as data; use Scheme indentation elsewhere."
+          (let ((opening (nth 1 state)))
+            (if (and opening (gxd-import-selection-p opening))
+                (save-excursion
+                  (goto-char opening)
+                  (1+ (current-column)))
+              (scheme-indent-function indent-point state)))))
+     (eval . (setq-local lisp-indent-function #'gxd-scheme-indent))
+
      ;; Common Scheme/Guile forms used throughout the daemon and harness.
      (eval . (put 'define* 'scheme-indent-function 'defun))
      (eval . (put 'define-public 'scheme-indent-function 'defun))

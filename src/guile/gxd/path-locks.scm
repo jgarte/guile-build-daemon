@@ -9,7 +9,7 @@
   #:use-module ((guix build utils) #:select (false-if-file-not-found))
   #:use-module ((ice-9 exceptions)
                 #:select (exception-args exception-kind raise-exception
-                                         with-exception-handler))
+                          with-exception-handler))
   #:use-module ((ice-9 format) #:select (format))
   #:use-module ((ice-9 match) #:select (match))
   #:use-module ((srfi srfi-1) #:select (delete-duplicates))

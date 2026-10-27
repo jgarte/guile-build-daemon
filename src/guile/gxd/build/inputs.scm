@@ -11,8 +11,8 @@
   #:use-module ((guix derivations)
                 #:prefix guix-drv:
                 #:select (derivation-inputs derivation-sources derivation-outputs
-                                            derivation-output-path derivation-input-derivation
-                                            derivation-input-sub-derivations))
+                          derivation-output-path derivation-input-derivation
+                          derivation-input-sub-derivations))
   #:use-module ((ice-9 exceptions)
                 #:select (&error define-exception-type raise-exception))
   #:use-module ((ice-9 format) #:select (format))

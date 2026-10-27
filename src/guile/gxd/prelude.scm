@@ -5,7 +5,7 @@
 (define-module (gxd prelude)
   #:use-module ((ice-9 exceptions)
                 #:select (&error define-exception-type make-exception
-                                 make-exception-with-message raise-exception with-exception-handler))
+                          make-exception-with-message raise-exception with-exception-handler))
   #:use-module ((srfi srfi-2) #:select (and-let*))
   #:use-module ((srfi srfi-197) #:select (chain))
   #:re-export (and-let* chain)

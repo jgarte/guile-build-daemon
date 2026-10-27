@@ -9,9 +9,9 @@
   #:use-module ((gxd build inputs) #:select (reference-candidates input-closure))
   #:use-module ((gxd build outputs)
                 #:select (prepare-output! prepare-sandboxed-output! preserve-failed-output!
-                                          missing-output-error? missing-output-error-drv-path
-                                          missing-output-error-output-path output-permission-error?
-                                          output-permission-error-output-path))
+                          missing-output-error? missing-output-error-drv-path
+                          missing-output-error-output-path output-permission-error?
+                          output-permission-error-output-path))
   #:use-module ((gxd derivations) #:select (read-derivation))
   #:use-module ((gxd build sandbox) #:select (call-with-build-sandbox sandbox-root))
   #:use-module ((gxd database)
@@ -22,8 +22,8 @@
   #:use-module ((guix derivations)
                 #:prefix guix-drv:
                 #:select (derivation-outputs derivation-output-path derivation-output-hash
-                                             derivation-inputs derivation-input-derivation
-                                             derivation-input-sub-derivations))
+                          derivation-inputs derivation-input-derivation
+                          derivation-input-sub-derivations))
   #:use-module ((guix build syscalls) #:select (mkdtemp!))
   #:use-module ((ice-9 match) #:select (match-lambda))
   #:use-module ((ice-9 exceptions)

@@ -8,8 +8,8 @@
   #:use-module ((gxd test-database) #:select (query call-with-empty-database))
   #:use-module ((gxd build inputs)
                 #:select (reference-candidates missing-input-output-drv-path
-                                               missing-input-output-input-path
-                                               missing-input-output-name))
+                          missing-input-output-input-path
+                          missing-input-output-name))
   #:use-module ((gxd derivations) #:select (read-derivation))
   #:use-module ((guix store database)
                 #:prefix guix-db:
@@ -17,7 +17,7 @@
   #:use-module ((guix derivations)
                 #:prefix guix-drv:
                 #:select (derivation-input derivation-input-derivation
-                                           derivation-inputs derivation-sources))
+                          derivation-inputs derivation-sources))
   #:use-module ((srfi srfi-9 gnu) #:select (set-fields))
   #:use-module ((ares suitbl core) #:select (define-suite test is)))
 

@@ -14,7 +14,7 @@
   #:use-module ((guix derivations)
                 #:prefix guix-drv:
                 #:select (derivation-outputs derivation-output-path derivation-builder
-                                             derivation-builder-arguments derivation-builder-environment-vars))
+                          derivation-builder-arguments derivation-builder-environment-vars))
   #:use-module ((srfi srfi-9 gnu) #:select (set-fields))
   #:use-module ((ares suitbl core) #:select (define-suite test is))
   #:use-module ((ares suitbl checks) #:select (throws-exception?)))

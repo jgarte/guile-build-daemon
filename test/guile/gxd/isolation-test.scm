@@ -16,8 +16,8 @@
   #:use-module ((guix build utils) #:select (delete-file-recursively))
   #:use-module ((guix build syscalls)
                 #:select (mount MS_SHARED MS_RDONLY MS_NOSUID MS_NODEV MS_NOEXEC
-                                statfs file-system-mount-flags
-                                statfs-flags->mount-flags))
+                          statfs file-system-mount-flags
+                          statfs-flags->mount-flags))
   #:use-module ((guix utils) #:select (call-with-temporary-directory))
   #:use-module ((gxd isolation) #:select (child-proc
                                           make-mounts-private!

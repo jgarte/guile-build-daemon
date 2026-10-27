@@ -16,8 +16,8 @@
                           relay-observer-observed-connections))
   #:use-module ((gxd testbox-relay observation-protocol)
                 #:select (make-observation-output write-accepted
-                                                  write-data
-                                                  write-terminated)
+                          write-data
+                          write-terminated)
                 #:prefix observation:))
 
 (define (call-with-observer proc)

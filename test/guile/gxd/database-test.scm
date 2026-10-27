@@ -8,7 +8,7 @@
   #:use-module ((gxd test-database) #:select (query call-with-empty-database))
   #:use-module ((gxd database)
                 #:select (register-outputs! make-output-info valid-path? references reference-closure
-                                            reference-cycle-path invalid-reference-path))
+                          reference-cycle-path invalid-reference-path))
   #:use-module ((guix base16) #:select (bytevector->base16-string))
   #:use-module ((ares suitbl core) #:select (define-suite test is))
   #:use-module ((rnrs bytevectors) #:select (make-bytevector)))

@@ -7,7 +7,7 @@
   #:use-module ((ares suitbl core) #:select (define-suite is test))
   #:use-module ((gxd store-path)
                 #:select (text-path store-name-error-name leading-dot-name-error?
-                                    invalid-character-name-error-character))
+                          invalid-character-name-error-character))
   #:use-module (gxd test-prelude))
 
 (define-suite (store-path-tests)

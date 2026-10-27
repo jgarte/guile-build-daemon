@@ -10,11 +10,11 @@
                           enter-sandbox-filesystem! lock-build-mounts!))
   #:use-module ((gxd isolation)
                 #:select (write-self-id-maps! CLONE_NEWUSER CLONE_NEWPID
-                                              CLONE_NEWNS CLONE_NEWNET CLONE_NEWIPC CLONE_NEWUTS))
+                          CLONE_NEWNS CLONE_NEWNET CLONE_NEWIPC CLONE_NEWUTS))
   #:use-module ((guix build syscalls) #:select (safe-clone))
   #:use-module ((ice-9 exceptions)
                 #:select (with-exception-handler raise-exception
-                                                 exception-kind exception-args))
+                          exception-kind exception-args))
   #:use-module ((ice-9 format) #:select (format))
   #:use-module ((ice-9 ftw) #:select (scandir))
   #:use-module ((ice-9 match) #:select (match match-let))

@@ -8,8 +8,8 @@
   #:use-module ((gxd store-files) #:select (delete-path!))
   #:use-module ((gxd isolation)
                 #:select (bind-mount! bind-mount-read-only! child-proc
-                                      make-mounts-private! pivot-into!
-                                      write-self-id-maps! CLONE_NEWUSER CLONE_NEWNS))
+                          make-mounts-private! pivot-into!
+                          write-self-id-maps! CLONE_NEWUSER CLONE_NEWNS))
   #:use-module ((gnu build accounts)
                 #:select (password-entry group-entry write-passwd write-group))
   #:use-module ((guix build utils) #:select (mkdir-p))
