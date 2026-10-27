@@ -6,6 +6,8 @@
 (define-module (gxd build-test)
   #:use-module (gxd test-prelude)
   #:use-module ((gxd http-server) #:select (call-with-http-server))
+  #:use-module ((gxd git-server) #:select (call-with-git-server))
+  #:use-module ((gxd git-repository) #:select (call-with-git-repository))
   #:use-module ((gxd direct-steps) #:select (direct-steps-fixture))
   #:use-module ((gxd testbox) #:select (paired-daemon-testboxes-fixture))
   #:use-module ((gxd testbox-relay)
@@ -15,11 +17,13 @@
   #:use-module ((guix store) #:select (direct-store-path))
   #:use-module ((guix store deduplication) #:select (nar-sha256))
   #:use-module ((guix base16) #:select (bytevector->base16-string))
+  #:use-module ((guix utils) #:select (with-environment-variables))
+  #:use-module ((guix hash) #:select (file-hash*))
   #:use-module ((web response) #:select (build-response))
   #:use-module ((gcrypt hash) #:select (sha256))
   #:use-module ((rnrs bytevectors) #:select (string->utf8 u8-list->bytevector bytevector=?))
   #:use-module ((rnrs io ports) #:select (get-bytevector-all))
-  #:use-module ((ice-9 match) #:select (match-lambda))
+  #:use-module ((ice-9 match) #:select (match-lambda match-let))
   #:use-module ((srfi srfi-11) #:select (let-values))
   #:use-module ((guix derivations)
                 #:prefix guix-drv:
@@ -34,6 +38,66 @@
         direct-steps-fixture
         paired-snapshots-fixture
         database-observations-fixture))
+
+(define (git-environment-fixture ctx proceed)
+  ;; The profile's Git helper path is not mounted inside the testboxes.
+  (with-environment-variables
+   `(("GIT_EXEC_PATH" ,(canonicalize-path (getenv "GIT_EXEC_PATH"))))
+   (proceed ctx (lambda () #t))))
+
+(define-suite (server-git-download-tests)
+  'metadata `((test/fixtures . ,(cons git-environment-fixture build-test-fixtures)))
+
+  (test "fetch a committed Git tree with the builtin builder and register the output" (ctx)
+    (define step! (get ctx 'step!))
+    (define observe-db-path! (get ctx 'observe-db-path!))
+    (define observe-snapshot! (get ctx 'observe-snapshot!))
+    (define observe-bytes! (get ctx 'observe-bytes!))
+
+    (define git (require-program "git"))
+    (define contents "payload content")
+    (define expected-hash #f)
+    (define (populate-and-record-hash directory)
+      (spit (string-append directory "/payload") contents)
+      (set! expected-hash
+            (file-hash* directory #:recursive? #t #:select? (const #t))))
+
+    (define output-path
+      (call-with-git-repository
+       git populate-and-record-hash
+       (lambda (repository commit)
+         (call-with-git-server
+          git repository
+          (lambda (url)
+            (define drv
+              (step! `(derivation "builtin-git-download" "builtin:git-download" ()
+                                  #:env-vars (("url" . ,(object->string url))
+                                              ("commit" . ,commit) ("recursive?" . "#f")
+                                              ("download-methods" . "(upstream)"))
+                                  #:hash-algo sha256 #:hash ,expected-hash
+                                  #:recursive? #t #:substitutable? #f #:local-build? #t)
+                     #:connection 'build))
+
+            (step! '(set-build-options #:use-substitutes? #f #:offload? #f #:max-build-jobs 1)
+                   #:connection 'build)
+            (step! `(build-things (,(guix-drv:derivation-file-name drv)))
+                   #:connection 'build #:terminal? #t)
+            (guix-drv:derivation->output-path drv))))))
+
+    (is (observe-db-path! output-path))
+
+    (define published-tree
+      (observe-snapshot!
+       (lambda (snapshot-directory)
+         (define directory (string-append snapshot-directory output-path))
+         (list (slurp (string-append directory "/payload"))
+               (file-exists? (string-append directory "/.git"))))))
+
+    (match-let (((published-contents git-directory-present?) published-tree))
+      (is (equal? contents published-contents)
+          "git-download fetched the repository contents and the daemon published them")
+      (is (not git-directory-present?) ".git is absent from the published output"))
+    (observe-bytes!)))
 
 (define-suite (server-build-tests)
   'metadata `((test/fixtures . ,build-test-fixtures))
