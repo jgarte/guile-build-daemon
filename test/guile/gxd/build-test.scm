@@ -5,6 +5,7 @@
 
 (define-module (gxd build-test)
   #:use-module (gxd test-prelude)
+  #:use-module ((gxd http-server) #:select (call-with-http-server))
   #:use-module ((gxd direct-steps) #:select (direct-steps-fixture))
   #:use-module ((gxd testbox) #:select (paired-daemon-testboxes-fixture))
   #:use-module ((gxd testbox-relay)
@@ -15,7 +16,8 @@
   #:use-module ((guix store deduplication) #:select (nar-sha256))
   #:use-module ((guix base16) #:select (bytevector->base16-string))
   #:use-module ((gcrypt hash) #:select (sha256))
-  #:use-module ((rnrs bytevectors) #:select (string->utf8))
+  #:use-module ((rnrs bytevectors) #:select (string->utf8 u8-list->bytevector bytevector=?))
+  #:use-module ((rnrs io ports) #:select (get-bytevector-all))
   #:use-module ((ice-9 match) #:select (match-lambda))
   #:use-module ((srfi srfi-11) #:select (let-values))
   #:use-module ((guix derivations)
@@ -34,6 +36,45 @@
 
 (define-suite (server-build-tests)
   'metadata `((test/fixtures . ,build-test-fixtures))
+
+  (test "download binary contents with the builtin builder and register the output" (ctx)
+    (define step! (get ctx 'step!))
+    (define observe-db-path! (get ctx 'observe-db-path!))
+    (define observe-snapshot! (get ctx 'observe-snapshot!))
+    (define observe-bytes! (get ctx 'observe-bytes!))
+
+    ;; Include NUL and invalid UTF-8 to catch accidental text handling.
+    (define contents (u8-list->bytevector '(0 255 128)))
+    (define (handler request body)
+      (values '((content-type . (application/octet-stream))) contents))
+
+    (define output-path
+      (call-with-http-server
+       handler
+       (lambda (url)
+         (define drv
+           (step! `(derivation "builtin-download" "builtin:download" ()
+                               #:env-vars (("url" . ,(object->string url)))
+                               #:hash-algo sha256 #:hash ,(sha256 contents)
+                               #:recursive? #f #:substitutable? #f #:local-build? #t)
+                  #:connection 'build))
+
+         (step! '(set-build-options #:use-substitutes? #f #:offload? #f #:max-build-jobs 1)
+                #:connection 'build)
+         (step! `(build-things (,(guix-drv:derivation-file-name drv)))
+                #:connection 'build #:terminal? #t)
+         (guix-drv:derivation->output-path drv))))
+
+    (is (observe-db-path! output-path))
+
+    (define published-contents
+      (observe-snapshot!
+       (lambda (snapshot-directory)
+         (call-with-input-file (string-append snapshot-directory output-path)
+           get-bytevector-all))))
+
+    (is (bytevector=? contents published-contents))
+    (observe-bytes!))
 
   (test "realize and register matching fixed-output contents" (ctx)
     (define step! (get ctx 'step!))
