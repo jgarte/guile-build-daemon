@@ -4,11 +4,15 @@
 ;; SPDX-FileCopyrightText: 2026 buttonspresser
 
 (define-module (gxd file-store-test)
-  #:use-module ((ares suitbl core) #:select (define-suite is test))
+  #:use-module ((ares suitbl core)
+                #:select (define-suite
+                           is
+                           test))
   #:use-module ((gcrypt hash) #:select (sha256))
-  #:use-module ((guix serialization) #:select (write-file write-file-tree))
-  #:use-module ((guix store database) #:prefix guix-db:
-                #:select (call-with-database))
+  #:use-module ((guix serialization)
+                #:select (write-file
+                          write-file-tree))
+  #:use-module ((guix store database) #:prefix guix-db: #:select (call-with-database))
   #:use-module ((gxd database) #:prefix database: #:select (valid-path?))
   #:use-module ((gxd file-store)
                 #:select (add-nar-to-store
@@ -16,8 +20,11 @@
                           call-with-bytevector-output-port))
   #:use-module ((gxd store-path) #:select (fixed-output-path))
   #:use-module ((guix utils) #:select (call-with-temporary-directory))
-  #:use-module ((rnrs bytevectors) #:select (bytevector=? string->utf8))
-  #:use-module ((rnrs io ports) #:select (get-u8 put-bytevector put-u8))
+  #:use-module ((rnrs bytevectors) #:select (bytevector=?
+                                             string->utf8))
+  #:use-module ((rnrs io ports) #:select (get-u8
+                                          put-bytevector
+                                          put-u8))
   #:use-module (gxd test-prelude))
 
 (define (nar-bytes source)

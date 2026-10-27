@@ -4,16 +4,33 @@
 ;; SPDX-FileCopyrightText: 2026 buttonspresser
 
 (define-module (gxd worker-protocol)
-  #:use-module ((guix serialization) #:select (integer long-long utf8-string bytevector
-                                                       read-value write-value))
+  #:use-module ((guix serialization)
+                #:select (integer
+                          long-long
+                          utf8-string
+                          bytevector
+                          read-value
+                          write-value))
   #:use-module ((rnrs bytevectors)
-                #:select (bytevector-length bytevector-u8-ref utf8->string string->utf8))
+                #:select (bytevector-length
+                          bytevector-u8-ref
+                          utf8->string
+                          string->utf8))
   #:use-module ((rnrs io ports) #:select (get-bytevector-n))
   #:use-module ((srfi srfi-1) #:select (delete-duplicates))
-  #:export (read-integer read-boolean read-bytevector read-string read-string-pairs read-options
-                         read-text read-string-list
-                         read-header-of-add-to-store-op
-                         write-completion write-error write-log write-log-bytes))
+  #:export (read-integer
+            read-boolean
+            read-bytevector
+            read-string
+            read-string-pairs
+            read-options
+            read-text
+            read-string-list
+            read-header-of-add-to-store-op
+            write-completion
+            write-error
+            write-log
+            write-log-bytes))
 
 (define STDERR_LAST #x616c7473)
 (define STDERR_ERROR #x63787470)

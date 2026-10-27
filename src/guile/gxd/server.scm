@@ -7,44 +7,70 @@
   #:use-module (gxd prelude)
   #:use-module ((gxd accounts) #:select (user-exists?))
   #:use-module ((gxd socket) #:select (peer-uid))
-  #:use-module ((gxd session) #:select (&option-error option-error-message
-                                                      initial-options update-options
-                                                      unix-peer-trusted? options-build-cores))
+  #:use-module ((gxd session)
+                #:select (&option-error
+                          option-error-message
+                          initial-options
+                          update-options
+                          unix-peer-trusted?
+                          options-build-cores))
   #:use-module ((gxd build)
-                #:select (build-paths! build-request-error? build-request-error-path
-                                       build-request-error-cause))
+                #:select (build-paths!
+                          build-request-error?
+                          build-request-error-path
+                          build-request-error-cause))
   #:use-module ((gxd build realization) #:select (builder-exit-error?))
-  #:use-module ((gxd build outputs) #:select (missing-output-error? output-permission-error?))
+  #:use-module ((gxd build outputs)
+                #:select (missing-output-error?
+                          output-permission-error?))
   #:use-module ((gxd store-files)
-                #:select (unsupported-file-type-error? unsupported-file-type-error-path))
-  #:use-module ((gxd database) #:select (call-with-database valid-path?
-                                                            invalid-reference?
-                                                            invalid-reference-path)
+                #:select (unsupported-file-type-error?
+                          unsupported-file-type-error-path))
+  #:use-module ((gxd database)
+                #:select (call-with-database
+                          valid-path?
+                          invalid-reference?
+                          invalid-reference-path)
                 #:prefix database:)
   #:use-module ((gxd store-path)
-                #:select (store-path? leading-dot-name-error? store-name-error-name
-                                      invalid-character-name-error?
-                                      invalid-character-name-error-character))
+                #:select (store-path?
+                          leading-dot-name-error?
+                          store-name-error-name
+                          invalid-character-name-error?
+                          invalid-character-name-error-character))
   #:use-module ((gxd text-store) #:select (add-text!))
   #:use-module ((gxd file-store) #:select (add-nar-to-store))
   #:use-module ((gxd derivations)
                 #:select (derivation-output-error? derivation-output-error-message))
-  #:use-module ((gxd worker-protocol) #:select (read-integer read-string read-options read-text
-                                                             read-string-list write-log-bytes
-                                                             read-header-of-add-to-store-op
-                                                             write-completion write-error write-log)
+  #:use-module ((gxd worker-protocol)
+                #:select (read-integer
+                          read-string
+                          read-options
+                          read-text
+                          read-string-list
+                          write-log-bytes
+                          read-header-of-add-to-store-op
+                          write-completion
+                          write-error
+                          write-log)
                 #:prefix protocol:)
-  #:use-module ((guix config) #:select (%store-directory
-                                        %store-database-directory))
+  #:use-module ((guix config)
+                #:select (%store-directory
+                          %store-database-directory))
   #:use-module ((guix build utils) #:select (mkdir-p))
-  #:use-module ((guix remote-procedures) #:select (%protocol-version
-                                                   %worker-magic-1
-                                                   %worker-magic-2
-                                                   remote-procedure-id))
-  #:use-module ((guix serialization) #:select (boolean integer utf8-string
-                                                       write-value))
-  #:use-module ((ice-9 exceptions) #:select (raise-exception
-                                             with-exception-handler))
+  #:use-module ((guix remote-procedures)
+                #:select (%protocol-version
+                          %worker-magic-1
+                          %worker-magic-2
+                          remote-procedure-id))
+  #:use-module ((guix serialization)
+                #:select (boolean
+                          integer
+                          utf8-string
+                          write-value))
+  #:use-module ((ice-9 exceptions)
+                #:select (raise-exception
+                          with-exception-handler))
   #:use-module ((ice-9 match) #:select (match))
   #:use-module ((ice-9 format) #:select (format))
   #:use-module ((rnrs io ports) #:select (lookahead-u8))

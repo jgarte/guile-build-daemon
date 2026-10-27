@@ -7,12 +7,23 @@
   #:use-module ((gcrypt hash) #:select (sha256))
   #:use-module ((guix store)
                 #:prefix guix-store:
-                #:select (%store-prefix store-path fixed-output-path))
-  #:use-module ((ice-9 exceptions) #:select (&error define-exception-type
-                                                    raise-exception))
-  #:export (text-path fixed-output-path store-path? check-store-name &store-name-error store-name-error?
-                      store-name-error-name leading-dot-name-error?
-                      invalid-character-name-error? invalid-character-name-error-character))
+                #:select (%store-prefix
+                          store-path
+                          fixed-output-path))
+  #:use-module ((ice-9 exceptions)
+                #:select (&error
+                          define-exception-type
+                          raise-exception))
+  #:export (text-path
+            fixed-output-path
+            store-path?
+            check-store-name
+            &store-name-error
+            store-name-error?
+            store-name-error-name
+            leading-dot-name-error?
+            invalid-character-name-error?
+            invalid-character-name-error-character))
 
 (define-exception-type &store-name-error &error
   make-store-name-error store-name-error?
