@@ -15,7 +15,9 @@
                 #:select (build-paths! build-request-error? build-request-error-path
                           build-request-error-cause))
   #:use-module ((gxd build realization) #:select (builder-exit-error?))
-  #:use-module ((gxd build outputs) #:select (missing-output-error? output-permission-error?))
+  #:use-module ((gxd build outputs)
+                #:select (missing-output-error? output-permission-error?
+                          flat-output-type-error? output-hash-mismatch?))
   #:use-module ((gxd store-files)
                 #:select (unsupported-file-type-error? unsupported-file-type-error-path))
   #:use-module ((gxd database) #:select (call-with-database valid-path?
@@ -156,6 +158,7 @@ Return the session options after the request."
           (cond
            ((builder-exit-error? cause) 100)
            ((or (missing-output-error? cause) (output-permission-error? cause)
+                (flat-output-type-error? cause) (output-hash-mismatch? cause)
                 (database:invalid-reference? cause)) 1)
            (else (raise-exception exception))))
 
