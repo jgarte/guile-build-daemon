@@ -7,14 +7,86 @@
   #:use-module (gxd test-prelude)
   #:use-module ((gxd build outputs)
                 #:select (prepare-output! missing-output-error-drv-path missing-output-error-output-path
-                          output-permission-error-output-path))
+                          output-permission-error-output-path
+                          check-fixed-output! flat-output-type-error-output-path
+                          output-hash-mismatch-output-path))
   #:use-module ((ares suitbl core) #:select (define-suite test is))
   #:use-module ((guix utils) #:select (call-with-temporary-directory))
   #:use-module ((guix store deduplication) #:select (nar-sha256))
-  #:use-module ((rnrs bytevectors) #:select (bytevector=?))
-  #:use-module ((srfi srfi-11) #:select (let-values)))
+  #:use-module ((guix derivations) #:prefix guix-drv:
+                #:select (derivation-outputs derivation-output-path
+                          derivation-output-hash-algo derivation-output-hash
+                          derivation-output-recursive?))
+  #:use-module ((gcrypt hash) #:select (sha256 sha512))
+  #:use-module ((rnrs bytevectors) #:select (bytevector=? string->utf8))
+  #:use-module ((srfi srfi-11) #:select (let-values))
+  #:use-module ((srfi srfi-9 gnu) #:select (set-fields)))
 
 (define dummy-drv-path "/store/example.drv")
+
+(define* (fixed-output hash recursive? #:optional (algorithm 'sha256))
+  "Return a declared output with HASH, RECURSIVE? and ALGORITHM for authentication."
+  (set-fields (assoc-ref (guix-drv:derivation-outputs (test-derivation)) "out")
+    ((guix-drv:derivation-output-hash-algo) algorithm)
+    ((guix-drv:derivation-output-hash) hash)
+    ((guix-drv:derivation-output-recursive?) recursive?)))
+
+(define-suite (fixed-output-authentication-tests)
+  (test "authenticate flat contents using SHA512" ()
+    (call-with-temporary-directory
+     (lambda (directory)
+       (define path (string-append directory "/actual"))
+       (define contents (string->utf8 "abc"))
+       (spit path "abc")
+       (check-fixed-output! (fixed-output (sha512 contents) #f 'sha512) path))))
+
+  (test "recursive authentication includes regular-file NAR structure and version-control files" ()
+    (call-with-temporary-directory
+     (lambda (directory)
+       (define path (string-append directory "/actual"))
+       (spit path "abc")
+       (let-values (((file-hash _) (nar-sha256 path)))
+         (check-fixed-output! (fixed-output file-hash #t) path))
+
+       (delete-file path)
+       (mkdir path)
+       (mkdir (string-append path "/.git"))
+       (spit (string-append path "/.git/config") "included")
+       (let-values (((tree-hash _) (nar-sha256 path)))
+         (check-fixed-output! (fixed-output tree-hash #t) path)))))
+
+  (test "flat authentication rejects an executable file and directory" ()
+    (call-with-temporary-directory
+     (lambda (directory)
+       (define path (string-append directory "/actual"))
+       (define output (fixed-output (sha256 (string->utf8 "abc")) #f))
+       (define declared-output-path (guix-drv:derivation-output-path output))
+       (spit path "abc")
+       (chmod path #o700)
+       (define executable-error
+         (capture-exception (lambda () (check-fixed-output! output path))))
+
+       (delete-file path)
+       (mkdir path)
+       (define directory-error
+         (capture-exception (lambda () (check-fixed-output! output path))))
+
+       (is (equal? declared-output-path (flat-output-type-error-output-path executable-error)))
+       (is (equal? declared-output-path (flat-output-type-error-output-path directory-error))))))
+
+  (test "reject mismatching contents, identifying the declared output" ()
+    (call-with-temporary-directory
+     (lambda (directory)
+       (define path (string-append directory "/actual"))
+       (define expected-hash (sha256 (string->utf8 "expected")))
+       (define output (fixed-output expected-hash #f))
+       (define declared-output-path (guix-drv:derivation-output-path output))
+       (spit path "actual")
+       (define exception
+         (capture-exception
+          (lambda () (check-fixed-output! output path))))
+
+       (is (equal? declared-output-path (output-hash-mismatch-output-path exception)))))))
 
 (define-suite (build-output-tests)
   (test "reject a missing output with the derivation and output paths" ()
