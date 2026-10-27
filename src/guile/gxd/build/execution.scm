@@ -5,8 +5,11 @@
 
 (define-module (gxd build execution)
   #:use-module (gxd prelude)
-  #:use-module ((gxd build config) #:select (build-store-directory build-cores))
+  #:use-module ((gxd build config)
+                #:select (build-store-directory build-cores build-guix-program build-options
+                          build-daemon-environment))
   #:use-module ((gxd build environment) #:select (build-environment))
+  #:use-module ((gxd session) #:select (pack-options))
   #:use-module ((gxd build process)
                 #:select (call-with-builder-process builder-output wait-builder!))
   #:use-module ((gxd build sandbox) #:select (sandbox-build-directory))
@@ -14,7 +17,7 @@
                 #:select (derivation-builder derivation-builder-arguments))
   #:use-module ((rnrs bytevectors) #:select (u8-list->bytevector utf8->string))
   #:use-module ((rnrs io ports) #:select (get-u8 get-bytevector-some))
-  #:export (execute-program! execute-builder!))
+  #:export (execute-program! execute-builder! execute-download!))
 
 (define (read-setup-line output)
   "Consume one newline-terminated setup line from binary OUTPUT; return its bytes.
@@ -53,6 +56,16 @@ With SANDBOX, run inside its prepared filesystem; otherwise run on the host."
      (check-builder-setup! output)
      (forward-builder-output! output log!)
      (wait-builder! process))))
+
+(define (execute-download! drv-path output-path build-directory config log!)
+  "Run CONFIG's Guix perform-download helper for DRV-PATH and OUTPUT-PATH."
+  (define helper-environment
+    (append `(("NIX_STORE" . ,(build-store-directory config))
+              ("_NIX_OPTIONS" . ,(pack-options (build-options config))))
+            (build-daemon-environment config)))
+
+  (execute-program! (build-guix-program config) (list "perform-download" drv-path output-path)
+                    helper-environment build-directory log!))
 
 (define (execute-builder! drv build-directory sandbox config log!)
   "Execute DRV with its build environment; see `execute-program!'.
