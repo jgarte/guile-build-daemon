@@ -76,6 +76,40 @@
     (is (bytevector=? contents published-contents))
     (observe-bytes!))
 
+  (test "reject mismatching builtin download contents without registration and keep the connection usable" (ctx)
+    (define step! (get ctx 'step!))
+    (define observe-db-path! (get ctx 'observe-db-path!))
+    (define observe-bytes! (get ctx 'observe-bytes!))
+
+    (define guix-store-path (direct-store-path (canonicalize-path (require-program "guix"))))
+    (define (handler request body)
+      (values '() "mismatching contents"))
+
+    (call-with-http-server
+     handler
+     (lambda (url)
+       (define drv
+         (step! `(derivation "builtin-download-mismatch" "builtin:download" ()
+                             #:env-vars (("url" . ,(object->string url)))
+                             #:hash-algo sha256 #:hash ,(sha256 (string->utf8 "expected contents"))
+                             #:recursive? #f #:substitutable? #f #:local-build? #t)
+                #:connection 'build))
+
+       (define drv-path (guix-drv:derivation-file-name drv))
+       (define output-path (guix-drv:derivation->output-path drv))
+       (define expected-error
+         `((error/type . store-protocol-error)
+           (error/message . ,(string-append "build of `" drv-path "' failed"))
+           (error/status . 1)))
+
+       (step! '(set-build-options #:use-substitutes? #f #:offload? #f #:max-build-jobs 1)
+              #:connection 'build)
+       (is (equal? expected-error (step! `(build-things (,drv-path)) #:connection 'build)))
+       (is (not (observe-db-path! output-path)))
+       (is (step! `(valid-path? ,guix-store-path) #:connection 'build #:terminal? #t)
+           "connection remained usable")))
+    (observe-bytes!))
+
   (test "realize and register matching fixed-output contents" (ctx)
     (define step! (get ctx 'step!))
     (define observe-db-path! (get ctx 'observe-db-path!))
