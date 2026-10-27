@@ -4,6 +4,7 @@
 ;; SPDX-FileCopyrightText: 2026 buttonspresser
 
 (define-module (gxd derivations)
+  #:use-module (gxd prelude)
   #:use-module ((gxd store-path) #:select (check-store-name))
   #:use-module ((gcrypt hash) #:select (lookup-hash-algorithm hash-size))
   #:use-module ((guix base16) #:select (bytevector->base16-string))
@@ -21,7 +22,7 @@
   #:use-module ((ice-9 exceptions)
                 #:select (&error define-exception-type raise-exception))
   #:use-module ((ice-9 format) #:select (format))
-  #:use-module ((ice-9 match) #:select (match match-lambda match-lambda*))
+  #:use-module ((ice-9 match) #:select (match match-lambda))
   #:use-module ((rnrs bytevectors) #:select (bytevector-length))
   #:use-module ((srfi srfi-9 gnu) #:select (set-fields))
   #:use-module ((srfi srfi-13) #:select (string-drop-right))
@@ -32,11 +33,6 @@
 (define-exception-type &derivation-output-error &error
   make-derivation-output-error derivation-output-error?
   (message derivation-output-error-message))
-
-(define binding-name<?
-  (match-lambda*
-    (((left-name . _) (right-name . _))
-     (string<? left-name right-name))))
 
 (define (read-derivation port)
   "Read a derivation from PORT without loading its input derivations.

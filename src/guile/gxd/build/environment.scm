@@ -15,11 +15,6 @@
     (((name . value) environment)
      (acons name value (alist-delete name environment string=?)))))
 
-(define binding-name<?
-  (match-lambda*
-    (((left-name . _) (right-name . _))
-     (string<? left-name right-name))))
-
 (define (build-environment drv store-directory build-directory cores)
   "Return a name-sorted environment alist for DRV, without inherited variables.
 Use STORE-DIRECTORY and CORES for defaults, overridden by DRV's bindings.
