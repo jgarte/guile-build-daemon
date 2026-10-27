@@ -71,6 +71,43 @@
     (is (equal? contents published-contents))
     (observe-bytes!))
 
+  (test "a failing fixed-output builder reports status 1 without registration and keeps the connection usable" (ctx)
+    (define step! (get ctx 'step!))
+    (define observe-db-path! (get ctx 'observe-db-path!))
+    (define observe-bytes! (get ctx 'observe-bytes!))
+    (define guile (canonicalize-path (require-program "guile")))
+    (define guile-store-path (direct-store-path guile))
+    (define contents "otherwise acceptable output")
+    (define builder-expression
+      `(begin
+         (umask #o022)
+         (call-with-output-file (getenv "out")
+           (lambda (port) (display ,contents port)))
+         (exit 7)))
+
+    (define drv
+      (step! `(derivation "fixed-output-builder-failure" ,guile
+                          ("--no-auto-compile" "-c" ,(object->string builder-expression))
+                          #:sources (,guile-store-path)
+                          #:hash-algo sha256 #:hash ,(sha256 (string->utf8 contents))
+                          #:recursive? #f #:substitutable? #f #:local-build? #t)
+             #:connection 'build))
+
+    (define drv-path (guix-drv:derivation-file-name drv))
+    (define output-path (guix-drv:derivation->output-path drv))
+    (define expected-error
+      `((error/type . store-protocol-error)
+        (error/message . ,(string-append "build of `" drv-path "' failed"))
+        (error/status . 1)))
+
+    (step! '(set-build-options #:use-substitutes? #f #:offload? #f #:max-build-jobs 1)
+           #:connection 'build)
+    (is (equal? expected-error (step! `(build-things (,drv-path)) #:connection 'build)))
+    (is (not (observe-db-path! output-path)))
+    (is (step! `(valid-path? ,guile-store-path) #:connection 'build #:terminal? #t)
+        "connection remained usable")
+    (observe-bytes!))
+
   (test "reject mismatching fixed-output contents without registration and keep the connection usable" (ctx)
     (define step! (get ctx 'step!))
     (define observe-db-path! (get ctx 'observe-db-path!))

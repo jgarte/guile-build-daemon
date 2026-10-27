@@ -26,7 +26,7 @@
   #:use-module ((rnrs bytevectors) #:select (bytevector-length))
   #:use-module ((srfi srfi-9 gnu) #:select (set-fields))
   #:use-module ((srfi srfi-13) #:select (string-drop-right))
-  #:export (read-derivation resolve-inputs! check-outputs
+  #:export (read-derivation resolve-inputs! check-outputs fixed-output
                             &derivation-output-error derivation-output-error?
                             derivation-output-error-message))
 

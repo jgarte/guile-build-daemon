@@ -16,7 +16,7 @@
                           output-permission-error-output-path
                           flat-output-type-error? flat-output-type-error-output-path
                           output-hash-mismatch? output-hash-mismatch-output-path))
-  #:use-module ((gxd derivations) #:select (read-derivation))
+  #:use-module ((gxd derivations) #:select (read-derivation fixed-output))
   #:use-module ((gxd build sandbox) #:select (call-with-build-sandbox sandbox-root))
   #:use-module ((gxd database)
                 #:prefix database:
@@ -39,12 +39,13 @@
   #:use-module ((srfi srfi-11) #:select (let-values))
   #:export (realize-derivation! realize-path!
                                 &builder-exit-error builder-exit-error? builder-exit-error-derivation
-                                builder-exit-error-status))
+                                builder-exit-error-status builder-exit-error-fixed-output?))
 
 (define-exception-type &builder-exit-error &error
   make-builder-exit-error builder-exit-error?
   (derivation builder-exit-error-derivation)
-  (status builder-exit-error-status))
+  (status builder-exit-error-status)
+  (fixed-output? builder-exit-error-fixed-output?))
 
 (define signal-description
   (pointer->procedure '* (dynamic-func "strsignal" (dynamic-link)) (list int)))
@@ -133,13 +134,14 @@ The caller excludes concurrent invalidation."
 Preserve failed sandbox outputs before reporting the builder's failure."
   (define status (execute-builder! drv build-directory sandbox config log!))
   (define exit-code (status:exit-val status))
+  (define fixed-output? (if (fixed-output drv) #t #f))
 
   (unless (and exit-code (zero? exit-code))
     (when sandbox
       (preserve-failed-outputs! output-paths (sandbox-root sandbox) log!))
     (log! (string->utf8
            (format #f "builder for `~a' ~a~%" drv-path (status-description status))))
-    (raise-exception (make-builder-exit-error drv-path status)))
+    (raise-exception (make-builder-exit-error drv-path status fixed-output?)))
 
   (define (prepare-output-info output-path)
     (define output
