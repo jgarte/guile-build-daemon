@@ -11,10 +11,12 @@
                                                       initial-options update-options
                                                       unix-peer-trusted? options-build-cores))
   #:use-module ((gxd build)
-                #:select (build-paths! &build-request-error build-request-error-path
+                #:select (build-paths! build-request-error? build-request-error-path
                                        build-request-error-cause))
   #:use-module ((gxd build realization) #:select (builder-exit-error?))
   #:use-module ((gxd build outputs) #:select (missing-output-error? output-permission-error?))
+  #:use-module ((gxd store-files)
+                #:select (unsupported-file-type-error? unsupported-file-type-error-path))
   #:use-module ((gxd database) #:select (call-with-database valid-path?
                                                             invalid-reference?
                                                             invalid-reference-path)
@@ -130,20 +132,27 @@ Return the session options after the request."
   "Call THUNK, reporting build request errors on CONNECTION without ending the session."
   (with-exception-handler
     (lambda (exception)
-      (define cause (build-request-error-cause exception))
-      (define status
-        (cond
-         ((builder-exit-error? cause) 100)
-         ((or (missing-output-error? cause) (output-permission-error? cause)
-              (database:invalid-reference? cause)) 1)
-         (else (raise-exception exception))))
+      (cond
+       ((unsupported-file-type-error? exception)
+        (protocol:write-error
+         (format #f "file `~a' has an unsupported type"
+                 (unsupported-file-type-error-path exception))
+         1 connection))
+       ((build-request-error? exception)
+        (define cause (build-request-error-cause exception))
+        (define status
+          (cond
+           ((builder-exit-error? cause) 100)
+           ((or (missing-output-error? cause) (output-permission-error? cause)
+                (database:invalid-reference? cause)) 1)
+           (else (raise-exception exception))))
 
-      (protocol:write-error
-       (format #f "build of `~a' failed" (build-request-error-path exception))
-       status connection))
+        (protocol:write-error
+         (format #f "build of `~a' failed" (build-request-error-path exception))
+         status connection))
+       (else (raise-exception exception))))
     thunk
-    #:unwind? #t
-    #:unwind-for-type &build-request-error))
+    #:unwind? #t))
 
 (define (call-with-option-error-reporting connection thunk)
   "Call THUNK, reporting option errors on CONNECTION before re-raising them."

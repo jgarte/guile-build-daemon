@@ -197,6 +197,46 @@
 
     (observe-bytes!))
 
+  (test "a successful builder's FIFO output is rejected and the connection stays usable" (ctx)
+    (define step! (get ctx 'step!))
+    (define observe-db-path! (get ctx 'observe-db-path!))
+    (define observe-bytes! (get ctx 'observe-bytes!))
+    (define guile (canonicalize-path (require-program "guile")))
+    (define guile-store-path (direct-store-path guile))
+    (define builder-expression
+      '(begin
+         (use-modules (system foreign))
+         (define make-fifo
+           (pointer->procedure int (dynamic-func "mkfifo" (dynamic-link)) (list '* unsigned-int)))
+
+         (unless (zero? (make-fifo (string->pointer (getenv "out")) #o644))
+           (error "could not create FIFO output"))))
+
+    (define drv
+      (step! `(derivation "fifo-output" ,guile
+                          ("--no-auto-compile" "-c" ,(object->string builder-expression))
+                          #:sources (,guile-store-path)
+                          #:substitutable? #f #:local-build? #t)
+             #:connection 'build))
+
+    (define output-path (guix-drv:derivation->output-path drv))
+    (define expected-error
+      `((error/type . store-protocol-error)
+        (error/message . ,(string-append "file `" output-path "' has an unsupported type"))
+        (error/status . 1)))
+
+    (step! '(set-build-options #:use-substitutes? #f #:offload? #f #:max-build-jobs 1)
+           #:connection 'build)
+
+    (is (equal? expected-error
+                (step! `(build-things (,(guix-drv:derivation-file-name drv))) #:connection 'build)))
+
+    (is (eq? #f (observe-db-path! output-path)))
+    (is (step! `(valid-path? ,guile-store-path) #:connection 'build #:terminal? #t)
+        "connection remained usable")
+
+    (observe-bytes!))
+
   (test "a missing requested derivation is rejected and the connection stays usable" (ctx)
     (define step! (get ctx 'step!))
     (define observe-bytes! (get ctx 'observe-bytes!))
