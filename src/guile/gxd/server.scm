@@ -116,10 +116,12 @@ Return the session options after the request."
 
    ((= operation (remote-procedure-id add-to-store))
     (let* ((request (protocol:read-header-of-add-to-store-op connection))
-           (name (get request 'name))
-           (hash-algo (get request 'hash-algo))
-           (path (add-nar-to-store db store-directory name
-                                   (get request 'recursive?) hash-algo connection)))
+           (path (add-nar-to-store #:db db
+                                   #:store-directory store-directory
+                                   #:name (get request 'name)
+                                   #:recursive? (get request 'recursive?)
+                                   #:hash-algo (get request 'hash-algo)
+                                   #:port connection)))
       (protocol:write-completion connection)
       (write-value utf8-string path connection)))
 

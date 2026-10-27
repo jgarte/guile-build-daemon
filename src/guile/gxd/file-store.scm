@@ -195,7 +195,7 @@ contents."
                                #:hash-algo algorithm #:recursive? recursive?)))
       (proc payload destination nar-hash nar-size))))
 
-(define (add-nar-to-store db store-directory name recursive? hash-algo port)
+(define* (add-nar-to-store #:key db store-directory name recursive? hash-algo port)
   "Read one NAR from PORT and add it as the fixed-output item NAME.
 When RECURSIVE? is true, hash the NAR and restore its file tree; otherwise,
 hash and store its root regular file's contents.  Return the store path."

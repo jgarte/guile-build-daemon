@@ -61,7 +61,9 @@
           (define expected (fixed-output-path dir "item" hash))
           (define destination (call-with-bytevector-input-port nar
                                 (lambda (input)
-                                  (add-nar-to-store db dir "item" #t "sha256" input))))
+                                  (add-nar-to-store #:db db #:store-directory dir
+                                                    #:name "item" #:recursive? #t
+                                                    #:hash-algo "sha256" #:port input))))
           
           (is (equal? expected destination))
           (is (database:valid-path? db destination))
@@ -71,7 +73,9 @@
           (is (equal? destination
                       (call-with-bytevector-input-port nar
                         (lambda (input)
-                          (add-nar-to-store db dir "item" #t "sha256" input))))))))))
+                          (add-nar-to-store #:db db #:store-directory dir
+                                            #:name "item" #:recursive? #t
+                                            #:hash-algo "sha256" #:port input))))))))))
 
   (test "recursive import restores the received canonical NAR" ()
     (call-with-tmp-dir-and-database
@@ -82,7 +86,9 @@
           (define destination
             (call-with-bytevector-input-port nar
               (lambda (input)
-                (add-nar-to-store db dir "item" #t "sha256" input))))
+                (add-nar-to-store #:db db #:store-directory dir
+                                  #:name "item" #:recursive? #t
+                                  #:hash-algo "sha256" #:port input))))
           (is (bytevector=? nar (nar-bytes destination))))))))
 
   (test "recursive import rejects invalid NAR entry names" ()
@@ -93,7 +99,9 @@
           (lambda ()
             (call-with-bytevector-input-port (nar-with-entry name)
               (lambda (input)
-                (add-nar-to-store db dir "item" #t "sha256" input))))))
+                (add-nar-to-store #:db db #:store-directory dir
+                                  #:name "item" #:recursive? #t
+                                  #:hash-algo "sha256" #:port input))))))
 
        (is (malformed-nar-raised? ""))
        (is (malformed-nar-raised? "."))
@@ -118,7 +126,9 @@
      (define destination
        (call-with-bytevector-input-port (nar-bytes source)
          (lambda (input)
-           (add-nar-to-store db dir "item" #t "sha256" input))))
+           (add-nar-to-store #:db db #:store-directory dir
+                             #:name "item" #:recursive? #t
+                             #:hash-algo "sha256" #:port input))))
 
      (is (= 1 (stat:mtime (lstat destination))))
      (is (= 1 (stat:mtime (lstat (string-append destination "/program")))))
@@ -142,7 +152,10 @@
 
           (call-with-bytevector-input-port bytes
             (lambda (input)
-              (define destination (add-nar-to-store db dir "item" #t "sha256" input))
+              (define destination
+                (add-nar-to-store #:db db #:store-directory dir
+                                  #:name "item" #:recursive? #t
+                                  #:hash-algo "sha256" #:port input))
               
               (is (database:valid-path? db destination))
               (is (= 42 (get-u8 input))))))))))
@@ -166,7 +179,9 @@
           (lambda ()
             (call-with-bytevector-input-port (nar-bytes source)
               (lambda (input)
-                (add-nar-to-store db dir "item" #t "sha256" input))))))
+                (add-nar-to-store #:db db #:store-directory dir
+                                  #:name "item" #:recursive? #t
+                                  #:hash-algo "sha256" #:port input))))))
        
        (is (not (dir-nesting-too-deep? source)))
 
@@ -185,7 +200,10 @@
                (put-bytevector output (nar-bytes source)))))
           (call-with-bytevector-input-port bytes
             (lambda (input)
-              (define destination (add-nar-to-store db dir "item" #f "sha256" input))
+              (define destination
+                (add-nar-to-store #:db db #:store-directory dir
+                                  #:name "item" #:recursive? #f
+                                  #:hash-algo "sha256" #:port input))
               (define expected (fixed-output-path
                                 dir "item" (sha256 (string->utf8 "Hello World!"))
                                 #:recursive? #f))
