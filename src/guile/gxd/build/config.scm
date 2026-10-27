@@ -5,13 +5,17 @@
 
 (define-module (gxd build config)
   #:use-module ((srfi srfi-9) #:select (define-record-type))
-  #:export (build-config build-mode build-store-directory build-directory-parent build-cores build-sandboxed?))
+  #:export (build-config build-mode build-store-directory build-directory-parent build-cores build-sandboxed?
+                         build-guix-program build-daemon-environment build-options))
 
 (define-record-type <build-config>
-  (build-config mode store-directory directory-parent cores sandboxed?)
+  (build-config mode store-directory directory-parent cores sandboxed? guix-program environment options)
   build-config?
   (mode build-mode)
   (store-directory build-store-directory)
   (directory-parent build-directory-parent)
   (cores build-cores)
-  (sandboxed? build-sandboxed?))
+  (sandboxed? build-sandboxed?)
+  (guix-program build-guix-program)
+  (environment build-daemon-environment)
+  (options build-options))

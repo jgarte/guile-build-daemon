@@ -7,6 +7,7 @@
   #:use-module (gxd test-prelude)
   #:use-module ((gxd build execution) #:select (execute-builder!))
   #:use-module ((gxd build config) #:select (build-config))
+  #:use-module ((gxd session) #:select (initial-options))
   #:use-module ((ares suitbl core) #:select (define-suite test is))
   #:use-module ((guix derivations)
                 #:select (derivation-builder derivation-builder-arguments))
@@ -26,7 +27,8 @@
      (list "--no-auto-compile" "-c" (object->string expression)))))
 
 (define (test-build-config)
-  (build-config 0 "/store" "/tmp" 1 #f))
+  (build-config 0 "/store" "/tmp" 1 #f
+                (require-program "guix") '() (initial-options #f #f)))
 
 (define-suite (builder-tests)
   (test "capture exactly the bytes written by the builder and preserve its exit code" ()

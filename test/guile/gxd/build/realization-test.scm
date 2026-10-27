@@ -8,6 +8,7 @@
   #:use-module ((gxd test-database) #:select (call-with-empty-database))
   #:use-module ((gxd build realization) #:select (realize-derivation!))
   #:use-module ((gxd build config) #:select (build-config))
+  #:use-module ((gxd session) #:select (initial-options))
   #:use-module ((gxd derivations) #:select (read-derivation))
   #:use-module ((gxd database)
                 #:prefix database:
@@ -48,7 +49,8 @@
        (proc db store-directory dev-path out-path
              (lambda (drv)
                (realize-derivation! db drv-path drv
-                                    (build-config 0 store-directory directory 1 #f)
+                                    (build-config 0 store-directory directory 1 #f
+                                                  (require-program "guix") '() (initial-options #f #f))
                                     (lambda (_) #t))))))))
 
 (define-suite (realize-tests)

@@ -14,7 +14,8 @@
   #:use-module ((gxd build)
                 #:select (build-paths! build-request-error? build-request-error-path
                           build-request-error-cause))
-  #:use-module ((gxd build realization) #:select (builder-exit-error?))
+  #:use-module ((gxd build realization)
+                #:select (builder-exit-error?))
   #:use-module ((gxd build config) #:select (build-config))
   #:use-module ((gxd build outputs)
                 #:select (missing-output-error? output-permission-error?
@@ -70,7 +71,7 @@
     (protocol:read-integer connection)
     version))
 
-(define (serve-request connection store-directory db options trusted?)
+(define (serve-request connection store-directory db options trusted? guix-program environment)
   "Serve one request on CONNECTION using STORE-DIRECTORY, DB, OPTIONS and TRUSTED?.
 Return the session options after the request."
   (define operation (protocol:read-integer connection))
@@ -134,7 +135,8 @@ Return the session options after the request."
         (lambda ()
           (build-paths! db paths
                         (build-config mode store-directory build-directory-parent
-                                      (options-build-cores options) (options-use-chroot? options))
+                                      (options-build-cores options) (options-use-chroot? options)
+                                      guix-program environment options)
                         log!)
 
           (protocol:write-completion connection)
@@ -206,7 +208,7 @@ These errors end the request, not the client session; other exceptions propagate
     thunk
     #:unwind? #t))
 
-(define (serve-client connection store-directory database-file use-chroot?)
+(define (serve-client connection store-directory database-file use-chroot? guix-program environment)
   "Serve supported requests until CONNECTION ends, using STORE-DIRECTORY and DATABASE-FILE."
   (greet-client connection)
   ;; LocalStore creates this index even when automatic deduplication is disabled.
@@ -225,9 +227,9 @@ These errors end the request, not the client session; other exceptions propagate
 
       (while (not (eof-object? (lookahead-u8 connection)))
              (set! options
-                   (serve-request connection store-directory db options trusted?))))))
+                   (serve-request connection store-directory db options trusted? guix-program environment))))))
 
-(define* (run-server socket-path #:optional (use-chroot? #t))
+(define* (run-server socket-path guix-program environment #:optional (use-chroot? #t))
   "Serve one client session at SOCKET-PATH; USE-CHROOT? selects build sandboxing."
   (define listener (socket AF_UNIX SOCK_STREAM 0))
 
@@ -259,4 +261,4 @@ These errors end the request, not the client session; other exceptions propagate
          (lambda ()
            (serve-client connection %store-directory
                          (string-append %store-database-directory "/db.sqlite")
-                         use-chroot?))))))))
+                         use-chroot? guix-program environment))))))))
