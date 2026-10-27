@@ -14,6 +14,8 @@
   #:use-module ((guix store) #:select (direct-store-path))
   #:use-module ((guix store deduplication) #:select (nar-sha256))
   #:use-module ((guix base16) #:select (bytevector->base16-string))
+  #:use-module ((gcrypt hash) #:select (sha256))
+  #:use-module ((rnrs bytevectors) #:select (string->utf8))
   #:use-module ((ice-9 match) #:select (match-lambda))
   #:use-module ((srfi srfi-11) #:select (let-values))
   #:use-module ((guix derivations)
@@ -32,6 +34,75 @@
 
 (define-suite (server-build-tests)
   'metadata `((test/fixtures . ,build-test-fixtures))
+
+  (test "realize and register matching fixed-output contents" (ctx)
+    (define step! (get ctx 'step!))
+    (define observe-db-path! (get ctx 'observe-db-path!))
+    (define observe-snapshot! (get ctx 'observe-snapshot!))
+    (define observe-bytes! (get ctx 'observe-bytes!))
+    (define guile (canonicalize-path (require-program "guile")))
+    (define guile-store-path (direct-store-path guile))
+    (define contents "authenticated contents")
+    (define builder-expression
+      `(call-with-output-file (getenv "out")
+         (lambda (port) (display ,contents port))))
+
+    (define drv
+      (step! `(derivation "fixed-output" ,guile
+                          ("--no-auto-compile" "-c" ,(object->string builder-expression))
+                          #:sources (,guile-store-path)
+                          #:hash-algo sha256 #:hash ,(sha256 (string->utf8 contents))
+                          #:recursive? #f #:substitutable? #f #:local-build? #t)
+             #:connection 'build))
+
+    (define output-path (guix-drv:derivation->output-path drv))
+
+    (step! '(set-build-options #:use-substitutes? #f #:offload? #f #:max-build-jobs 1)
+           #:connection 'build)
+    (is (step! `(build-things (,(guix-drv:derivation-file-name drv)))
+               #:connection 'build #:terminal? #t))
+    (is (observe-db-path! output-path))
+
+    (define published-contents
+      (observe-snapshot!
+       (lambda (snapshot-directory)
+         (slurp (string-append snapshot-directory output-path)))))
+
+    (is (equal? contents published-contents))
+    (observe-bytes!))
+
+  (test "reject mismatching fixed-output contents without registration and keep the connection usable" (ctx)
+    (define step! (get ctx 'step!))
+    (define observe-db-path! (get ctx 'observe-db-path!))
+    (define observe-bytes! (get ctx 'observe-bytes!))
+    (define guile (canonicalize-path (require-program "guile")))
+    (define guile-store-path (direct-store-path guile))
+    (define builder-expression
+      '(call-with-output-file (getenv "out")
+         (lambda (port) (display "mismatching contents" port))))
+
+    (define drv
+      (step! `(derivation "fixed-output-mismatch" ,guile
+                          ("--no-auto-compile" "-c" ,(object->string builder-expression))
+                          #:sources (,guile-store-path)
+                          #:hash-algo sha256 #:hash ,(sha256 (string->utf8 "expected contents"))
+                          #:recursive? #f #:substitutable? #f #:local-build? #t)
+             #:connection 'build))
+
+    (define drv-path (guix-drv:derivation-file-name drv))
+    (define output-path (guix-drv:derivation->output-path drv))
+    (define expected-error
+      `((error/type . store-protocol-error)
+        (error/message . ,(string-append "build of `" drv-path "' failed"))
+        (error/status . 1)))
+
+    (step! '(set-build-options #:use-substitutes? #f #:offload? #f #:max-build-jobs 1)
+           #:connection 'build)
+    (is (equal? expected-error (step! `(build-things (,drv-path)) #:connection 'build)))
+    (is (not (observe-db-path! output-path)))
+    (is (step! `(valid-path? ,guile-store-path) #:connection 'build #:terminal? #t)
+        "connection remained usable")
+    (observe-bytes!))
 
   (test "realize a consumer and its dependency, registering their declared outputs" (ctx)
     (define step! (get ctx 'step!))

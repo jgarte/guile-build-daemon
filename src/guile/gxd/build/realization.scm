@@ -33,7 +33,7 @@
   #:use-module ((ice-9 format) #:select (format))
   #:use-module ((rnrs bytevectors) #:select (string->utf8))
   #:use-module ((system foreign) #:select (int pointer->procedure pointer->string))
-  #:use-module ((srfi srfi-1) #:select (any every filter find))
+  #:use-module ((srfi srfi-1) #:select (every filter find))
   #:use-module ((srfi srfi-11) #:select (let-values))
   #:export (realize-derivation! realize-path!
                                 &builder-exit-error builder-exit-error? builder-exit-error-derivation
@@ -185,7 +185,7 @@ The caller holds the output locks; SANDBOXED? selects isolated execution."
 
 (define* (realize-derivation! db store-directory drv-path drv build-directory-parent cores log!
                               #:optional (sandboxed? #f))
-  "Realize admitted ordinary DRV at DRV-PATH with already-realized inputs.
+  "Realize admitted DRV at DRV-PATH with already-realized inputs.
 Use DB and STORE-DIRECTORY for acceptance and create a temporary workspace under
 existing BUILD-DIRECTORY-PARENT.  Advertise CORES to the builder and deliver its
 binary log chunks to LOG!.  Return `already-valid' or `built'.
@@ -197,9 +197,6 @@ unregistered output files; temporary build directories are removed."
   (define outputs (guix-drv:derivation-outputs drv))
   (define output-paths
     (map (match-lambda ((_ . output) (guix-drv:derivation-output-path output))) outputs))
-
-  (when (any (match-lambda ((_ . output) (guix-drv:derivation-output-hash output))) outputs)
-    (todo! "fixed-output realization" drv-path))
 
   (define (valid-output? path) (database:valid-path? db path))
 
