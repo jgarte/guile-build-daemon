@@ -15,6 +15,7 @@
   #:use-module ((guix store) #:select (direct-store-path))
   #:use-module ((guix store deduplication) #:select (nar-sha256))
   #:use-module ((guix base16) #:select (bytevector->base16-string))
+  #:use-module ((web response) #:select (build-response))
   #:use-module ((gcrypt hash) #:select (sha256))
   #:use-module ((rnrs bytevectors) #:select (string->utf8 u8-list->bytevector bytevector=?))
   #:use-module ((rnrs io ports) #:select (get-bytevector-all))
@@ -135,6 +136,41 @@
     (is (not (observe-db-path! output-path)))
     (is (step! `(valid-path? ,guix-store-path) #:connection 'build #:terminal? #t)
         "connection remained usable")
+    (observe-bytes!))
+
+  (test "both builders request a missing HTTP resource and reject it without registration" (ctx)
+    (define step! (get ctx 'step!))
+    (define observe-db-path! (get ctx 'observe-db-path!))
+    (define observe-bytes! (get ctx 'observe-bytes!))
+
+    (define guix-store-path (direct-store-path (canonicalize-path (require-program "guix"))))
+    (define (handler request body)
+      (values (build-response #:code 404) "not found"))
+
+    (call-with-http-server
+     handler
+     (lambda (url request-count)
+       (define drv
+         (step! `(derivation "builtin-download-http-missing" "builtin:download" ()
+                             #:env-vars (("url" . ,(object->string (string-append url "/missing"))))
+                             #:hash-algo sha256 #:hash ,(sha256 (string->utf8 "expected contents"))
+                             #:recursive? #f #:substitutable? #f #:local-build? #t)
+                #:connection 'build))
+
+       (define drv-path (guix-drv:derivation-file-name drv))
+       (define output-path (guix-drv:derivation->output-path drv))
+       (define expected-error
+         `((error/type . store-protocol-error)
+           (error/message . ,(string-append "build of `" drv-path "' failed"))
+           (error/status . 1)))
+
+       (step! '(set-build-options #:use-substitutes? #f #:offload? #f #:max-build-jobs 1)
+              #:connection 'build)
+       (is (equal? expected-error (step! `(build-things (,drv-path)) #:connection 'build)))
+       (is (not (observe-db-path! output-path)))
+       (is (step! `(valid-path? ,guix-store-path) #:connection 'build #:terminal? #t)
+           "connection remained usable")
+       (is (= 2 (request-count)))))
     (observe-bytes!))
 
   (test "realize and register matching fixed-output contents" (ctx)
