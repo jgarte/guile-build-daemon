@@ -117,7 +117,7 @@ left unread.  FIXED is obsolete: as in nixd, a value other than one forces
 recursive SHA-256 mode for old clients."
   (let* ((name (read-string port))
          (fixed? (= 1 (read-integer port)))
-         (recursive? (= 1 (read-integer port)))
+         (recursive? (read-boolean port))
          (hash-algo (read-string port)))
     `((name . ,name)
       (recursive? . ,(if fixed? recursive? #t))
