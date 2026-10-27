@@ -98,6 +98,12 @@
 REGULAR-FILE-CALLBACK receives a regular or executable file's path, contents
 port, and size.  OTHER-FILES-CALLBACK receives every directory or symlink's
 path, type, and contents.  Callback return values are ignored."
+
+  ;; fold-archive doesn't validate that the padding contains only zeros, thus
+  ;; NARs encoding the same content, can have different padding values and
+  ;; will have different hashes.  IDK, if it possible to weaponize, but at
+  ;; least malicious client can produce a bunch of identical store items with
+  ;; different hashes ¯\_(ツ)_/¯
   (fold-archive
    (lambda (file type contents _)
      (check-nar-depth file)
