@@ -6,7 +6,8 @@
 (use-modules ((gxd server) #:select (run-server))
              ((guix config) #:select (%state-directory))
              ((guix build utils) #:select (mkdir-p executable-file?))
-             ((ice-9 getopt-long) #:select (getopt-long option-ref)))
+             ((ice-9 getopt-long) #:select (getopt-long option-ref))
+             ((srfi srfi-98) #:select (get-environment-variables)))
 
 (define options
   (getopt-long (command-line) '((disable-chroot (value #f)))))
@@ -21,4 +22,5 @@
 
 (mkdir-p socket-directory)
 (run-server (string-append socket-directory "/socket")
+            (getenv "GUIX") (get-environment-variables)
             (not (option-ref options 'disable-chroot #f)))
