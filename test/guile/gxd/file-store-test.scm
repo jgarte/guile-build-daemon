@@ -6,6 +6,8 @@
 (define-module (gxd file-store-test)
   #:use-module ((ares suitbl core) #:select (define-suite is test))
   #:use-module ((gcrypt hash) #:select (sha256))
+  #:use-module ((ice-9 ftw) #:select (file-system-fold))
+  #:use-module ((guix build utils) #:select (make-file-writable))
   #:use-module ((guix serialization) #:select (write-file write-file-tree))
   #:use-module ((guix store database) #:prefix guix-db:
                 #:select (call-with-database))
@@ -18,7 +20,8 @@
   #:use-module ((guix utils) #:select (call-with-temporary-directory))
   #:use-module ((rnrs bytevectors) #:select (bytevector=? string->utf8))
   #:use-module ((rnrs io ports) #:select (get-u8 put-bytevector put-u8))
-  #:use-module (gxd test-prelude))
+  #:use-module (gxd test-prelude)
+  #:use-module ((gxd prelude) #:select (call-with-cleanup)))
 
 (define (nar-bytes source)
   "Return SOURCE's normalized NAR as a bytevector."
@@ -34,13 +37,42 @@
                       #:directory-entries (lambda _ (list name))
                       #:postprocess-entries identity))))
 
+(define (make-directory-writable! directory)
+  "Make DIRECTORY and its non-symlink contents owner-writable."
+  (file-system-fold
+   ;; enter?
+   (lambda _ #t)
+   ;; leaf
+   (lambda (file stat _)
+     (unless (eq? 'symlink (stat:type stat))
+       (make-file-writable file)))
+   ;; down
+   (lambda (directory stat _)
+     (make-file-writable directory))
+   ;; up
+   (lambda _ #t)
+   ;; skip
+   (lambda _ #f)
+   ;; error
+   (lambda (file stat errno _)
+     (error "failed to make file writable" file errno))
+   ;; initial val for accumulator
+   #t
+   ;; entry point
+   directory))
+
 (define (call-with-tmp-dir-and-database proc)
   "Call PROC with a temporary directory and a database."
   (call-with-temporary-directory
    (lambda (tmp-dir)
-     (define (proc-tmp-dir db) (proc tmp-dir db))
-     (let ((database-file (string-append tmp-dir "/db.sqlite")))
-       (guix-db:call-with-database database-file proc-tmp-dir)))))
+     ;; Store imports deliberately make directory trees read-only.  Restore
+     ;; write permission before Guix removes this temporary directory.
+     (call-with-cleanup
+      (lambda () (make-directory-writable! tmp-dir))
+      (lambda ()
+        (define (proc-tmp-dir db) (proc tmp-dir db))
+        (let ((database-file (string-append tmp-dir "/db.sqlite")))
+          (guix-db:call-with-database database-file proc-tmp-dir)))))))
 
 (define-suite (file-store-tests)
   (test "recursive import restores and registers a regular file" ()
