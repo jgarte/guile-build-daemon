@@ -28,6 +28,13 @@
     (and (memq socket (car (select (list socket) '() '() 5)))
          (eof-object? (lookahead-u8 socket)))))
 
+(define-suite (server-builtin-tests)
+  'metadata `((test/fixtures . ,(paired-testbox-fixtures 'rootless 'nixd 'gxd)))
+
+  (test "report the supported builtin builders" (ctx)
+    (define step! (get ctx 'step!))
+    (is (equal? '("download" "git-download") (step! '(built-in-builders))))))
+
 (define-suite (server-text-tests)
   'metadata `((test/fixtures
                . ,(append (paired-testbox-fixtures 'rootless 'nixd 'gxd)
