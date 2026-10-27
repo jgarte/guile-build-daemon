@@ -75,19 +75,19 @@
       (sqlite-exec db "COMMIT;"))
     #:unwind? #t))
 
-(define (check-references db references)
-  "Raise an invalid-reference error for the first unregistered path in REFERENCES."
+(define (require-registered-paths db paths)
+  "Raise an invalid-reference error for the first unregistered path in PATHS."
   (for-each
-   (lambda (reference)
-     (unless (valid-path? db reference)
+   (lambda (path)
+     (unless (valid-path? db path)
        (raise-exception
-        (make-invalid-reference reference))))
-   references))
+        (make-invalid-reference path))))
+   paths))
 
 (define (references db path)
   "Return registered PATH's direct references in DB, sorted by `string<?'.
 Raise an invalid-reference error if PATH is unregistered.  Do not inspect files."
-  (check-references db (list path))
+  (require-registered-paths db (list path))
   (define statement
     (sqlite-prepare db "SELECT target.path FROM Refs r
 JOIN ValidPaths source ON source.id = r.referrer
@@ -103,7 +103,7 @@ WHERE source.path = ? ORDER BY target.path;"))
 (define (derivation-outputs db drv-path)
   "Return registered DRV-PATH's output name/path pairs, sorted by name.
 The mappings do not imply that the outputs are registered or present on disk."
-  (check-references db (list drv-path))
+  (require-registered-paths db (list drv-path))
   (define statement
     (sqlite-prepare db "SELECT outputs.id, outputs.path FROM DerivationOutputs outputs
 JOIN ValidPaths drv ON drv.id = outputs.drv
@@ -150,7 +150,7 @@ materialized PATH, holds its destination lock and excludes concurrent GC."
       (register-derivation! db store-directory path hash size references deriver)
       (call-with-transaction db
         (lambda ()
-          (check-references db references)
+          (require-registered-paths db references)
           (register-path! db path hash size references deriver)))))
 
 (define (execute db sql arguments)
@@ -171,7 +171,7 @@ Propagate SQLite errors."
 On a cache miss, require PATH to be registered in DB and read its file."
   (or (hash-ref resolved-inputs path)
       (begin
-        (check-references db (list path))
+        (require-registered-paths db (list path))
         (let* ((drv (call-with-input-file path derivations:read-derivation))
                (resolved-drv
                 (derivations:resolve-inputs!
@@ -206,7 +206,7 @@ expected output paths within STORE-DIRECTORY."
 (define (register-references! db path references)
   "Validate REFERENCES and add their edges from registered PATH in DB.
 Use the caller's transaction; all referenced validity rows must exist."
-  (check-references db references)
+  (require-registered-paths db references)
   (define id (guix-db:valid-path-id db path))
 
   (for-each
