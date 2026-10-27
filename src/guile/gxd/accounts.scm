@@ -5,7 +5,7 @@
 
 (define-module (gxd accounts)
   #:use-module ((system foreign) #:select (unsigned-int pointer->procedure
-                                                        null-pointer?))
+                                           null-pointer?))
   #:export (user-exists?))
 
 (define lookup-user

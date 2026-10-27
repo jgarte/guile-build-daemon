@@ -5,11 +5,11 @@
 
 (define-module (gxd session)
   #:use-module ((ice-9 exceptions) #:select (&error define-exception-type
-                                                    raise-exception))
+                                             raise-exception))
   #:use-module ((ice-9 format) #:select (format))
   #:use-module ((ice-9 match) #:select (match match-lambda))
   #:use-module ((ice-9 regex) #:select (string-match match:start match:end
-                                                     match:substring))
+                                        match:substring))
   #:use-module (gxd prelude)
   #:use-module ((srfi srfi-1) #:select (alist-delete fold))
   #:use-module ((srfi srfi-9) #:select (define-record-type))

@@ -7,7 +7,7 @@
   #:use-module (gxd test-prelude)
   #:use-module ((gxd build outputs)
                 #:select (prepare-output! missing-output-error-drv-path missing-output-error-output-path
-                                          output-permission-error-output-path))
+                          output-permission-error-output-path))
   #:use-module ((ares suitbl core) #:select (define-suite test is))
   #:use-module ((guix utils) #:select (call-with-temporary-directory))
   #:use-module ((guix store deduplication) #:select (nar-sha256))

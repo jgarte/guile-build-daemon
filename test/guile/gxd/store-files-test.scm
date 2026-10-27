@@ -7,7 +7,7 @@
   #:use-module (gxd test-prelude)
   #:use-module ((gxd store-files)
                 #:select (canonicalize-metadata! unsupported-file-type-error-path
-                                                 unsupported-file-type-error-type))
+                          unsupported-file-type-error-type))
   #:use-module ((ares suitbl core) #:select (define-suite test is))
   #:use-module ((guix utils) #:select (call-with-temporary-directory)))
 

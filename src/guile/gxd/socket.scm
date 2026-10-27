@@ -5,7 +5,7 @@
 
 (define-module (gxd socket)
   #:use-module ((system foreign) #:select (int pointer->procedure
-                                               bytevector->pointer))
+                                           bytevector->pointer))
   #:use-module ((rnrs bytevectors) #:select (make-bytevector
                                              bytevector-u32-native-ref
                                              bytevector-u32-native-set!))

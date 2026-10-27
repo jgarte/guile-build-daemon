@@ -11,7 +11,7 @@
   #:use-module ((ares suitbl core) #:select (define-suite test is))
   #:use-module ((rnrs bytevectors)
                 #:select (string->utf8 make-bytevector bytevector-length bytevector-u8-set!
-                                       bytevector=?))
+                          bytevector=?))
   #:use-module ((srfi srfi-11) #:select (let-values)))
 
 (define-suite (reference-matcher-tests)

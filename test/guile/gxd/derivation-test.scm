@@ -8,13 +8,13 @@
   #:use-module ((guix store) #:select (add-text-to-store direct-store-path valid-path? output-path))
   #:use-module ((guix derivations)
                 #:select (derivation derivation-input derivation-file-name
-                                     derivation->output-paths derivation-inputs
-                                     derivation-input-path derivation-sources
-                                     derivation-system derivation-builder
-                                     derivation-outputs derivation-output-path
-                                     derivation-output-hash derivation-output-hash-algo
-                                     write-derivation read-derivation derivation-hash
-                                     derivation-builder-environment-vars))
+                          derivation->output-paths derivation-inputs
+                          derivation-input-path derivation-sources
+                          derivation-system derivation-builder
+                          derivation-outputs derivation-output-path
+                          derivation-output-hash derivation-output-hash-algo
+                          write-derivation read-derivation derivation-hash
+                          derivation-builder-environment-vars))
   #:use-module ((ice-9 match) #:select (match-let match-lambda match-lambda*))
   #:use-module ((srfi srfi-1) #:select (append-map alist-delete))
   #:use-module ((rnrs bytevectors) #:select (bytevector=? string->utf8 make-bytevector))

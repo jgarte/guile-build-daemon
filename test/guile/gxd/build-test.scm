@@ -19,7 +19,7 @@
   #:use-module ((guix derivations)
                 #:prefix guix-drv:
                 #:select (derivation-input derivation-file-name derivation->output-path
-                                           derivation->output-paths))
+                          derivation->output-paths))
   #:use-module ((ares suitbl core) #:select (define-suite test is)))
 
 (define build-test-fixtures
