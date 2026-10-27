@@ -110,6 +110,33 @@
            "connection remained usable")))
     (observe-bytes!))
 
+  (test "a builtin download without a URL fails without registration and keeps the connection usable" (ctx)
+    (define step! (get ctx 'step!))
+    (define observe-db-path! (get ctx 'observe-db-path!))
+    (define observe-bytes! (get ctx 'observe-bytes!))
+
+    (define guix-store-path (direct-store-path (canonicalize-path (require-program "guix"))))
+    (define drv
+      (step! `(derivation "builtin-download-missing-url" "builtin:download" ()
+                          #:hash-algo sha256 #:hash ,(sha256 (string->utf8 "expected contents"))
+                          #:recursive? #f #:substitutable? #f #:local-build? #t)
+             #:connection 'build))
+
+    (define drv-path (guix-drv:derivation-file-name drv))
+    (define output-path (guix-drv:derivation->output-path drv))
+    (define expected-error
+      `((error/type . store-protocol-error)
+        (error/message . ,(string-append "build of `" drv-path "' failed"))
+        (error/status . 1)))
+
+    (step! '(set-build-options #:use-substitutes? #f #:offload? #f #:max-build-jobs 1)
+           #:connection 'build)
+    (is (equal? expected-error (step! `(build-things (,drv-path)) #:connection 'build)))
+    (is (not (observe-db-path! output-path)))
+    (is (step! `(valid-path? ,guix-store-path) #:connection 'build #:terminal? #t)
+        "connection remained usable")
+    (observe-bytes!))
+
   (test "realize and register matching fixed-output contents" (ctx)
     (define step! (get ctx 'step!))
     (define observe-db-path! (get ctx 'observe-db-path!))
