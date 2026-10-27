@@ -5,6 +5,7 @@
 
 (define-module (gxd build)
   #:use-module (gxd prelude)
+  #:use-module ((gxd build config) #:select (build-store-directory (build-mode . config-build-mode)))
   #:use-module ((gxd build realization)
                 #:select (realize-path! builder-exit-error?))
   #:use-module ((gxd build outputs)
@@ -40,18 +41,17 @@
     thunk
     #:unwind? #t))
 
-(define (build-paths! db store-directory paths mode build-directory-parent cores log! sandboxed?)
-  "Realize PATHS in MODE using DB and STORE-DIRECTORY.
-Use BUILD-DIRECTORY-PARENT for workspaces, advertise CORES to builders, and
-deliver binary log chunks to LOG!.  SANDBOXED? selects isolated execution.
+(define (build-paths! db paths config log!)
+  "Realize PATHS using DB and CONFIG.
+Deliver binary log chunks to LOG!.
 The caller excludes concurrent GC."
-  (unless (= mode (build-mode normal))
-    (todo! "non-normal build modes" mode))
+  (unless (= (config-build-mode config) (build-mode normal))
+    (todo! "non-normal build modes" (config-build-mode config)))
 
   (for-each
    (lambda (path)
      (cond
-      ((not (store-path? store-directory path))
+      ((not (store-path? (build-store-directory config) path))
        (error "build request path is not in the store" path))
       ((string-contains path ".drv!")
        (todo! "derivation output selectors" path))
@@ -66,5 +66,5 @@ The caller excludes concurrent GC."
      (lambda (path)
        (call-with-build-error-handling path
          (lambda ()
-           (realize-path! db store-directory path build-directory-parent cores log! sandboxed?))))
+           (realize-path! db path config log!))))
      _)))
