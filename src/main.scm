@@ -5,11 +5,16 @@
 
 (use-modules ((gxd server) #:select (run-server))
              ((guix config) #:select (%state-directory))
-             ((guix build utils) #:select (mkdir-p))
+             ((guix build utils) #:select (mkdir-p executable-file?))
              ((ice-9 getopt-long) #:select (getopt-long option-ref)))
 
 (define options
   (getopt-long (command-line) '((disable-chroot (value #f)))))
+
+(let ((guix-program (getenv "GUIX")))
+  (unless (and guix-program (absolute-file-name? guix-program)
+               (executable-file? guix-program))
+    (error "GUIX must name an absolute executable file" guix-program)))
 
 (define socket-directory
   (string-append %state-directory "/daemon-socket"))
