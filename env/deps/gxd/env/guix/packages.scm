@@ -92,4 +92,5 @@
                 "btrfs-progs"           ; mkfs.btrfs, etc.
                 "bash-minimal"          ; sh, bash
                 "tar" "gzip"
+                "git-minimal"
                 "guile"))))
