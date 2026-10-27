@@ -16,7 +16,7 @@
                           call-with-bytevector-output-port))
   #:use-module ((gxd store-path) #:select (fixed-output-path))
   #:use-module ((guix utils) #:select (call-with-temporary-directory))
-  #:use-module ((rnrs bytevectors) #:select (string->utf8))
+  #:use-module ((rnrs bytevectors) #:select (bytevector=? string->utf8))
   #:use-module ((rnrs io ports) #:select (get-u8 put-bytevector put-u8))
   #:use-module (gxd test-prelude))
 
@@ -65,6 +65,18 @@
                       (call-with-bytevector-input-port nar
                         (lambda (input)
                           (add-nar-to-store db dir "item" #t "sha256" input))))))))))
+
+  (test "recursive import restores the received canonical NAR" ()
+    (call-with-tmp-dir-and-database
+     (lambda (dir db)
+       (call-with-hello-world-file
+        (lambda (source)
+          (define nar (nar-bytes source))
+          (define destination
+            (call-with-bytevector-input-port nar
+              (lambda (input)
+                (add-nar-to-store db dir "item" #t "sha256" input))))
+          (is (bytevector=? nar (nar-bytes destination))))))))
 
   (test "recursive import rejects invalid NAR entry names" ()
     (call-with-tmp-dir-and-database
