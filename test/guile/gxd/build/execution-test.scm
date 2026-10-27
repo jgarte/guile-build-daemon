@@ -6,6 +6,7 @@
 (define-module (gxd build execution-test)
   #:use-module (gxd test-prelude)
   #:use-module ((gxd build execution) #:select (execute-builder!))
+  #:use-module ((gxd build config) #:select (build-config))
   #:use-module ((ares suitbl core) #:select (define-suite test is))
   #:use-module ((guix derivations)
                 #:select (derivation-builder derivation-builder-arguments))
@@ -24,6 +25,9 @@
     ((derivation-builder-arguments)
      (list "--no-auto-compile" "-c" (object->string expression)))))
 
+(define (test-build-config)
+  (build-config 0 "/store" "/tmp" 1 #f))
+
 (define-suite (builder-tests)
   (test "capture exactly the bytes written by the builder and preserve its exit code" ()
     (define expected-exit-code 7)
@@ -40,7 +44,7 @@
       (deadline 5
         (let-values (((output captured-bytes) (open-bytevector-output-port)))
           (define status
-            (execute-builder! drv "/store" "/tmp" 1
+            (execute-builder! drv "/tmp" #f (test-build-config)
                               (lambda (bytes) (put-bytevector output bytes))))
 
           (list (bytevector=? expected-output (captured-bytes))
@@ -58,7 +62,7 @@
         (define failure
           (capture-exception
            (lambda ()
-             (execute-builder! drv "/store" "/missing-builder-directory" 1
+             (execute-builder! drv "/missing-builder-directory" #f (test-build-config)
                                (lambda (_) (set! log-called? #t))))))
 
         (list (not (not failure)) log-called?)))
@@ -77,7 +81,7 @@
       (deadline 5
         (let-values (((output captured-bytes) (open-bytevector-output-port)))
           (define status
-            (execute-builder! drv "/store" "/tmp" 1
+            (execute-builder! drv "/tmp" #f (test-build-config)
                               (lambda (bytes) (put-bytevector output bytes))))
 
           (list (positive? (bytevector-length (captured-bytes)))
@@ -95,7 +99,7 @@
         (define actual-exception
           (capture-exception
            (lambda ()
-             (execute-builder! drv "/store" "/tmp" 1
+             (execute-builder! drv "/tmp" #f (test-build-config)
                                (lambda (_) (raise-exception expected-exception))))))
 
         (eq? expected-exception actual-exception)))

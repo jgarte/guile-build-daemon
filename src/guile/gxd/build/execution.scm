@@ -5,6 +5,7 @@
 
 (define-module (gxd build execution)
   #:use-module (gxd prelude)
+  #:use-module ((gxd build config) #:select (build-store-directory build-cores))
   #:use-module ((gxd build environment) #:select (build-environment))
   #:use-module ((gxd build process)
                 #:select (call-with-builder-process builder-output wait-builder!))
@@ -53,13 +54,13 @@ With SANDBOX, run inside its prepared filesystem; otherwise run on the host."
      (forward-builder-output! output log!)
      (wait-builder! process))))
 
-(define* (execute-builder! drv store-directory build-directory cores log!
-                           #:optional (sandbox #f))
+(define (execute-builder! drv build-directory sandbox config log!)
   "Execute DRV with its build environment; see `execute-program!'.
-Use STORE-DIRECTORY, BUILD-DIRECTORY and CORES for environment defaults."
+Use CONFIG and BUILD-DIRECTORY for environment defaults."
   (define environment
-    (build-environment drv store-directory
-                       (if sandbox (sandbox-build-directory sandbox) build-directory) cores))
+    (build-environment drv (build-store-directory config)
+                       (if sandbox (sandbox-build-directory sandbox) build-directory)
+                       (build-cores config)))
 
   (execute-program!
    (derivation-builder drv) (derivation-builder-arguments drv)

@@ -15,6 +15,7 @@
                 #:select (build-paths! build-request-error? build-request-error-path
                           build-request-error-cause))
   #:use-module ((gxd build realization) #:select (builder-exit-error?))
+  #:use-module ((gxd build config) #:select (build-config))
   #:use-module ((gxd build outputs)
                 #:select (missing-output-error? output-permission-error?
                           flat-output-type-error? output-hash-mismatch?))
@@ -131,8 +132,10 @@ Return the session options after the request."
 
       (call-with-build-error-reporting connection
         (lambda ()
-          (build-paths! db store-directory paths mode build-directory-parent
-                        (options-build-cores options) log! (options-use-chroot? options))
+          (build-paths! db paths
+                        (build-config mode store-directory build-directory-parent
+                                      (options-build-cores options) (options-use-chroot? options))
+                        log!)
 
           (protocol:write-completion connection)
           (write-value boolean #t connection)))))

@@ -7,6 +7,7 @@
   #:use-module (gxd test-prelude)
   #:use-module ((gxd test-database) #:select (call-with-empty-database))
   #:use-module ((gxd build realization) #:select (realize-derivation!))
+  #:use-module ((gxd build config) #:select (build-config))
   #:use-module ((gxd derivations) #:select (read-derivation))
   #:use-module ((gxd database)
                 #:prefix database:
@@ -46,7 +47,9 @@
        (mkdir store-directory)
        (proc db store-directory dev-path out-path
              (lambda (drv)
-               (realize-derivation! db store-directory drv-path drv directory 1 (lambda (_) #t))))))))
+               (realize-derivation! db drv-path drv
+                                    (build-config 0 store-directory directory 1 #f)
+                                    (lambda (_) #t))))))))
 
 (define-suite (realize-tests)
   (test "realize two outputs with self and sibling references; a second realization returns already-valid" ()
