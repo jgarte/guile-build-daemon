@@ -8,9 +8,15 @@
                           make-exception-with-message raise-exception with-exception-handler))
   #:use-module ((srfi srfi-2) #:select (and-let*))
   #:use-module ((srfi srfi-197) #:select (chain))
+  #:use-module ((ice-9 match) #:select (match-lambda*))
   #:re-export (and-let* chain)
-  #:export (comment get get-in call-with-cleanup todo!
+  #:export (comment get get-in call-with-cleanup binding-name<? todo!
                     &todo todo? todo-feature todo-context))
+
+(define binding-name<?
+  (match-lambda*
+    (((left-name . _) (right-name . _))
+     (string<? left-name right-name))))
 
 (define-exception-type &todo &error
   make-todo todo?
