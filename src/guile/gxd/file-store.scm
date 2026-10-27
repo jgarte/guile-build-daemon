@@ -139,9 +139,15 @@ path, type, and contents.  Callback return values are ignored."
          (error "flat NAR must contain one root regular file" type file))))))
 
 
-(define (register-store-path! db store-directory destination)
-  "Register DESTINATION in DB with its NAR hash and size."
-  (let-values (((nar-hash nar-size) (nar-sha256 destination)))
+(define* (register-store-path! db store-directory destination
+                              #:key nar-hash nar-size)
+  "Register DESTINATION in DB with its NAR hash and size.
+When NAR-HASH and NAR-SIZE are supplied, they describe a validated canonical
+NAR which was used to restore DESTINATION."
+  (let-values (((nar-hash nar-size)
+                (if nar-hash
+                    (values nar-hash nar-size)
+                    (nar-sha256 destination))))
     (database:register-item!
      db store-directory destination nar-hash nar-size '())))
 
@@ -150,8 +156,10 @@ path, type, and contents.  Callback return values are ignored."
   (call-with-bytevector-input-port nar
     (lambda (input) (restore-file input destination))))
 
-(define (ensure-store-path! db store-directory destination write-to-store!)
-  "Ensure DESTINATION exists in DB, using WRITE-TO-STORE! to create it when needed."
+(define* (ensure-store-path! db store-directory destination write-to-store!
+                            #:key nar-hash nar-size)
+  "Ensure DESTINATION exists in DB, using WRITE-TO-STORE! to create it when needed.
+NAR-HASH and NAR-SIZE may describe the validated NAR written by WRITE-TO-STORE!."
   (unless (database:valid-path? db destination)
     (call-with-destination-lock destination
       (lambda ()
@@ -159,11 +167,13 @@ path, type, and contents.  Callback return values are ignored."
         (unless (database:valid-path? db destination)
           (delete-path! destination)
           (write-to-store!)
-          (register-store-path! db store-directory destination))))))
+          (register-store-path! db store-directory destination
+                                #:nar-hash nar-hash #:nar-size nar-size))))))
 
 (define (call-with-nar-payload-and-store-path store-directory name recursive?
                                            hash-algo port proc)
-  "Read one NAR from PORT and call PROC with its payload and store destination.
+  "Read one NAR from PORT and call PROC with its payload, store destination,
+and NAR hash and size.  The latter are supplied only when RECURSIVE? is true.
 The payload is the NAR when RECURSIVE? is true, otherwise its root file
 contents."
   (let-values (((algorithm gcrypt-algorithm)
@@ -172,10 +182,18 @@ contents."
                         (read-nar port)
                         (read-content-of-flat-file-nar port)))
            (hash (bytevector-hash payload gcrypt-algorithm))
+           ;; A recursive NAR is canonical. So restoring it and serializing the
+           ;; result should produce the same bytes
+           (nar-hash (and recursive?
+                          (if (eq? algorithm 'sha256)
+                              hash
+                              (bytevector-hash
+                               payload (lookup-hash-algorithm 'sha256)))))
+           (nar-size (and recursive? (bytevector-length payload)))
            (destination
             (fixed-output-path store-directory name hash
                                #:hash-algo algorithm #:recursive? recursive?)))
-      (proc payload destination))))
+      (proc payload destination nar-hash nar-size))))
 
 (define (add-nar-to-store db store-directory name recursive? hash-algo port)
   "Read one NAR from PORT and add it as the fixed-output item NAME.
@@ -183,11 +201,12 @@ When RECURSIVE? is true, hash the NAR and restore its file tree; otherwise,
 hash and store its root regular file's contents.  Return the store path."
   (call-with-nar-payload-and-store-path
    store-directory name recursive? hash-algo port
-   (lambda (payload destination)
+   (lambda (payload destination nar-hash nar-size)
      (ensure-store-path!
       db store-directory destination
       (lambda ()
         (if recursive?
             (restore-nar! destination payload)
-            (write-text! destination payload))))
+            (write-text! destination payload)))
+      #:nar-hash nar-hash #:nar-size nar-size)
      destination)))
