@@ -99,6 +99,9 @@ The operation number is already consumed.  The following NAR is deliberately
 left unread.  FIXED is obsolete: as in nixd, a value other than one forces
 recursive SHA-256 mode for old clients."
   (let* ((name (read-string port))
+         ;; next two could have been read-boolean, but nixd has an explicit
+         ;; comparison with 1 and thus everything other than that is
+         ;; considered false.
          (fixed? (= 1 (read-integer port)))
          (recursive? (= 1 (read-integer port)))
          (hash-algo (read-string port)))
