@@ -83,6 +83,9 @@ The output is owned by the caller."
              (not (zero? (logand (stat:perms info) #o022))))
     (raise-exception (make-output-permission-error output-path)))
 
+  (when (guix-drv:derivation-output-hash output)
+    (check-fixed-output! output actual-path))
+
   (canonicalize-metadata! actual-path))
 
 (define (prepare-output! drv-path output candidates)
