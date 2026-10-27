@@ -13,7 +13,7 @@
                 #:select (derivation-builder derivation-builder-arguments))
   #:use-module ((rnrs bytevectors) #:select (u8-list->bytevector utf8->string))
   #:use-module ((rnrs io ports) #:select (get-u8 get-bytevector-some))
-  #:export (execute-builder!))
+  #:export (execute-program! execute-builder!))
 
 (define (read-setup-line output)
   "Consume one newline-terminated setup line from binary OUTPUT; return its bytes.
@@ -40,6 +40,19 @@ Raise on EOF before newline.  Leave subsequent builder log bytes untouched."
       (log! bytes)
       (loop))))
 
+(define* (execute-program! program arguments environment build-directory log!
+                           #:optional (sandbox #f))
+  "Run PROGRAM with ARGUMENTS and ENVIRONMENT, delivering binary output to LOG!.
+Return the raw wait status.  The caller owns BUILD-DIRECTORY.
+With SANDBOX, run inside its prepared filesystem; otherwise run on the host."
+  (call-with-builder-process
+   program arguments environment build-directory sandbox
+   (lambda (process)
+     (define output (builder-output process))
+     (check-builder-setup! output)
+     (forward-builder-output! output log!)
+     (wait-builder! process))))
+
 (define* (execute-builder! drv store-directory build-directory cores log!
                            #:optional (sandbox #f))
   "Execute DRV with an environment built from STORE-DIRECTORY, BUILD-DIRECTORY and CORES.
@@ -51,11 +64,6 @@ Outputs are not validated or registered."
     (build-environment drv store-directory
                        (if sandbox (sandbox-build-directory sandbox) build-directory) cores))
 
-  (call-with-builder-process
+  (execute-program!
    (derivation-builder drv) (derivation-builder-arguments drv)
-   environment build-directory sandbox
-   (lambda (process)
-     (define output (builder-output process))
-     (check-builder-setup! output)
-     (forward-builder-output! output log!)
-     (wait-builder! process))))
+   environment build-directory log! sandbox))
