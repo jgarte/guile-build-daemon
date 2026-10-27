@@ -15,7 +15,7 @@
   #:use-module ((srfi srfi-9) #:select (define-record-type))
   #:use-module ((system foreign) #:select (sizeof unsigned-int unsigned-long))
   #:export (unix-peer-trusted? initial-options update-options
-                               options-build-cores options-use-chroot?
+                               options-build-cores options-use-chroot? pack-options
                                &option-error option-error? option-error-message))
 
 (define-record-type <options>
@@ -104,6 +104,23 @@ Prefix non-public names with untrusted- unless TRUSTED?.  Preserve other setting
 (define-exception-type &option-error &error
   make-option-error option-error?
   (message option-error-message))
+
+(define setting->line
+  (match-lambda
+    ((name . value)
+     (when (or (string-index name #\newline)
+               (string-index name #\=)
+               (string-index value #\newline))
+       (raise-exception (make-option-error "invalid option name/value")))
+     (string-append name "=" value "\n"))))
+
+(define (pack-options options)
+  "Serialize OPTIONS' retained settings as sorted key=value lines for Guix helpers.
+Preserve setting text.  Reject newlines in names or values and = in names."
+  (chain (options-settings options)
+    (sort _ binding-name<?)
+    (map setting->line _)
+    (string-concatenate _)))
 
 ;; Settings::update validates in this order; build-repeat is parsed later.
 (define setting-types
