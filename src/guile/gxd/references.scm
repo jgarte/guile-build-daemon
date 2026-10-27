@@ -16,13 +16,6 @@
 (define base32-alphabet "0123456789abcdfghijklmnpqrsvwxyz")
 (define reference-length 32)
 
-(define (extend-window window character)
-  (string-append
-   (if (= (string-length window) reference-length)
-       (substring window 1)
-       window)
-   (string character)))
-
 (define (make-reference-matcher hashes)
   "Return two procedures: consume! and matched-hashes, searching for HASHES.
 HASHES contains distinct 32-character Nix base32 hashes.  Call consume! with a
@@ -32,19 +25,24 @@ The caller may reuse the buffer afterward.  Call matched-hashes without
 arguments to obtain the distinct hashes found so far, sorted by `string<?'."
   (define pending (make-hash-table))
   (define found '())
-  (define window "")
+  (define window (make-string reference-length))
+  (define window-length 0)
 
   (define (record-match!)
-    (when (hash-ref pending window)
-      (set! found (cons window found))
+    (define hash (hash-ref pending window))
+    (when hash
+      (set! found (cons hash found))
       (hash-remove! pending window)))
 
   (define (consume-character! character)
     (if (string-index base32-alphabet character)
         (begin
-          (set! window (extend-window window character))
-          (record-match!))
-        (set! window "")))
+          (if (= window-length reference-length)
+              (string-copy! window 0 window 1 reference-length)
+              (set! window-length (1+ window-length)))
+          (string-set! window (1- window-length) character)
+          (when (= window-length reference-length) (record-match!)))
+        (set! window-length 0)))
 
   (define (consume! bytes start count)
     (do ((index start (1+ index)))
@@ -54,7 +52,7 @@ arguments to obtain the distinct hashes found so far, sorted by `string<?'."
   (define (matched-hashes)
     (sort (list-copy found) string<?))
 
-  (for-each (lambda (hash) (hash-set! pending hash #t)) hashes)
+  (for-each (lambda (hash) (hash-set! pending hash hash)) hashes)
   (values consume! matched-hashes))
 
 (define (index-candidates paths)
