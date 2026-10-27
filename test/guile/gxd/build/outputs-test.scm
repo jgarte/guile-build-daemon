@@ -6,7 +6,7 @@
 (define-module (gxd build outputs-test)
   #:use-module (gxd test-prelude)
   #:use-module ((gxd build outputs)
-                #:select (prepare-output! missing-output-error-drv-path missing-output-error-output-path
+                #:select (prepare-output! prepare-sandboxed-output! missing-output-error-drv-path missing-output-error-output-path
                           output-permission-error-output-path
                           check-fixed-output! flat-output-type-error-output-path
                           output-hash-mismatch-output-path))
@@ -93,6 +93,30 @@
        (is (equal? declared-output-path (output-hash-mismatch-output-path exception)))))))
 
 (define-suite (build-output-tests)
+  (test "reject a staged hash mismatch before canonicalizing or promoting the output" ()
+    (call-with-temporary-directory
+     (lambda (directory)
+       (define actual-path (string-append directory "/staged"))
+       (define output-path (string-append directory "/" (make-string 32 #\a) "-output"))
+       (define output
+         (set-fields (fixed-output (sha256 (string->utf8 "expected")) #f)
+           ((guix-drv:derivation-output-path) output-path)))
+
+       (spit actual-path "actual")
+       (chmod actual-path #o600)
+       (utime actual-path 123 456)
+       (define original-stats (lstat actual-path))
+       (define exception
+         (capture-exception
+          (lambda ()
+            (prepare-sandboxed-output! dummy-drv-path output (list output-path) actual-path))))
+
+       (is (equal? output-path (output-hash-mismatch-output-path exception)))
+       (is (equal? (list (stat:perms original-stats) (stat:mtime original-stats))
+                   (list (stat:perms (lstat actual-path)) (stat:mtime (lstat actual-path))))
+           "rejection precedes canonicalization")
+       (is (not (file-exists? output-path)) "rejection precedes promotion"))))
+
   (test "reject a missing output with the derivation and output paths" ()
     (call-with-temporary-directory
      (lambda (directory)
