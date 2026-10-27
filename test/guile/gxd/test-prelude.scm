@@ -4,11 +4,16 @@
 (define-module (gxd test-prelude)
   #:use-module ((ice-9 exceptions)
                 #:select (raise-exception with-exception-handler))
-  #:use-module ((ice-9 match) #:select (match match-let))
+  #:use-module ((ice-9 match) #:select (match match-let match-lambda))
   #:use-module ((ice-9 rdelim) #:select (read-string))
   #:use-module ((guix build utils) #:select (which))
-  #:use-module ((guix derivations) #:select (read-derivation))
   #:use-module ((guix utils) #:select (call-with-temporary-directory))
+  #:use-module ((guix derivations)
+                #:select (read-derivation derivation-outputs derivation-output-path
+                          derivation-system derivation-builder derivation-hash
+                          derivation-builder-environment-vars))
+  #:use-module ((guix store) #:select (output-path))
+  #:use-module ((srfi srfi-9 gnu) #:select (set-fields))
   #:use-module ((gxd isolation) #:select (child-proc))
   #:use-module ((srfi srfi-1) #:select (filter-map))
   #:use-module (gxd prelude)
@@ -18,6 +23,7 @@
             deadline
             empty-derivation
             call-with-hello-world-file
+            test-derivation
             require-program
             select-keys
             slurp
@@ -30,6 +36,32 @@
 
 (define (empty-derivation)
   (call-with-input-string "Derive([],[],[],\"\",\"\",[],[])" read-derivation))
+
+(define* (test-derivation #:key (output-names '("out")))
+  "Return a completed derivation named example with OUTPUT-NAMES, without store access."
+  (let* ((drv (call-with-input-string
+                  "Derive([(\"out\",\"\",\"\",\"\")],[],[],\"\",\"\",[],[])"
+                read-derivation))
+         (output (assoc-ref (derivation-outputs drv) "out"))
+         (names (sort output-names string<?))
+         (masked-outputs (map (lambda (name) (cons name output)) names))
+         (masked-env (map (lambda (name) (cons name "")) names))
+         (masked-drv
+          (set-fields drv
+            ((derivation-system) "x86_64-linux")
+            ((derivation-builder) "/bin/sh")
+            ((derivation-outputs) masked-outputs)
+            ((derivation-builder-environment-vars) masked-env)))
+         (hash (derivation-hash masked-drv))
+         (env (map (lambda (name) (cons name (output-path name hash "example"))) names))
+         (outputs
+          (map (match-lambda
+                 ((name . path)
+                  (cons name (set-fields output ((derivation-output-path) path)))))
+               env)))
+    (set-fields masked-drv
+      ((derivation-outputs) outputs)
+      ((derivation-builder-environment-vars) env))))
 
 (define (call-with-resource name proc)
   "Call PROC with an input port for test resource NAME.
