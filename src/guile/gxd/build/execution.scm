@@ -55,11 +55,8 @@ With SANDBOX, run inside its prepared filesystem; otherwise run on the host."
 
 (define* (execute-builder! drv store-directory build-directory cores log!
                            #:optional (sandbox #f))
-  "Execute DRV with an environment built from STORE-DIRECTORY, BUILD-DIRECTORY and CORES.
-Pass binary output chunks to LOG! after checking setup; return the raw wait status.
-The caller owns host workspace BUILD-DIRECTORY.  With SANDBOX, use its build
-directory in the environment and execute within its prepared filesystem.
-Outputs are not validated or registered."
+  "Execute DRV with its build environment; see `execute-program!'.
+Use STORE-DIRECTORY, BUILD-DIRECTORY and CORES for environment defaults."
   (define environment
     (build-environment drv store-directory
                        (if sandbox (sandbox-build-directory sandbox) build-directory) cores))
