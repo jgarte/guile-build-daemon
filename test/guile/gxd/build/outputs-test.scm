@@ -24,6 +24,10 @@
 
 (define dummy-drv-path "/store/example.drv")
 
+(define (ordinary-output path)
+  (set-fields (assoc-ref (guix-drv:derivation-outputs (test-derivation)) "out")
+    ((guix-drv:derivation-output-path) path)))
+
 (define* (fixed-output hash recursive? #:optional (algorithm 'sha256))
   "Return a declared output with HASH, RECURSIVE? and ALGORITHM for authentication."
   (set-fields (assoc-ref (guix-drv:derivation-outputs (test-derivation)) "out")
@@ -96,7 +100,7 @@
               (output-path (string-append directory "/missing"))
               (actual-exception
                (capture-exception
-                (lambda () (prepare-output! drv-path output-path (list output-path))))))
+                (lambda () (prepare-output! drv-path (ordinary-output output-path) (list output-path))))))
          (is (equal? drv-path (missing-output-error-drv-path actual-exception)))
          (is (equal? output-path (missing-output-error-output-path actual-exception)))))))
 
@@ -111,7 +115,7 @@
 
        (define actual-exception
          (capture-exception
-          (lambda () (prepare-output! dummy-drv-path output-path (list output-path)))))
+          (lambda () (prepare-output! dummy-drv-path (ordinary-output output-path) (list output-path)))))
 
        (is (equal? output-path (output-permission-error-output-path actual-exception)))
        (is (= (stat:perms original-stats) (stat:perms (lstat output-path))))
@@ -129,7 +133,7 @@
          (utime output-path 123 456)
 
          (let-values (((found-references actual-hash actual-size)
-                       (prepare-output! dummy-drv-path output-path
+                       (prepare-output! dummy-drv-path (ordinary-output output-path)
                                         (cons output-path expected-references)))
                       ((expected-hash expected-size) (nar-sha256 output-path)))
            (is (= #o444 (stat:perms (lstat output-path))))
@@ -148,7 +152,7 @@
          (utime target-path 123 456)
          (symlink target-path output-path)
          (define original-target-stats (lstat target-path))
-         (prepare-output! dummy-drv-path output-path (list output-path))
+         (prepare-output! dummy-drv-path (ordinary-output output-path) (list output-path))
 
          (is (= 1 (stat:mtime (lstat output-path))))
          (is (= (stat:perms original-target-stats) (stat:perms (lstat target-path))))

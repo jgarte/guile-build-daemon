@@ -65,11 +65,12 @@
   (unless (bytevector=? expected-hash actual-hash)
     (raise-exception (make-output-hash-mismatch output-path))))
 
-(define (canonicalize-output! drv-path output-path actual-path)
-  "Validate and canonicalize ACTUAL-PATH produced for DRV-PATH's OUTPUT-PATH.
-Use declared OUTPUT-PATH in output rejection errors.  The caller holds the output
+(define (canonicalize-output! drv-path output actual-path)
+  "Validate and canonicalize ACTUAL-PATH produced for DRV-PATH's OUTPUT.
+Use OUTPUT's declared path in output rejection errors.  The caller holds the output
 lock, excludes concurrent GC, and prevents concurrent modification of the output.
 The output is owned by the caller."
+  (define output-path (guix-drv:derivation-output-path output))
   (define info (false-if-file-not-found (lstat actual-path)))
 
   ;; A successful builder must have produced the declared output.
@@ -84,13 +85,14 @@ The output is owned by the caller."
 
   (canonicalize-metadata! actual-path))
 
-(define (prepare-output! drv-path output-path candidates)
-  "Validate and canonicalize ordinary OUTPUT-PATH produced by DRV-PATH.
+(define (prepare-output! drv-path output candidates)
+  "Validate and canonicalize OUTPUT produced by DRV-PATH.
 Return its references, NAR SHA-256 bytevector and NAR size from `scan-nar',
 using CANDIDATES.  The caller holds the output lock, excludes concurrent GC,
 and prevents concurrent modification of the output.  The output is owned by
 the caller."
-  (canonicalize-output! drv-path output-path output-path)
+  (define output-path (guix-drv:derivation-output-path output))
+  (canonicalize-output! drv-path output output-path)
   (scan-nar output-path candidates))
 
 (define (preserve-failed-output! output-path actual-path)
@@ -100,13 +102,14 @@ Do nothing if ACTUAL-PATH is absent; preserve mtimes and remaining permissions."
     (secure-file-permissions! actual-path)
     (rename-file actual-path output-path)))
 
-(define (prepare-sandboxed-output! drv-path output-path candidates actual-path)
-  "Canonicalize ACTUAL-PATH from DRV-PATH, move it to OUTPUT-PATH, and scan it
+(define (prepare-sandboxed-output! drv-path output candidates actual-path)
+  "Canonicalize ACTUAL-PATH from DRV-PATH, move it to OUTPUT's path, and scan it
 using CANDIDATES; return references, NAR SHA-256 and size.
-The caller holds OUTPUT-PATH's lock, excludes GC, and prevents concurrent writes
-to ACTUAL-PATH's tree.  OUTPUT-PATH is absent; the staged output belongs to the
-caller.  Failure after the move leaves the output at OUTPUT-PATH."
-  (canonicalize-output! drv-path output-path actual-path)
+The caller holds OUTPUT's path lock, excludes GC, and prevents concurrent writes
+to ACTUAL-PATH's tree.  OUTPUT's path is absent; the staged output belongs to the
+caller.  Failure after the move leaves the output at its declared path."
+  (define output-path (guix-drv:derivation-output-path output))
+  (canonicalize-output! drv-path output actual-path)
 
   ;; Like nixd, temporarily allow moving a canonicalized directory to its new parent.
   (define info (lstat actual-path))

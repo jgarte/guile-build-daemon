@@ -31,7 +31,7 @@
   #:use-module ((ice-9 format) #:select (format))
   #:use-module ((rnrs bytevectors) #:select (string->utf8))
   #:use-module ((system foreign) #:select (int pointer->procedure pointer->string))
-  #:use-module ((srfi srfi-1) #:select (any every filter))
+  #:use-module ((srfi srfi-1) #:select (any every filter find))
   #:use-module ((srfi srfi-11) #:select (let-values))
   #:export (realize-derivation! realize-path!
                                 &builder-exit-error builder-exit-error? builder-exit-error-derivation
@@ -135,12 +135,16 @@ Preserve failed sandbox outputs before reporting the builder's failure."
     (raise-exception (make-builder-exit-error drv-path status)))
 
   (define (prepare-output-info output-path)
+    (define output
+      (find (lambda (output) (string=? output-path (guix-drv:derivation-output-path output)))
+            (map cdr (guix-drv:derivation-outputs drv))))
+
     (let-values (((references hash nar-size)
                   (if sandbox
                       (prepare-sandboxed-output!
-                       drv-path output-path candidates
+                       drv-path output candidates
                        (string-append (sandbox-root sandbox) output-path))
-                      (prepare-output! drv-path output-path candidates))))
+                      (prepare-output! drv-path output candidates))))
       (database:make-output-info output-path hash nar-size references)))
 
   (call-with-output-error-logging log!
