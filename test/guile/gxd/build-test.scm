@@ -51,7 +51,7 @@
     (define output-path
       (call-with-http-server
        handler
-       (lambda (url)
+       (lambda (url _)
          (define drv
            (step! `(derivation "builtin-download" "builtin:download" ()
                                #:env-vars (("url" . ,(object->string url)))
@@ -87,7 +87,7 @@
 
     (call-with-http-server
      handler
-     (lambda (url)
+     (lambda (url _)
        (define drv
          (step! `(derivation "builtin-download-mismatch" "builtin:download" ()
                              #:env-vars (("url" . ,(object->string url)))
