@@ -6,8 +6,8 @@
 (define-module (gxd build realization)
   #:use-module (gxd prelude)
   #:use-module ((gxd build config)
-                #:select (build-store-directory build-directory-parent build-cores build-sandboxed?))
-  #:use-module ((gxd build execution) #:select (execute-builder!))
+                #:select (build-store-directory build-directory-parent build-sandboxed?))
+  #:use-module ((gxd build execution) #:select (execute-builder! execute-download!))
   #:use-module ((gxd build inputs) #:select (reference-candidates input-closure))
   #:use-module ((gxd build outputs)
                 #:select (prepare-output! prepare-sandboxed-output! preserve-failed-output!
@@ -25,7 +25,7 @@
   #:use-module ((gxd store-files) #:select (delete-path!))
   #:use-module ((guix derivations)
                 #:prefix guix-drv:
-                #:select (derivation-outputs derivation-output-path derivation-output-hash
+                #:select (derivation-outputs derivation-output-path derivation-output-hash derivation-builder
                           derivation-inputs derivation-input-derivation
                           derivation-input-sub-derivations))
   #:use-module ((guix build syscalls) #:select (mkdtemp!))
@@ -128,11 +128,20 @@ The caller excludes concurrent invalidation."
        #:unwind? #t))
    output-paths))
 
+(define (download-builder? drv)
+  (member (guix-drv:derivation-builder drv) '("builtin:download" "builtin:git-download")))
+
 (define (build-and-prepare-outputs! drv-path drv build-directory
                                     output-paths candidates config log! sandbox)
   "Execute DRV, prepare OUTPUT-PATHS, and return their metadata for registration.
 Preserve failed sandbox outputs before reporting the builder's failure."
-  (define status (execute-builder! drv build-directory sandbox config log!))
+  (define status
+    (if (download-builder? drv)
+        (let ((output-path (guix-drv:derivation-output-path
+                            (assoc-ref (guix-drv:derivation-outputs drv) "out"))))
+          (execute-download! drv-path output-path build-directory config log!))
+        (execute-builder! drv build-directory sandbox config log!)))
+
   (define exit-code (status:exit-val status))
   (define fixed-output? (if (fixed-output drv) #t #f))
 
@@ -176,7 +185,7 @@ The caller holds the output locks; CONFIG supplies execution settings."
                                    output-paths candidates config log! sandbox))
 
      (define output-infos
-       (if (build-sandboxed? config)
+       (if (and (build-sandboxed? config) (not (download-builder? drv)))
            (call-with-build-sandbox drv-path store-directory (input-closure db drv-path drv)
                                     30001 30000 prepare!)
            (prepare! #f)))
