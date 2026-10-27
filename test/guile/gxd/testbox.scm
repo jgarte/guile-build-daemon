@@ -322,7 +322,8 @@ ENVIRONMENT overrides inherited string name/value pairs in the child only."
          (source (get-in (testbox-manifest box) '(testbox/sources gxd))))
     (start-testbox-process! box 'daemon guix
                             (list "repl" "-L" (string-append source "/guile")
-                                  "--" (string-append source "/main.scm")))))
+                                  "--" (string-append source "/main.scm"))
+                            #:environment `(("GUIX" . ,guix)))))
 
 (define (start-guix-command! box role arguments)
   "Start Guix with ARGUMENTS as ROLE against BOX's daemon; return its process.
