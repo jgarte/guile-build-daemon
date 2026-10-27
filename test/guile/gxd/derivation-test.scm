@@ -5,15 +5,14 @@
 
 (define-module (gxd derivation-test)
   #:use-module ((ares suitbl core) #:select (define-suite is test))
-  #:use-module ((guix store) #:select (add-text-to-store direct-store-path valid-path? output-path))
+  #:use-module ((guix store) #:select (add-text-to-store direct-store-path valid-path?))
   #:use-module ((guix derivations)
                 #:select (derivation derivation-input derivation-file-name
                           derivation->output-paths derivation-inputs
                           derivation-input-path derivation-sources
-                          derivation-system derivation-builder
                           derivation-outputs derivation-output-path
                           derivation-output-hash derivation-output-hash-algo
-                          write-derivation read-derivation derivation-hash
+                          write-derivation
                           derivation-builder-environment-vars))
   #:use-module ((ice-9 match) #:select (match-let match-lambda match-lambda*))
   #:use-module ((srfi srfi-1) #:select (append-map alist-delete))
@@ -30,32 +29,6 @@
   "Return the serialized derivation for DRV."
   (call-with-output-string
    (lambda (port) (write-derivation drv port))))
-
-(define* (test-derivation #:key (output-names '("out")))
-  "Return a completed derivation named example with OUTPUT-NAMES, without store access."
-  (let* ((drv (call-with-input-string
-                  "Derive([(\"out\",\"\",\"\",\"\")],[],[],\"\",\"\",[],[])"
-                read-derivation))
-         (output (assoc-ref (derivation-outputs drv) "out"))
-         (names (sort output-names string<?))
-         (masked-outputs (map (lambda (name) (cons name output)) names))
-         (masked-env (map (lambda (name) (cons name "")) names))
-         (masked-drv
-          (set-fields drv
-            ((derivation-system) "x86_64-linux")
-            ((derivation-builder) "/bin/sh")
-            ((derivation-outputs) masked-outputs)
-            ((derivation-builder-environment-vars) masked-env)))
-         (hash (derivation-hash masked-drv))
-         (env (map (lambda (name) (cons name (output-path name hash "example"))) names))
-         (outputs
-          (map (match-lambda
-                 ((name . path)
-                  (cons name (set-fields output ((derivation-output-path) path)))))
-               env)))
-    (set-fields masked-drv
-      ((derivation-outputs) outputs)
-      ((derivation-builder-environment-vars) env))))
 
 (define (derivation-text-path name drv)
   "Return the text store path for DRV submitted under NAME."
