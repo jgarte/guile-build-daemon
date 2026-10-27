@@ -46,7 +46,7 @@
                                                    %worker-magic-1
                                                    %worker-magic-2
                                                    remote-procedure-id))
-  #:use-module ((guix serialization) #:select (boolean integer utf8-string
+  #:use-module ((guix serialization) #:select (boolean integer utf8-string string-list
                                                write-value))
   #:use-module ((ice-9 exceptions) #:select (raise-exception
                                              with-exception-handler))
@@ -77,6 +77,10 @@ Return the session options after the request."
   (define operation (protocol:read-integer connection))
 
   (cond
+   ((= operation (remote-procedure-id built-in-builders))
+    (protocol:write-completion connection)
+    (write-value string-list '("download" "git-download") connection))
+
    ((= operation (remote-procedure-id set-options))
     (call-with-option-error-reporting connection
       (lambda ()
