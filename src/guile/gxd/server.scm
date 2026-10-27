@@ -134,7 +134,8 @@ Return the session options after the request."
       (define status
         (cond
          ((builder-exit-error? cause) 100)
-         ((or (missing-output-error? cause) (output-permission-error? cause)) 1)
+         ((or (missing-output-error? cause) (output-permission-error? cause)
+              (database:invalid-reference? cause)) 1)
          (else (raise-exception exception))))
 
       (protocol:write-error

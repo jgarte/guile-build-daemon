@@ -197,6 +197,27 @@
 
     (observe-bytes!))
 
+  (test "a missing requested derivation is rejected and the connection stays usable" (ctx)
+    (define step! (get ctx 'step!))
+    (define observe-bytes! (get ctx 'observe-bytes!))
+    (define guile-store-path (direct-store-path (canonicalize-path (require-program "guile"))))
+    (define drv-path "/gnu/store/00000000000000000000000000000000-missing.drv")
+    (define expected-error
+      `((error/type . store-protocol-error)
+        (error/message . ,(string-append "build of `" drv-path "' failed"))
+        (error/status . 1)))
+
+    (is (eq? #f (step! `(valid-path? ,drv-path) #:connection 'build)))
+
+    (step! '(set-build-options #:use-substitutes? #f #:offload? #f #:max-build-jobs 1)
+           #:connection 'build)
+
+    (is (equal? expected-error (step! `(build-things (,drv-path)) #:connection 'build)))
+    (is (step! `(valid-path? ,guile-store-path) #:connection 'build #:terminal? #t)
+        "connection remained usable")
+
+    (observe-bytes!))
+
   (test "a builder that exits successfully without its output is rejected and the connection stays usable" (ctx)
     (define step! (get ctx 'step!))
     (define observe-db-path! (get ctx 'observe-db-path!))

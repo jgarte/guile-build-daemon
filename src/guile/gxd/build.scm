@@ -8,6 +8,7 @@
   #:use-module ((gxd build realization)
                 #:select (realize-path! builder-exit-error?))
   #:use-module ((gxd build outputs) #:select (missing-output-error? output-permission-error?))
+  #:use-module ((gxd database) #:select (invalid-reference? invalid-reference-path))
   #:use-module ((gxd store-path) #:select (store-path?))
   #:use-module ((guix remote-procedures) #:select (build-mode))
   #:use-module ((ice-9 exceptions)
@@ -22,12 +23,14 @@
   (cause build-request-error-cause))
 
 (define (call-with-build-error-handling path thunk)
-  "Call THUNK, reporting builder exits and output rejections as request failures for PATH."
+  "Call THUNK, reporting build failures for requested PATH."
   (with-exception-handler
     (lambda (exception)
       (if (or (builder-exit-error? exception)
               (missing-output-error? exception)
-              (output-permission-error? exception))
+              (output-permission-error? exception)
+              (and (invalid-reference? exception)
+                   (string=? path (invalid-reference-path exception))))
           (raise-exception (make-build-request-error path exception))
           (raise-exception exception)))
     thunk
