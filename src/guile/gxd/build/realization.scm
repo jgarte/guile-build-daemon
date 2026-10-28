@@ -103,16 +103,23 @@ Otherwise raise a substitution error identifying DRV-PATH."
 
 (define (substitute-outputs! db drv-path drv output-names config)
   "Substitute DRV's selected OUTPUT-NAMES when CONFIG and DRV permit it.
-Return 'substituted on success, or #f to continue toward building."
+Return 'substituted on success, 'incomplete-closure to realize inputs and retry,
+or #f to continue toward building."
   (let* ((environment (guix-drv:derivation-builder-environment-vars drv))
          (allow-substitutes (assoc-ref environment "allowSubstitutes")))
     (and (build-use-substitutes? config)
          (or (not allow-substitutes) (string=? allow-substitutes "1"))
          (call-with-substitution-fallback drv-path (options-fallback? (build-options config))
            (lambda ()
-             (and (every (lambda (path) (eq? 'satisfied (substitute-path! db path config)))
-                         (selected-output-paths db drv-path output-names))
-                  'substituted))))))
+             (define outcomes
+               (map (lambda (path) (substitute-path! db path config))
+                    (selected-output-paths db drv-path output-names)))
+
+             (cond
+              ((every (lambda (outcome) (eq? outcome 'satisfied)) outcomes)
+               'substituted)
+              ((memq 'incomplete-closure outcomes) 'incomplete-closure)
+              (else #f)))))))
 
 (define (realize-path! db drv-path config log!)
   "Realize registered DRV-PATH and its required input outputs.
@@ -126,10 +133,14 @@ The caller excludes concurrent invalidation."
     (if (requested-outputs-valid? db path output-names)
         'already-valid
         (let ((drv (call-with-input-file path read-derivation)))
-          (or (substitute-outputs! db path drv output-names config)
-              (begin
-                (for-each realize-input! (guix-drv:derivation-inputs drv))
-                (realize-derivation! db path drv config log!))))))
+          (case (substitute-outputs! db path drv output-names config)
+            ((substituted) 'substituted)
+            ((incomplete-closure)
+             (for-each realize-input! (guix-drv:derivation-inputs drv))
+             (realize-selected! path output-names))
+            (else
+             (for-each realize-input! (guix-drv:derivation-inputs drv))
+             (realize-derivation! db path drv config log!))))))
 
   (realize-selected! drv-path '()))
 
