@@ -88,11 +88,14 @@ The caller excludes concurrent invalidation."
                        (guix-drv:derivation-input-sub-derivations input)))
 
   (define (realize-selected! path output-names)
-    (if (requested-outputs-valid? db path output-names)
-        'already-valid
+    (cond
+     ((requested-outputs-valid? db path output-names) 'already-valid)
+     ((substitute-paths! db (selected-output-paths db path output-names) config)
+      'substituted)
+     (else
         (let ((drv (call-with-input-file path read-derivation)))
           (for-each realize-input! (guix-drv:derivation-inputs drv))
-          (realize-derivation! db path drv config log!))))
+          (realize-derivation! db path drv config log!)))))
 
   (realize-selected! drv-path '()))
 
