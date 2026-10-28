@@ -152,18 +152,18 @@
 
   (test "outside-store text references report an error and close the connection" (ctx)
     (call-with-paired-clients
-     (get ctx 'relay/left-endpoint)
-     (get ctx 'relay/right-endpoint)
-     (lambda (left right)
-       (is (chain '(add-text-to-store "b-name" "b-content" ("/outside"))
-             (paired-step! left right _)
-             (equal? '((error/type . store-protocol-error)
-                       (error/message . "path `/outside' is not in the store")
-                       (error/status . 1))
-                     _)))
+      (get ctx 'relay/left-endpoint)
+      (get ctx 'relay/right-endpoint)
+      (lambda (left right)
+        (is (chain '(add-text-to-store "b-name" "b-content" ("/outside"))
+              (paired-step! left right _)
+              (equal? '((error/type . store-protocol-error)
+                        (error/message . "path `/outside' is not in the store")
+                        (error/status . 1))
+                      _)))
 
-       (is (remote-eof? left))
-       (is (remote-eof? right))))
+        (is (remote-eof? left))
+        (is (remote-eof? right))))
 
     (match-let (((left-bytes right-bytes) ((get ctx 'observe-bytes!))))
       (is (bytevector=? left-bytes right-bytes)))))
@@ -271,25 +271,25 @@
     (let ((present (direct-store-path
                     (canonicalize-path (require-program "guix-daemon")))))
       (call-with-paired-clients
-       (get ctx 'relay/left-endpoint)
-       (get ctx 'relay/right-endpoint)
-       (lambda (left right)
-         (is (chain `(valid-path? ,present)
-               (paired-step! left right _)
-               (eq? #t _)))
+        (get ctx 'relay/left-endpoint)
+        (get ctx 'relay/right-endpoint)
+        (lambda (left right)
+          (is (chain `(valid-path? ,present)
+                (paired-step! left right _)
+                (eq? #t _)))
 
-         ;; The client sends 1/2 as "1/2"; the daemon validates the integer.
-         (is (chain '(set-build-options #:user-name #f #:terminal-columns #f
-                                        #:locale #f #:offload? #f
-                                        #:use-substitutes? #f #:timeout 1/2)
-               (paired-step! left right _)
-               (equal? '((error/type . store-protocol-error)
-                         (error/message . "configuration setting `build-timeout' should have an integer value")
-                         (error/status . 1))
-                       _)))
+          ;; The client sends 1/2 as "1/2"; the daemon validates the integer.
+          (is (chain '(set-build-options #:user-name #f #:terminal-columns #f
+                                         #:locale #f #:offload? #f
+                                         #:use-substitutes? #f #:timeout 1/2)
+                (paired-step! left right _)
+                (equal? '((error/type . store-protocol-error)
+                          (error/message . "configuration setting `build-timeout' should have an integer value")
+                          (error/status . 1))
+                        _)))
 
-         (is (remote-eof? left))
-         (is (remote-eof? right)))))
+          (is (remote-eof? left))
+          (is (remote-eof? right)))))
 
     (match-let (((left-bytes right-bytes) ((get ctx 'observe-bytes!))))
       (is (bytevector=? left-bytes right-bytes)))))
