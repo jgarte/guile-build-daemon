@@ -121,28 +121,30 @@ or #f to continue toward building."
               ((memq 'incomplete-closure outcomes) 'incomplete-closure)
               (else #f)))))))
 
-(define (realize-path! db drv-path config log!)
-  "Realize registered DRV-PATH and its required input outputs.
-Build all outputs when selected outputs are missing.
+(define* (realize-path! db drv-path config log! #:optional (output-names '()))
+  "Realize registered DRV-PATH's OUTPUT-NAMES and its required input outputs.
+An empty selection requests all outputs.  Build all outputs when selected
+outputs are missing.
 The caller excludes concurrent invalidation."
-  (define (realize-input! input)
-    (realize-selected! (guix-drv:derivation-input-derivation input)
-                       (guix-drv:derivation-input-sub-derivations input)))
 
-  (define (realize-selected! path output-names)
-    (if (requested-outputs-valid? db path output-names)
-        'already-valid
-        (let ((drv (call-with-input-file path read-derivation)))
-          (case (substitute-outputs! db path drv output-names config)
-            ((substituted) 'substituted)
-            ((incomplete-closure)
-             (for-each realize-input! (guix-drv:derivation-inputs drv))
-             (realize-selected! path output-names))
-            (else
-             (for-each realize-input! (guix-drv:derivation-inputs drv))
-             (realize-derivation! db path drv config log!))))))
+  (define (realize-inputs! drv)
+    (for-each
+     (lambda (input)
+       (realize-path! db (guix-drv:derivation-input-derivation input) config log!
+                      (guix-drv:derivation-input-sub-derivations input)))
+     (guix-drv:derivation-inputs drv)))
 
-  (realize-selected! drv-path '()))
+  (if (requested-outputs-valid? db drv-path output-names)
+      'already-valid
+      (let ((drv (call-with-input-file drv-path read-derivation)))
+        (case (substitute-outputs! db drv-path drv output-names config)
+          ((substituted) 'substituted)
+          ((incomplete-closure)
+           (realize-inputs! drv)
+           (realize-path! db drv-path config log! output-names))
+          (else
+           (realize-inputs! drv)
+           (realize-derivation! db drv-path drv config log!))))))
 
 (define (call-with-output-error-logging log! thunk)
   "Call THUNK, logging output rejection diagnostics through LOG! before re-raising."
