@@ -7,8 +7,10 @@
   #:use-module (gxd prelude)
   #:use-module ((gxd build config)
                 #:select (build-store-directory build-directory-parent build-sandboxed?
-                          build-use-substitutes?))
-  #:use-module ((gxd build substitutes) #:select (substitute-path!))
+                          build-use-substitutes? build-options))
+  #:use-module ((gxd build substitutes)
+                #:select (substitute-path! &substitution-failure))
+  #:use-module ((gxd session) #:select (options-fallback?))
   #:use-module ((gxd build execution) #:select (execute-builder! execute-download!))
   #:use-module ((gxd build inputs) #:select (reference-candidates input-closure))
   #:use-module ((gxd build outputs)
@@ -42,7 +44,13 @@
   #:use-module ((srfi srfi-11) #:select (let-values))
   #:export (realize-derivation! realize-path!
                                 &builder-exit-error builder-exit-error? builder-exit-error-derivation
-                                builder-exit-error-status builder-exit-error-fixed-output?))
+                                builder-exit-error-status builder-exit-error-fixed-output?
+                                derivation-substitution-error? derivation-substitution-error-path))
+
+(define-exception-type &derivation-substitution-error &error
+  make-derivation-substitution-error derivation-substitution-error?
+  (path derivation-substitution-error-path)
+  (cause derivation-substitution-error-cause))
 
 (define-exception-type &builder-exit-error &error
   make-builder-exit-error builder-exit-error?
@@ -81,6 +89,18 @@ the consuming derivation's reference-candidate check."
                  ((name . _) (or (null? names) (member name names))))
                (database:derivation-outputs db path))))
 
+(define (call-with-substitution-fallback drv-path fallback? thunk)
+  "Call THUNK, returning #f on substitution failure when FALLBACK? is true.
+Otherwise raise a substitution error identifying DRV-PATH."
+  (with-exception-handler
+    (lambda (exception)
+      (if fallback?
+          #f
+          (raise-exception (make-derivation-substitution-error drv-path exception))))
+    thunk
+    #:unwind? #t
+    #:unwind-for-type &substitution-failure))
+
 (define (substitute-outputs! db drv-path drv output-names config)
   "Substitute DRV's selected OUTPUT-NAMES when CONFIG and DRV permit it.
 Return 'substituted on success, or #f to continue toward building."
@@ -88,9 +108,11 @@ Return 'substituted on success, or #f to continue toward building."
          (allow-substitutes (assoc-ref environment "allowSubstitutes")))
     (and (build-use-substitutes? config)
          (or (not allow-substitutes) (string=? allow-substitutes "1"))
-         (every (lambda (path) (eq? 'satisfied (substitute-path! db path config)))
-                (selected-output-paths db drv-path output-names))
-         'substituted)))
+         (call-with-substitution-fallback drv-path (options-fallback? (build-options config))
+           (lambda ()
+             (and (every (lambda (path) (eq? 'satisfied (substitute-path! db path config)))
+                         (selected-output-paths db drv-path output-names))
+                  'substituted))))))
 
 (define (realize-path! db drv-path config log!)
   "Realize registered DRV-PATH and its required input outputs.
