@@ -6,7 +6,7 @@
 (define-module (gxd direct-steps)
   #:use-module ((ice-9 match) #:select (match))
   #:use-module ((guix store)
-                #:select (add-text-to-store
+                #:select (add-indirect-root add-text-to-store
                           add-to-store
                           build-things built-in-builders close-connection open-connection
                           &store-protocol-error store-protocol-error-message
@@ -37,6 +37,8 @@ Close both clients before returning or propagating an exception."
 (define (expression->procedure expression)
   (match expression
     (('built-in-builders) built-in-builders)
+    (('add-indirect-root (? string? path))
+     (lambda (store) (add-indirect-root store path)))
     (('valid-path? (? string? path))
      (lambda (store) (valid-path? store path)))
     (('add-to-store (? string? name) (? boolean? recursive?) (? string? hash-algo)
