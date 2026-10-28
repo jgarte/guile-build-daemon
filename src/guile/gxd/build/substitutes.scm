@@ -55,6 +55,13 @@ Return the NAR SHA256 and size for registration."
   (every (lambda (uri) (not (memq (uri-scheme uri) '(#f file))))
          (narinfo-uris info)))
 
+(define (fetch-output-info! info staged-path)
+  "Restore INFO at STAGED-PATH, returning its registration facts."
+  (let-values (((hash size) (download-verified! info staged-path)))
+    (database:make-output-info
+     (narinfo-path info) hash size
+     (sort (delete-duplicates (narinfo-reference-paths info)) string<?))))
+
 (define (install-substitute! db info config)
   "Verify INFO privately, then publish and register its store item.
 The caller holds its destination lock and excludes concurrent invalidation."
@@ -70,16 +77,12 @@ The caller holds its destination lock and excludes concurrent invalidation."
     (call-with-cleanup
      (lambda () (delete-path! directory))
      (lambda ()
-       (let-values (((hash size) (download-verified! info staged-path)))
-         (define output
-           (database:make-output-info
-            destination-path hash size
-            (sort (delete-duplicates (narinfo-reference-paths info)) string<?)))
+       (define output (fetch-output-info! info staged-path))
 
-         (delete-path! destination-path)
-         (rename-path! staged-path destination-path)
-         (database:register-outputs! db store-directory deriver-path (list output))
-         'substituted)))))
+       (delete-path! destination-path)
+       (rename-path! staged-path destination-path)
+       (database:register-outputs! db store-directory deriver-path (list output))
+       'substituted))))
 
 (define (substitute-path! db path config)
   "Substitute PATH after its runtime references, retaining completed registrations.
