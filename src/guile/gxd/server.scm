@@ -6,7 +6,10 @@
 (define-module (gxd server)
   #:use-module (gxd prelude)
   #:use-module ((gxd accounts) #:select (user-exists?))
-  #:use-module ((gxd roots) #:select (register-indirect-root!))
+  #:use-module ((gxd roots)
+                #:select (register-indirect-root! root-filesystem-error?
+                          root-filesystem-error-operation root-filesystem-error-paths
+                          root-filesystem-error-errno root-not-directory? root-not-directory-path))
   #:use-module ((gxd socket) #:select (peer-uid))
   #:use-module ((gxd session) #:select (&option-error option-error-message
                                         initial-options update-options
@@ -72,6 +75,18 @@
     (protocol:read-integer connection)
     version))
 
+(define (root-error-message exception)
+  (if (root-not-directory? exception)
+      (format #f "`~a' is not a directory" (root-not-directory-path exception))
+      (let ((context
+             (match (cons (root-filesystem-error-operation exception)
+                          (root-filesystem-error-paths exception))
+               (('mkdir path) (format #f "creating directory `~a'" path))
+               (('stat path) (format #f "statting symlink `~a'" path))
+               (('symlink target link) (format #f "creating symlink from `~a' to `~a'" link target))
+               (('rename source target) (format #f "cannot rename `~a' to `~a'" source target)))))
+        (string-append context ": " (strerror (root-filesystem-error-errno exception))))))
+
 (define (serve-request connection store-directory db options trusted? guix-program environment)
   "Serve one request on CONNECTION using STORE-DIRECTORY, DB, OPTIONS and TRUSTED?.
 Return the session options after the request."
@@ -80,9 +95,16 @@ Return the session options after the request."
   (cond
    ((= operation (remote-procedure-id add-indirect-root))
     (let ((path (protocol:read-string connection)))
-      (register-indirect-root! %state-directory path)
-      (protocol:write-completion connection)
-      (write-value boolean #t connection)))
+      (with-exception-handler
+        (lambda (exception)
+          (if (or (root-filesystem-error? exception) (root-not-directory? exception))
+              (protocol:write-error (root-error-message exception) 1 connection)
+              (raise-exception exception)))
+        (lambda ()
+          (register-indirect-root! %state-directory path)
+          (protocol:write-completion connection)
+          (write-value boolean #t connection))
+        #:unwind? #t)))
 
    ((= operation (remote-procedure-id built-in-builders))
     (protocol:write-completion connection)
