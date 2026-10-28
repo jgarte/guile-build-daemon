@@ -48,7 +48,7 @@
                                                    remote-procedure-id))
   #:use-module ((guix serialization) #:select (boolean integer utf8-string string-list
                                                write-value))
-  #:use-module ((ice-9 exceptions) #:select (raise-exception
+  #:use-module ((ice-9 exceptions) #:select (raise-exception exception-kind exception-args
                                              with-exception-handler))
   #:use-module ((ice-9 match) #:select (match))
   #:use-module ((ice-9 format) #:select (format))
@@ -234,12 +234,37 @@ These errors end the request, not the client session; other exceptions propagate
         (set! options
               (serve-request connection store-directory db options trusted? guix-program environment))))))
 
+(define (serve-connection listener connection use-chroot? guix-program environment)
+  "Fork a handler for CONNECTION, closing the child's copy of LISTENER.
+The caller retains and closes its own copy of CONNECTION."
+  (flush-all-ports)
+  (when (zero? (primitive-fork))
+    (with-exception-handler
+      (lambda (exception)
+        (false-if-exception
+         (print-exception (current-error-port) #f
+                          (exception-kind exception) (exception-args exception)))
+        (primitive-_exit 1))
+      (lambda ()
+        (close-port listener)
+        (setsid)
+        (sigaction SIGCHLD SIG_DFL)
+        (serve-client connection %store-directory
+                      (string-append %store-database-directory "/db.sqlite")
+                      use-chroot? guix-program environment)
+        (primitive-_exit 0))
+      #:unwind? #t)))
+
 (define* (run-server socket-path guix-program environment #:optional (use-chroot? #t))
-  "Serve one client session at SOCKET-PATH; USE-CHROOT? selects build sandboxing."
-  (define listener (socket AF_UNIX SOCK_STREAM 0))
+  "Serve concurrent client sessions at SOCKET-PATH, one process per connection.
+USE-CHROOT? selects build sandboxing."
+  (define listener (socket AF_UNIX (logior SOCK_STREAM SOCK_CLOEXEC) 0))
 
   ;; Make new files and directories non-group/world-writable, as in nixd.
   (umask #o022)
+
+  ;; The listener owns no child statuses.  Handlers restore normal waiting.
+  (sigaction SIGCHLD SIG_IGN)
 
   (with-exception-handler
     (lambda (exception)
@@ -258,12 +283,12 @@ These errors end the request, not the client session; other exceptions propagate
      (close-port listener)
      (delete-file socket-path))
    (lambda ()
-     (listen listener 1)
-     (match (accept listener)
-       ((connection . _)
-        (call-with-cleanup
-         (lambda () (close-port connection))
-         (lambda ()
-           (serve-client connection %store-directory
-                         (string-append %store-database-directory "/db.sqlite")
-                         use-chroot? guix-program environment))))))))
+     (listen listener 128)
+     (while #t
+       (match (accept listener)
+         ((connection . _)
+          (call-with-cleanup
+           (lambda () (close-port connection))
+           (lambda ()
+             (fcntl connection F_SETFD FD_CLOEXEC)
+             (serve-connection listener connection use-chroot? guix-program environment)))))))))
