@@ -6,7 +6,7 @@
 (define-module (gxd build substitutes-test)
   #:use-module (gxd test-prelude)
   #:use-module ((gxd build config) #:select (build-config))
-  #:use-module ((gxd build substitutes) #:select (substitute-paths!))
+  #:use-module ((gxd build substitutes) #:select (substitute-path!))
   #:use-module ((guix narinfo) #:select (read-narinfo))
   #:use-module ((guix serialization) #:select (write-file))
   #:use-module ((guix store deduplication) #:select (nar-sha256))
@@ -47,14 +47,11 @@
                    (string-append directory "/rejected")))))))))))
 
 (define-suite (substitute-tests)
-  (test "disabled substitution does not access the database or network" ()
-    (is (not (substitute-paths! #f '("unused")
-                                (build-config #:use-substitutes? #f)))))
-  (test "a missing substitute returns false without creating files" ()
+  (test "a missing substitute is unavailable without creating files" ()
     (call-with-empty-database
      (lambda (db directory)
        (parameterize ((substitute-urls '()))
-         (is (not (substitute-paths!
-                   db (list (string-append directory "/missing"))
-                   (build-config #:use-substitutes? #t
-                                 #:store-directory "/does-not-exist")))))))))
+         (is (eq? 'unavailable (substitute-path!
+                                db (string-append directory "/missing")
+                                (build-config #:use-substitutes? #t
+                                              #:store-directory "/does-not-exist")))))))))
