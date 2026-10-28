@@ -19,6 +19,22 @@
               path nar (bytevector->nix-base32-string hash) size)
     read-narinfo))
 
+(define-suite (substitute-download-tests)
+  (test "a local substitute is hash-checked and restored" ()
+    (call-with-empty-database
+     (lambda (db directory)
+       (let ((source (string-append directory "/source"))
+             (nar (string-append directory "/item.nar"))
+             (destination (string-append directory "/restored")))
+         (call-with-output-file source (lambda (port) (display "contents" port)))
+         (call-with-output-file nar (lambda (port) (write-file source port)))
+         (call-with-values (lambda () (nar-sha256 source))
+           (lambda (hash size)
+             ((@@ (gxd build substitutes) download-verified!)
+              (local-narinfo "/gnu/store/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa-item"
+                             nar hash size) destination)
+             (is (eq? 'contents (call-with-input-file destination read))))))))))
+
 (define-suite (substitute-tests)
   (test "disabled substitution does not access the database or network" ()
     (is (not (substitute-paths! #f '("unused")
