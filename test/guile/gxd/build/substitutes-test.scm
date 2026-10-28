@@ -11,6 +11,7 @@
   #:use-module ((ice-9 format) #:select (format))
   #:use-module ((gxd test-database) #:select (call-with-empty-database))
   #:use-module ((guix scripts substitute) #:select (substitute-urls))
+  #:use-module ((ares suitbl checks) #:select (throws-exception?))
   #:use-module ((ares suitbl core) #:select (define-suite test is)))
 
 (define (local-narinfo path nar hash size)
@@ -33,7 +34,14 @@
              ((@@ (gxd build substitutes) download-verified!)
               (local-narinfo "/gnu/store/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa-item"
                              nar hash size) destination)
-             (is (eq? 'contents (call-with-input-file destination read))))))))))
+             (is (eq? 'contents (call-with-input-file destination read)))
+             (call-with-output-file source (lambda (port) (display "tampered" port)))
+             (call-with-output-file nar (lambda (port) (write-file source port)))
+             (is (throws-exception?
+                  ((@@ (gxd build substitutes) download-verified!)
+                   (local-narinfo "/gnu/store/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa-item"
+                                  nar hash size)
+                   (string-append directory "/rejected")))))))))))
 
 (define-suite (substitute-tests)
   (test "disabled substitution does not access the database or network" ()
