@@ -28,6 +28,29 @@
     (and (memq socket (car (select (list socket) '() '() 5)))
          (eof-object? (lookahead-u8 socket)))))
 
+(define-suite (server-concurrent-session-tests)
+  'metadata `((test/fixtures
+               . ,(list (client-trust-fixture #f)
+                        (paired-daemon-testboxes-fixture 'rootless 'nixd 'gxd)
+                        paired-relay-observers-fixture)))
+
+  (test "two open client sessions remain usable when requests are interleaved" (ctx)
+    (define left-endpoint (get ctx 'relay/left-endpoint))
+    (define right-endpoint (get ctx 'relay/right-endpoint))
+    (define query
+      `(valid-path? ,(direct-store-path (canonicalize-path (require-program "guix")))))
+
+    (call-with-paired-clients
+      left-endpoint right-endpoint
+      (lambda (left-a right-a)
+        (is (paired-step! left-a right-a query))
+        (call-with-paired-clients
+          left-endpoint right-endpoint
+          (lambda (left-b right-b)
+            (is (paired-step! left-b right-b query))
+            (is (paired-step! left-a right-a query))
+            (is (paired-step! left-b right-b query))))))))
+
 (define-suite (server-builtin-tests)
   'metadata `((test/fixtures . ,(paired-testbox-fixtures 'rootless 'nixd 'gxd)))
 
