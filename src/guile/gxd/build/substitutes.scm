@@ -7,6 +7,7 @@
   #:use-module (gxd path-locks)
   #:use-module (gxd store-files)
   #:use-module (guix narinfo)
+  #:use-module ((gcrypt hash) #:select (hash-algorithm sha256))
   #:use-module (guix substitutes)
   #:use-module ((guix scripts substitute) #:select (substitute-urls))
   #:use-module ((guix build syscalls) #:select (mkdtemp!))
@@ -34,7 +35,7 @@
   "Restore INFO at private DESTINATION; reject unsupported or mismatched hashes."
   (call-with-values (lambda () (narinfo-hash-algorithm+value info))
     (lambda (algorithm hash)
-      (unless (eq? algorithm 'sha256)
+      (unless (= algorithm (hash-algorithm sha256))
         (error "unsupported substitute hash algorithm" algorithm))))
   (call-with-values (lambda () (download-nar info destination))
     (lambda (expected actual)
