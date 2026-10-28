@@ -9,7 +9,7 @@
   #:use-module ((ice-9 ftw) #:select (scandir))
   #:use-module ((ice-9 exceptions)
                 #:select (&error define-exception-type raise-exception))
-  #:export (delete-path! canonicalize-metadata! secure-file-permissions!
+  #:export (delete-path! rename-path! canonicalize-metadata! secure-file-permissions!
                          &unsupported-file-type-error unsupported-file-type-error?
                          unsupported-file-type-error-path unsupported-file-type-error-type))
 
@@ -58,6 +58,18 @@ Preserve mtimes and other permission bits; propagate filesystem errors."
      (chmod path (logand (stat:perms info) (lognot #o6002))))
     (else
      (raise-exception (make-unsupported-file-type-error path (stat:type info))))))
+
+(define (rename-path! source destination)
+  "Move SOURCE to DESTINATION, preserving its permissions.
+SOURCE belongs to the caller and has no concurrent writers.  Errors propagate
+and may leave changed permissions or the item at DESTINATION."
+  (define info (lstat source))
+  (define directory? (eq? 'directory (stat:type info)))
+
+  ;; Moving a read-only directory to a new parent requires owner write permission.
+  (when directory? (chmod source (logior (stat:perms info) #o700)))
+  (rename-file source destination)
+  (when directory? (chmod destination (stat:perms info))))
 
 (define (delete-path! path)
   "Remove PATH without following symlinks; do nothing if it is absent.
