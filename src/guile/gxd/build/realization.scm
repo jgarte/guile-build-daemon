@@ -6,8 +6,9 @@
 (define-module (gxd build realization)
   #:use-module (gxd prelude)
   #:use-module ((gxd build config)
-                #:select (build-store-directory build-directory-parent build-sandboxed?))
-  #:use-module ((gxd build substitutes) #:select (substitute-paths!))
+                #:select (build-store-directory build-directory-parent build-sandboxed?
+                          build-use-substitutes?))
+  #:use-module ((gxd build substitutes) #:select (substitute-path!))
   #:use-module ((gxd build execution) #:select (execute-builder! execute-download!))
   #:use-module ((gxd build inputs) #:select (reference-candidates input-closure))
   #:use-module ((gxd build outputs)
@@ -90,7 +91,10 @@ The caller excludes concurrent invalidation."
   (define (realize-selected! path output-names)
     (cond
      ((requested-outputs-valid? db path output-names) 'already-valid)
-     ((substitute-paths! db (selected-output-paths db path output-names) config)
+     ((and (build-use-substitutes? config)
+           (every (lambda (output-path)
+                    (eq? 'satisfied (substitute-path! db output-path config)))
+                  (selected-output-paths db path output-names)))
       'substituted)
      (else
       (let ((drv (call-with-input-file path read-derivation)))
