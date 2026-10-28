@@ -11,7 +11,8 @@
   #:use-module ((gxd path-locks) #:select (call-with-destination-locks))
   #:use-module ((gxd store-files) #:select (delete-path! rename-path!))
   #:use-module ((guix narinfo) #:select (valid-narinfo? narinfo-references narinfo-path
-                                         narinfo-size narinfo-hash-algorithm+value narinfo-deriver))
+                                         narinfo-size narinfo-hash-algorithm+value narinfo-deriver
+                                         narinfo-uris))
   #:use-module ((gcrypt hash) #:select (hash-algorithm sha256))
   #:use-module ((guix substitutes) #:select (lookup-narinfos/diverse download-nar))
   #:use-module ((guix scripts substitute) #:select (substitute-urls))
@@ -19,7 +20,8 @@
   #:use-module ((guix build syscalls) #:select (mkdtemp!))
   #:use-module ((rnrs bytevectors) #:select (bytevector=?))
   #:use-module ((srfi srfi-11) #:select (let-values))
-  #:use-module ((srfi srfi-1) #:select (filter delete-duplicates))
+  #:use-module ((srfi srfi-1) #:select (filter delete-duplicates every))
+  #:use-module ((web uri) #:select (uri-scheme))
   #:export (substitute-paths!))
 
 (define (narinfo-reference-paths info)
@@ -56,9 +58,16 @@ Return the NAR SHA256 and size for registration."
         (values actual (narinfo-size info))
         (nar-sha256 destination))))
 
+(define (narinfo-uris-safe? info)
+  (every (lambda (uri) (not (memq (uri-scheme uri) '(#f file))))
+         (narinfo-uris info)))
+
 (define (install-substitute! db info config)
   "Verify INFO privately, then publish and register its store item.
 The caller holds its destination lock and excludes concurrent invalidation."
+  ;; Archive URLs are not covered by the narinfo's signed content hash.
+  (unless (narinfo-uris-safe? info)
+    (error "unsafe substitute archive URL" (narinfo-path info)))
   (let* ((destination-path (narinfo-path info))
          (store-directory (build-store-directory config))
          (deriver (narinfo-deriver info))
