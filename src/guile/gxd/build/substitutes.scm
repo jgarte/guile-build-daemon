@@ -11,7 +11,7 @@
   #:use-module ((guix scripts substitute) #:select (substitute-urls))
   #:use-module ((guix build syscalls) #:select (mkdtemp!))
   #:use-module ((rnrs bytevectors) #:select (bytevector=?))
-  #:use-module ((srfi srfi-1) #:select (every filter)))
+  #:use-module ((srfi srfi-1) #:select (every filter delete-duplicates)))
 
 (define (lookup-closure db paths)
   "Return trusted narinfos for missing PATHS and references, or #f on a miss."
@@ -29,3 +29,18 @@
                (set! result (cons info result))))))
        (for-each visit paths)
        (reverse result)))))
+
+(define (download-verified! info destination)
+  "Restore INFO at private DESTINATION; reject unsupported or mismatched hashes."
+  (call-with-values (lambda () (narinfo-hash-algorithm+value info))
+    (lambda (algorithm hash)
+      (unless (eq? algorithm 'sha256)
+        (error "unsupported substitute hash algorithm" algorithm))))
+  (call-with-values (lambda () (download-nar info destination))
+    (lambda (expected actual)
+      (unless (bytevector=? expected actual)
+        (error "substitute hash mismatch" (narinfo-path info)))
+      (canonicalize-metadata! destination)
+      (database:make-output-info
+       (narinfo-path info) actual (narinfo-size info)
+       (sort (delete-duplicates (narinfo-references info)) string<?)))))
