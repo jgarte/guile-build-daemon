@@ -5,7 +5,8 @@
 
 (define-module (gxd build outputs)
   #:use-module ((gxd references) #:select (scan-nar))
-  #:use-module ((gxd store-files) #:select (canonicalize-metadata! secure-file-permissions!))
+  #:use-module ((gxd store-files) #:select (canonicalize-metadata! secure-file-permissions!
+                                            rename-path!))
   #:use-module ((gcrypt hash) #:select (lookup-hash-algorithm))
   #:use-module ((guix build utils) #:select (false-if-file-not-found))
   #:use-module ((guix derivations) #:prefix guix-drv:
@@ -114,11 +115,6 @@ caller.  Failure after the move leaves the output at its declared path."
   (define output-path (guix-drv:derivation-output-path output))
   (canonicalize-output! drv-path output actual-path)
 
-  ;; Like nixd, temporarily allow moving a canonicalized directory to its new parent.
-  (define info (lstat actual-path))
-  (define directory? (eq? 'directory (stat:type info)))
-  (when directory? (chmod actual-path (logior (stat:perms info) #o700)))
-  (rename-file actual-path output-path)
-  (when directory? (chmod output-path (stat:perms info)))
+  (rename-path! actual-path output-path)
 
   (scan-nar output-path candidates))
