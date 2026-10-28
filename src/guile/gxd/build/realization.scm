@@ -93,9 +93,9 @@ The caller excludes concurrent invalidation."
      ((substitute-paths! db (selected-output-paths db path output-names) config)
       'substituted)
      (else
-        (let ((drv (call-with-input-file path read-derivation)))
-          (for-each realize-input! (guix-drv:derivation-inputs drv))
-          (realize-derivation! db path drv config log!)))))
+      (let ((drv (call-with-input-file path read-derivation)))
+        (for-each realize-input! (guix-drv:derivation-inputs drv))
+        (realize-derivation! db path drv config log!)))))
 
   (realize-selected! drv-path '()))
 
