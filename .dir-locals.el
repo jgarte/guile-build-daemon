@@ -56,6 +56,7 @@
      (eval . (put 'call-with-input-string 'scheme-indent-function 1))
      (eval . (put 'call-with-input-file 'scheme-indent-function 1))
      (eval . (put 'call-with-client 'scheme-indent-function 1))
+     (eval . (put 'call-with-paired-clients 'scheme-indent-function 0))
      (eval . (put 'call-with-destination-lock 'scheme-indent-function 1))
      (eval . (put 'call-with-destination-locks 'scheme-indent-function 1))
      (eval . (put 'call-with-option-error-reporting 'scheme-indent-function 1))
