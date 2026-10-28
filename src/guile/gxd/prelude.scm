@@ -9,9 +9,15 @@
   #:use-module ((srfi srfi-2) #:select (and-let*))
   #:use-module ((srfi srfi-197) #:select (chain))
   #:use-module ((ice-9 match) #:select (match-lambda*))
+  #:use-module ((ice-9 ftw) #:select (scandir))
   #:re-export (and-let* chain)
-  #:export (comment get get-in call-with-cleanup binding-name<? todo!
+  #:export (comment get get-in call-with-cleanup binding-name<? directory-children todo!
                     &todo todo? todo-feature todo-context))
+
+(define (directory-children path)
+  "Return PATH's child paths in name order, excluding . and .."
+  (map (lambda (name) (string-append path "/" name))
+       (scandir path (lambda (name) (not (member name '("." "..")))))))
 
 (define binding-name<?
   (match-lambda*
