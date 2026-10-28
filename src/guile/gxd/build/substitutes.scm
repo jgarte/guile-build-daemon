@@ -17,8 +17,11 @@
   #:use-module ((guix substitutes) #:select (lookup-narinfos/diverse download-nar))
   #:use-module ((guix scripts substitute) #:select (substitute-urls))
   #:use-module ((guix store deduplication) #:select (nar-sha256))
+  #:use-module ((guix http-client) #:select (http-get-error? network-error?))
+  #:use-module ((guix serialization) #:select (nar-error?))
   #:use-module ((guix build syscalls) #:select (mkdtemp!))
-  #:use-module ((ice-9 exceptions) #:select (&error define-exception-type raise-exception))
+  #:use-module ((ice-9 exceptions)
+                #:select (&error define-exception-type raise-exception with-exception-handler))
   #:use-module ((ice-9 match) #:select (match))
   #:use-module ((rnrs bytevectors) #:select (bytevector=?))
   #:use-module ((srfi srfi-11) #:select (let-values))
@@ -33,6 +36,13 @@
 (define-exception-type &unsafe-substitute-uri &error
   make-unsafe-substitute-uri unsafe-substitute-uri?
   (path unsafe-substitute-uri-path))
+
+;; Abort the current derivation's output-substitution attempt; its realizer
+;; decides whether to fall back to building.  Keep completed registrations.
+(define-exception-type &substitution-failure &error
+  make-substitution-failure substitution-failure?
+  (path substitution-failure-path)
+  (cause substitution-failure-cause))
 
 (define (narinfo-reference-paths info)
   "Return INFO's references as full paths in its store directory."
@@ -55,9 +65,25 @@ Return the NAR SHA256 and size for registration."
   (every (lambda (uri) (not (memq (uri-scheme uri) '(#f file))))
          (narinfo-uris info)))
 
+(define (call-with-substitution-failure-handling path thunk)
+  "Call THUNK, wrapping recognized fetch errors as substitution failures for PATH."
+  (with-exception-handler
+    (lambda (exception)
+      (if (or (substitute-hash-mismatch? exception)
+              (http-get-error? exception)
+              (network-error? exception)
+              (nar-error? exception))
+          (raise-exception (make-substitution-failure path exception))
+          (raise-exception exception)))
+    thunk
+    #:unwind? #t))
+
 (define (fetch-output-info! info staged-path)
-  "Restore INFO at STAGED-PATH, returning its registration facts."
-  (let-values (((hash size) (download-verified! info staged-path)))
+  "Restore INFO at STAGED-PATH, returning its registration facts.
+Raise a substitution failure for recognized transfer or integrity errors."
+  (let-values (((hash size)
+                (call-with-substitution-failure-handling (narinfo-path info)
+                  (lambda () (download-verified! info staged-path)))))
     (database:make-output-info
      (narinfo-path info) hash size
      (sort (delete-duplicates (narinfo-reference-paths info)) string<?))))
@@ -67,7 +93,9 @@ Return the NAR SHA256 and size for registration."
 The caller holds its destination lock and excludes concurrent invalidation."
   ;; Archive URLs are not covered by the narinfo's signed content hash.
   (unless (narinfo-uris-safe? info)
-    (raise-exception (make-unsafe-substitute-uri (narinfo-path info))))
+    (raise-exception
+     (make-substitution-failure
+      (narinfo-path info) (make-unsafe-substitute-uri (narinfo-path info)))))
   (let* ((destination-path (narinfo-path info))
          (store-directory (build-store-directory config))
          (deriver (narinfo-deriver info))
@@ -86,8 +114,8 @@ The caller holds its destination lock and excludes concurrent invalidation."
 
 (define (substitute-path! db path config)
   "Substitute PATH after its runtime references, retaining completed registrations.
-Return 'satisfied, 'unavailable, or 'incomplete-closure.  The caller excludes
-concurrent invalidation; transfer and integrity errors propagate."
+Return 'satisfied, 'unavailable, or 'incomplete-closure.
+The caller excludes concurrent invalidation.  Errors propagate."
   (if (database:valid-path? db path)
       'satisfied
       (match (lookup-narinfos/diverse (substitute-urls) (list path) valid-narinfo?)
