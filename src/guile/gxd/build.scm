@@ -48,6 +48,8 @@ The caller excludes concurrent GC."
   (unless (= (config-build-mode config) (build-mode normal))
     (todo! "non-normal build modes" (config-build-mode config)))
 
+  (set! paths (delete-duplicates paths string=?))
+
   (for-each
    (lambda (path)
      (cond
@@ -60,7 +62,6 @@ The caller excludes concurrent GC."
    paths)
 
   (chain paths
-    (delete-duplicates _ string=?)
     (sort _ string<?)
     (for-each
      (lambda (path)
