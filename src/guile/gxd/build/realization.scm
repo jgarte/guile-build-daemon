@@ -7,6 +7,7 @@
   #:use-module (gxd prelude)
   #:use-module ((gxd build config)
                 #:select (build-store-directory build-directory-parent build-sandboxed?))
+  #:use-module ((gxd build substitutes) #:select (substitute-paths!))
   #:use-module ((gxd build execution) #:select (execute-builder! execute-download!))
   #:use-module ((gxd build inputs) #:select (reference-candidates input-closure))
   #:use-module ((gxd build outputs)
@@ -71,6 +72,12 @@ the consuming derivation's reference-candidate check."
           (database:valid-path? db path)
           #t)))
    (database:derivation-outputs db drv-path)))
+
+(define (selected-output-paths db path names)
+  (map cdr
+       (filter (match-lambda
+                 ((name . _) (or (null? names) (member name names))))
+               (database:derivation-outputs db path))))
 
 (define (realize-path! db drv-path config log!)
   "Realize registered DRV-PATH and its required input outputs.
