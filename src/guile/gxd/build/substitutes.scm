@@ -45,3 +45,20 @@
       (database:make-output-info
        (narinfo-path info) actual (narinfo-size info)
        (sort (delete-duplicates (narinfo-references info)) string<?)))))
+
+(define (install-closure! db infos config)
+  "Verify INFOS privately, then publish and register them under destination locks."
+  (define directory
+    (mkdtemp! (string-append (build-store-directory config) "/.substitute.XXXXXX")))
+  (define (staged info)
+    (string-append directory "/" (basename (narinfo-path info))))
+  (call-with-cleanup
+   (lambda () (delete-path! directory))
+   (lambda ()
+     (define outputs (map (lambda (info) (download-verified! info (staged info))) infos))
+     (for-each (lambda (info)
+                 (delete-path! (narinfo-path info))
+                 (rename-file (staged info) (narinfo-path info)))
+               infos)
+     (database:register-outputs! db (build-store-directory config) #f outputs)
+     'substituted)))
