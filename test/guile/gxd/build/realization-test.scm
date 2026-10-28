@@ -49,8 +49,14 @@
        (proc db store-directory dev-path out-path
              (lambda (drv)
                (realize-derivation! db drv-path drv
-                                    (build-config 0 store-directory directory 1 #f
-                                                  (require-program "guix") '() (initial-options #f #f))
+                                    (build-config #:mode 0
+                                                  #:store-directory store-directory
+                                                  #:directory-parent directory
+                                                  #:cores 1
+                                                  #:sandboxed? #f
+                                                  #:guix-program (require-program "guix")
+                                                  #:environment '()
+                                                  #:options (initial-options #f #f))
                                     (lambda (_) #t))))))))
 
 (define-suite (realize-tests)

@@ -167,9 +167,14 @@ Return the session options after the request."
       (call-with-build-error-reporting connection
         (lambda ()
           (build-paths! db paths
-                        (build-config mode store-directory build-directory-parent
-                                      (options-build-cores options) (options-use-chroot? options)
-                                      guix-program environment options)
+                        (build-config #:mode mode
+                                      #:store-directory store-directory
+                                      #:directory-parent build-directory-parent
+                                      #:cores (options-build-cores options)
+                                      #:sandboxed? (options-use-chroot? options)
+                                      #:guix-program guix-program
+                                      #:environment environment
+                                      #:options options)
                         log!)
 
           (protocol:write-completion connection)

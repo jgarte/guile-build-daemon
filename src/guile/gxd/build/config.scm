@@ -9,7 +9,7 @@
                          build-guix-program build-daemon-environment build-options))
 
 (define-record-type <build-config>
-  (build-config mode store-directory directory-parent cores sandboxed? guix-program environment options)
+  (build-config-positional mode store-directory directory-parent cores sandboxed? guix-program environment options)
   build-config?
   (mode build-mode)
   (store-directory build-store-directory)
@@ -19,3 +19,9 @@
   (guix-program build-guix-program)
   (environment build-daemon-environment)
   (options build-options))
+
+(define* (build-config #:key mode store-directory directory-parent cores sandboxed?
+                       guix-program environment options)
+  "Return a build configuration with fields supplied by keyword."
+  (build-config-positional mode store-directory directory-parent cores sandboxed?
+                           guix-program environment options))
