@@ -29,6 +29,7 @@
                 #:prefix guix-drv:
                 #:select (derivation-outputs derivation-output-path derivation-output-hash derivation-builder
                           derivation-inputs derivation-input-derivation
+                          derivation-builder-environment-vars
                           derivation-input-sub-derivations))
   #:use-module ((guix build syscalls) #:select (mkdtemp!))
   #:use-module ((ice-9 match) #:select (match-lambda))
@@ -80,6 +81,17 @@ the consuming derivation's reference-candidate check."
                  ((name . _) (or (null? names) (member name names))))
                (database:derivation-outputs db path))))
 
+(define (substitute-outputs! db drv-path drv output-names config)
+  "Substitute DRV's selected OUTPUT-NAMES when CONFIG and DRV permit it.
+Return 'substituted on success, or #f to continue toward building."
+  (let* ((environment (guix-drv:derivation-builder-environment-vars drv))
+         (allow-substitutes (assoc-ref environment "allowSubstitutes")))
+    (and (build-use-substitutes? config)
+         (or (not allow-substitutes) (string=? allow-substitutes "1"))
+         (every (lambda (path) (eq? 'satisfied (substitute-path! db path config)))
+                (selected-output-paths db drv-path output-names))
+         'substituted)))
+
 (define (realize-path! db drv-path config log!)
   "Realize registered DRV-PATH and its required input outputs.
 Build all outputs when selected outputs are missing.
@@ -89,17 +101,13 @@ The caller excludes concurrent invalidation."
                        (guix-drv:derivation-input-sub-derivations input)))
 
   (define (realize-selected! path output-names)
-    (cond
-     ((requested-outputs-valid? db path output-names) 'already-valid)
-     ((and (build-use-substitutes? config)
-           (every (lambda (output-path)
-                    (eq? 'satisfied (substitute-path! db output-path config)))
-                  (selected-output-paths db path output-names)))
-      'substituted)
-     (else
-      (let ((drv (call-with-input-file path read-derivation)))
-        (for-each realize-input! (guix-drv:derivation-inputs drv))
-        (realize-derivation! db path drv config log!)))))
+    (if (requested-outputs-valid? db path output-names)
+        'already-valid
+        (let ((drv (call-with-input-file path read-derivation)))
+          (or (substitute-outputs! db path drv output-names config)
+              (begin
+                (for-each realize-input! (guix-drv:derivation-inputs drv))
+                (realize-derivation! db path drv config log!))))))
 
   (realize-selected! drv-path '()))
 
