@@ -9,9 +9,9 @@
   #:use-module ((gxd database) #:prefix database:
                 #:select (valid-path? make-output-info register-outputs!))
   #:use-module ((gxd path-locks) #:select (call-with-destination-locks))
-  #:use-module ((gxd store-files) #:select (delete-path!))
+  #:use-module ((gxd store-files) #:select (delete-path! rename-path!))
   #:use-module ((guix narinfo) #:select (valid-narinfo? narinfo-references narinfo-path
-                                         narinfo-size narinfo-hash-algorithm+value))
+                                         narinfo-size narinfo-hash-algorithm+value narinfo-deriver))
   #:use-module ((gcrypt hash) #:select (hash-algorithm sha256))
   #:use-module ((guix substitutes) #:select (lookup-narinfos/diverse download-nar))
   #:use-module ((guix scripts substitute) #:select (substitute-urls))
@@ -56,31 +56,28 @@ Return the NAR SHA256 and size for registration."
         (values actual (narinfo-size info))
         (nar-sha256 destination))))
 
-(define (install-closure! db infos config)
-  "Verify INFOS privately, then publish and register them under destination locks."
-  (define directory
-    (mkdtemp! (string-append (build-store-directory config) "/.substitute.XXXXXX")))
+(define (install-substitute! db info config)
+  "Verify INFO privately, then publish and register its store item.
+The caller holds its destination lock and excludes concurrent invalidation."
+  (let* ((destination-path (narinfo-path info))
+         (store-directory (build-store-directory config))
+         (deriver (narinfo-deriver info))
+         (deriver-path (and deriver (string-append (dirname destination-path) "/" deriver)))
+         (directory (mkdtemp! (string-append store-directory "/.substitute.XXXXXX")))
+         (staged-path (string-append directory "/restored")))
+    (call-with-cleanup
+     (lambda () (delete-path! directory))
+     (lambda ()
+       (let-values (((hash size) (download-verified! info staged-path)))
+         (define output
+           (database:make-output-info
+            destination-path hash size
+            (sort (delete-duplicates (narinfo-reference-paths info)) string<?)))
 
-  (define (staged info)
-    (string-append directory "/" (basename (narinfo-path info))))
-
-  (call-with-cleanup
-   (lambda () (delete-path! directory))
-   (lambda ()
-     (define (prepare-output-info info)
-       (let-values (((hash size) (download-verified! info (staged info))))
-         (database:make-output-info
-          (narinfo-path info) hash size
-          (sort (delete-duplicates (narinfo-reference-paths info)) string<?))))
-
-     (define outputs (map prepare-output-info infos))
-
-     (for-each (lambda (info)
-                 (delete-path! (narinfo-path info))
-                 (rename-file (staged info) (narinfo-path info)))
-               infos)
-     (database:register-outputs! db (build-store-directory config) #f outputs)
-     'substituted)))
+         (delete-path! destination-path)
+         (rename-path! staged-path destination-path)
+         (database:register-outputs! db store-directory deriver-path (list output))
+         'substituted)))))
 
 (define (substitute-paths! db paths config)
   "Substitute missing PATHS and their references, or return #f on a lookup miss.
@@ -90,8 +87,9 @@ The caller excludes concurrent invalidation.  Transfer and integrity errors prop
          (and infos
               (call-with-destination-locks (map narinfo-path infos)
                 (lambda ()
-                  (install-closure!
-                   db (filter (lambda (info)
-                                (not (database:valid-path? db (narinfo-path info))))
-                              infos)
-                   config)))))))
+                  (for-each
+                   (lambda (info)
+                     (unless (database:valid-path? db (narinfo-path info))
+                       (install-substitute! db info config)))
+                   infos)
+                  'substituted))))))
