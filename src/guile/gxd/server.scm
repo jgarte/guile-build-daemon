@@ -20,7 +20,8 @@
                 #:select (build-paths! build-request-error? build-request-error-path
                           build-request-error-cause))
   #:use-module ((gxd build realization)
-                #:select (builder-exit-error? builder-exit-error-fixed-output?))
+                #:select (builder-exit-error? builder-exit-error-fixed-output?
+                          derivation-substitution-error? derivation-substitution-error-path))
   #:use-module ((gxd build config) #:select (build-config))
   #:use-module ((gxd build outputs)
                 #:select (missing-output-error? output-permission-error?
@@ -192,6 +193,11 @@ Return the session options after the request."
   (with-exception-handler
     (lambda (exception)
       (cond
+       ((derivation-substitution-error? exception)
+        (protocol:write-error
+         (format #f "some substitutes for the outputs of derivation `~a' failed (usually happens due to networking issues); try `--fallback' to build derivation from source "
+                 (derivation-substitution-error-path exception))
+         1 connection))
        ((unsupported-file-type-error? exception)
         (protocol:write-error
          (format #f "file `~a' has an unsupported type"

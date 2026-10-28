@@ -27,7 +27,7 @@
   #:use-module ((srfi srfi-11) #:select (let-values))
   #:use-module ((srfi srfi-1) #:select (delete-duplicates every))
   #:use-module ((web uri) #:select (uri-scheme))
-  #:export (substitute-path!))
+  #:export (substitute-path! &substitution-failure))
 
 (define-exception-type &substitute-hash-mismatch &error
   make-substitute-hash-mismatch substitute-hash-mismatch?

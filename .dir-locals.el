@@ -65,6 +65,7 @@
      (eval . (put 'call-with-build-error-reporting 'scheme-indent-function 1))
      (eval . (put 'call-with-output-error-logging 'scheme-indent-function 1))
      (eval . (put 'call-with-substitution-failure-handling 'scheme-indent-function 1))
+     (eval . (put 'call-with-substitution-fallback 'scheme-indent-function 2))
      (eval . (put 'database:call-with-database 'scheme-indent-function 1))
      (eval . (put 'call-with-transaction 'scheme-indent-function 1))
      (eval . (put 'call-with-output-file 'scheme-indent-function 1))
