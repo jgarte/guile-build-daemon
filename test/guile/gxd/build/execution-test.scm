@@ -34,6 +34,7 @@
                 #:sandboxed? #f
                 #:guix-program (require-program "guix")
                 #:environment '()
+                #:use-substitutes? #f
                 #:options (initial-options #f #f)))
 
 (define-suite (builder-tests)

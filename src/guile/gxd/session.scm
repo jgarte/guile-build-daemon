@@ -15,7 +15,7 @@
   #:use-module ((srfi srfi-9) #:select (define-record-type))
   #:use-module ((system foreign) #:select (sizeof unsigned-int unsigned-long))
   #:export (unix-peer-trusted? initial-options update-options
-                               options-build-cores options-use-chroot? pack-options
+                               options-build-cores options-use-chroot? options-use-substitutes? pack-options
                                &option-error option-error? option-error-message))
 
 (define-record-type <options>
