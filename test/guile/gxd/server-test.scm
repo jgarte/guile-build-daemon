@@ -51,6 +51,26 @@
             (is (paired-step! left-a right-a query))
             (is (paired-step! left-b right-b query))))))))
 
+(define-suite (server-indirect-root-tests)
+  'metadata `((test/fixtures
+               . ,(append (paired-testbox-fixtures 'rootless 'nixd 'gxd)
+                          (list paired-snapshots-fixture))))
+
+  (test "register an indirect root pointing to the requested path" (ctx)
+    (define step! (get ctx 'step!))
+    (define observe-snapshot! (get ctx 'observe-snapshot!))
+    (define root-path "/tmp/gxd-profile-root")
+
+    (is (step! `(add-indirect-root ,root-path)))
+    (match-let (((_ type target)
+                 (observe-snapshot!
+                  (lambda (snapshot)
+                    (define directory (string-append snapshot "/var/guix/gcroots/auto"))
+                    (match-let (((link) (directory-children directory)))
+                      (list (basename link) (stat:type (lstat link)) (readlink link)))))))
+      (is (eq? 'symlink type))
+      (is (equal? root-path target)))))
+
 (define-suite (server-builtin-tests)
   'metadata `((test/fixtures . ,(paired-testbox-fixtures 'rootless 'nixd 'gxd)))
 
