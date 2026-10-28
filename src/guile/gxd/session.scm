@@ -15,7 +15,8 @@
   #:use-module ((srfi srfi-9) #:select (define-record-type))
   #:use-module ((system foreign) #:select (sizeof unsigned-int unsigned-long))
   #:export (unix-peer-trusted? initial-options update-options
-                               options-build-cores options-use-chroot? options-use-substitutes? pack-options
+                               options-build-cores options-use-chroot? options-use-substitutes?
+                               options-fallback? pack-options
                                &option-error option-error? option-error-message))
 
 (define-record-type <options>
@@ -164,6 +165,11 @@ Preserve setting text.  Reject newlines in names or values and = in names."
   "Return whether OPTIONS permits substitution."
   (define key "build-use-substitutes")
   (parse-option-boolean key (assoc-ref (options-settings options) key)))
+
+(define (options-fallback? options)
+  "Return whether OPTIONS permits building after a substitution failure."
+  (define value (assoc-ref (options-settings options) "build-fallback"))
+  (and value (parse-option-boolean "build-fallback" value)))
 
 (define (options-build-cores options)
   "Return the number of build cores advertised by OPTIONS."
