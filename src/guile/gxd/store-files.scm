@@ -18,11 +18,6 @@
   (path unsupported-file-type-error-path)
   (type unsupported-file-type-error-type))
 
-(define (directory-children path)
-  "Return PATH's child paths in name order, excluding . and .."
-  (map (lambda (name) (string-append path "/" name))
-       (scandir path (lambda (name) (not (member name '("." "..")))))))
-
 (define (canonicalize-entry! path info)
   ;; Reject unsupported types before changing their metadata.
   (unless (memq (stat:type info) '(regular directory symlink))
