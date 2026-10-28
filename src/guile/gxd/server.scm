@@ -6,6 +6,7 @@
 (define-module (gxd server)
   #:use-module (gxd prelude)
   #:use-module ((gxd accounts) #:select (user-exists?))
+  #:use-module ((gxd roots) #:select (register-indirect-root!))
   #:use-module ((gxd socket) #:select (peer-uid))
   #:use-module ((gxd session) #:select (&option-error option-error-message
                                         initial-options update-options
@@ -39,7 +40,7 @@
                                                 read-header-of-add-to-store-op
                                                 write-completion write-error write-log)
                 #:prefix protocol:)
-  #:use-module ((guix config) #:select (%store-directory
+  #:use-module ((guix config) #:select (%state-directory %store-directory
                                         %store-database-directory))
   #:use-module ((guix build utils) #:select (mkdir-p))
   #:use-module ((guix remote-procedures) #:select (%protocol-version
@@ -77,6 +78,12 @@ Return the session options after the request."
   (define operation (protocol:read-integer connection))
 
   (cond
+   ((= operation (remote-procedure-id add-indirect-root))
+    (let ((path (protocol:read-string connection)))
+      (register-indirect-root! %state-directory path)
+      (protocol:write-completion connection)
+      (write-value boolean #t connection)))
+
    ((= operation (remote-procedure-id built-in-builders))
     (protocol:write-completion connection)
     (write-value string-list '("download" "git-download") connection))
@@ -248,6 +255,7 @@ The caller retains and closes its own copy of CONNECTION."
       (lambda ()
         (close-port listener)
         (setsid)
+        (chdir "/") ;; Resolve relative root paths from /, as in nixd.
         (sigaction SIGCHLD SIG_DFL)
         (serve-client connection %store-directory
                       (string-append %store-database-directory "/db.sqlite")
