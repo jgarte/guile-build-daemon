@@ -20,6 +20,12 @@
   #:use-module ((srfi srfi-1) #:select (filter delete-duplicates))
   #:export (substitute-paths!))
 
+(define (narinfo-reference-paths info)
+  "Return INFO's references as full paths in its store directory."
+  (define directory (dirname (narinfo-path info)))
+  (map (lambda (name) (string-append directory "/" name))
+       (narinfo-references info)))
+
 (define (lookup-closure db paths)
   "Return trusted narinfos for missing PATHS and references, or #f on a miss."
   (call/cc
@@ -32,7 +38,7 @@
                         (substitute-urls) (list path) valid-narinfo?)))
              (when (null? hits) (missing #f))
              (let ((info (car hits)))
-               (for-each visit (narinfo-references info))
+               (for-each visit (narinfo-reference-paths info))
                (set! result (cons info result))))))
        (for-each visit paths)
        (reverse result)))))
@@ -50,7 +56,7 @@
       (canonicalize-metadata! destination)
       (database:make-output-info
        (narinfo-path info) actual (narinfo-size info)
-       (sort (delete-duplicates (narinfo-references info)) string<?)))))
+       (sort (delete-duplicates (narinfo-reference-paths info)) string<?)))))
 
 (define (install-closure! db infos config)
   "Verify INFOS privately, then publish and register them under destination locks."
