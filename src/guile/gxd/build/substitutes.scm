@@ -12,7 +12,8 @@
   #:use-module ((guix scripts substitute) #:select (substitute-urls))
   #:use-module ((guix build syscalls) #:select (mkdtemp!))
   #:use-module ((rnrs bytevectors) #:select (bytevector=?))
-  #:use-module ((srfi srfi-1) #:select (every filter delete-duplicates)))
+  #:use-module ((srfi srfi-1) #:select (every filter delete-duplicates))
+  #:export (substitute-paths!))
 
 (define (lookup-closure db paths)
   "Return trusted narinfos for missing PATHS and references, or #f on a miss."
@@ -62,3 +63,17 @@
                infos)
      (database:register-outputs! db (build-store-directory config) #f outputs)
      'substituted)))
+
+(define (substitute-paths! db paths config)
+  "Substitute missing PATHS and their references, or return #f on a lookup miss.
+The caller excludes concurrent invalidation.  Transfer and integrity errors propagate."
+  (and (build-use-substitutes? config)
+       (let ((infos (lookup-closure db paths)))
+         (and infos
+              (call-with-destination-locks (map narinfo-path infos)
+                (lambda ()
+                  (install-closure!
+                   db (filter (lambda (info)
+                                (not (database:valid-path? db (narinfo-path info))))
+                              infos)
+                   config)))))))
