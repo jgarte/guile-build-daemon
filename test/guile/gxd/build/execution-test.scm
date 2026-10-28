@@ -27,8 +27,14 @@
      (list "--no-auto-compile" "-c" (object->string expression)))))
 
 (define (test-build-config)
-  (build-config 0 "/store" "/tmp" 1 #f
-                (require-program "guix") '() (initial-options #f #f)))
+  (build-config #:mode 0
+                #:store-directory "/store"
+                #:directory-parent"/tmp"
+                #:cores 1
+                #:sandboxed? #f
+                #:guix-program (require-program "guix")
+                #:environment '()
+                #:options (initial-options #f #f)))
 
 (define-suite (builder-tests)
   (test "capture exactly the bytes written by the builder and preserve its exit code" ()
