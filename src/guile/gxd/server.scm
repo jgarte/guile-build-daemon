@@ -14,6 +14,7 @@
   #:use-module ((gxd session) #:select (&option-error option-error-message
                                         initial-options update-options
                                         unix-peer-trusted? options-build-cores
+                                        options-use-substitutes?
                                         options-use-chroot?))
   #:use-module ((gxd build)
                 #:select (build-paths! build-request-error? build-request-error-path
@@ -174,6 +175,7 @@ Return the session options after the request."
                                       #:sandboxed? (options-use-chroot? options)
                                       #:guix-program guix-program
                                       #:environment environment
+                                      #:use-substitutes? (options-use-substitutes? options)
                                       #:options options)
                         log!)
 
