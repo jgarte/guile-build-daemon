@@ -40,14 +40,14 @@ its service process group, reap the server, and preserve PROC's values."
                   (define listener (open-listener))
                   (=> 'port (sockaddr:port (getsockname listener)))
                   (while #t
-                         (let ((client (car (accept listener))))
-                           (match-let (((worker-pid _=> _<= disconnect-worker!)
-                                        (child-proc SIGCHLD
-                                                    (lambda (_=> _<=)
-                                                      (serve-client git repository listener client)))))
-                             (close-port client)
-                             (disconnect-worker!)
-                             (waitpid worker-pid))))))))
+                    (let ((client (car (accept listener))))
+                      (match-let (((worker-pid _=> _<= disconnect-worker!)
+                                   (child-proc SIGCHLD
+                                               (lambda (_=> _<=)
+                                                 (serve-client git repository listener client)))))
+                        (close-port client)
+                        (disconnect-worker!)
+                        (waitpid worker-pid))))))))
     (define group-ready? #f)
     (call-with-cleanup
      disconnect!

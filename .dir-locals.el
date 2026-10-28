@@ -37,6 +37,7 @@
      (eval . (put 'define* 'scheme-indent-function 'defun))
      (eval . (put 'define-public 'scheme-indent-function 'defun))
      (eval . (put 'lambda* 'scheme-indent-function 1))
+     (eval . (put 'while 'scheme-indent-function 1))
      (eval . (put 'chain 'scheme-indent-function 1))
      (eval . (put 'deadline 'scheme-indent-function 1))
      (eval . (put 'set-fields 'scheme-indent-function 1))
