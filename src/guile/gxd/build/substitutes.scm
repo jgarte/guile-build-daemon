@@ -9,14 +9,16 @@
   #:use-module ((gxd database) #:prefix database:
                 #:select (valid-path? make-output-info register-outputs!))
   #:use-module ((gxd path-locks) #:select (call-with-destination-locks))
-  #:use-module ((gxd store-files) #:select (delete-path! canonicalize-metadata!))
+  #:use-module ((gxd store-files) #:select (delete-path!))
   #:use-module ((guix narinfo) #:select (valid-narinfo? narinfo-references narinfo-path
                                          narinfo-size narinfo-hash-algorithm+value))
   #:use-module ((gcrypt hash) #:select (hash-algorithm sha256))
   #:use-module ((guix substitutes) #:select (lookup-narinfos/diverse download-nar))
   #:use-module ((guix scripts substitute) #:select (substitute-urls))
+  #:use-module ((guix store deduplication) #:select (nar-sha256))
   #:use-module ((guix build syscalls) #:select (mkdtemp!))
   #:use-module ((rnrs bytevectors) #:select (bytevector=?))
+  #:use-module ((srfi srfi-11) #:select (let-values))
   #:use-module ((srfi srfi-1) #:select (filter delete-duplicates))
   #:export (substitute-paths!))
 
@@ -44,19 +46,15 @@
        (reverse result)))))
 
 (define (download-verified! info destination)
-  "Restore INFO at private DESTINATION; reject unsupported or mismatched hashes."
-  (call-with-values (lambda () (narinfo-hash-algorithm+value info))
-    (lambda (algorithm hash)
-      (unless (= algorithm (hash-algorithm sha256))
-        (error "unsupported substitute hash algorithm" algorithm))))
-  (call-with-values (lambda () (download-nar info destination))
-    (lambda (expected actual)
-      (unless (bytevector=? expected actual)
-        (error "substitute hash mismatch" (narinfo-path info)))
-      (canonicalize-metadata! destination)
-      (database:make-output-info
-       (narinfo-path info) actual (narinfo-size info)
-       (sort (delete-duplicates (narinfo-reference-paths info)) string<?)))))
+  "Restore INFO at private DESTINATION and verify its declared hash.
+Return the NAR SHA256 and size for registration."
+  (let-values (((expected actual) (download-nar info destination #:fetch-timeout #f))
+               ((algorithm _) (narinfo-hash-algorithm+value info)))
+    (unless (bytevector=? expected actual)
+      (error "substitute hash mismatch" (narinfo-path info)))
+    (if (= algorithm (hash-algorithm sha256))
+        (values actual (narinfo-size info))
+        (nar-sha256 destination))))
 
 (define (install-closure! db infos config)
   "Verify INFOS privately, then publish and register them under destination locks."
@@ -69,7 +67,13 @@
   (call-with-cleanup
    (lambda () (delete-path! directory))
    (lambda ()
-     (define outputs (map (lambda (info) (download-verified! info (staged info))) infos))
+     (define (prepare-output-info info)
+       (let-values (((hash size) (download-verified! info (staged info))))
+         (database:make-output-info
+          (narinfo-path info) hash size
+          (sort (delete-duplicates (narinfo-reference-paths info)) string<?))))
+
+     (define outputs (map prepare-output-info infos))
 
      (for-each (lambda (info)
                  (delete-path! (narinfo-path info))
