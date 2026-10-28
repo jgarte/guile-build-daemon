@@ -1,18 +1,23 @@
 ;; SPDX-License-Identifier: GPL-3.0-or-later
+;; SPDX-FileCopyrightText: 2026 Andrew Tropin
+;; SPDX-FileCopyrightText: 2026 Andrew Zhurov
+;; SPDX-FileCopyrightText: 2026 buttonspresser
 
 (define-module (gxd build substitutes)
   #:use-module (gxd prelude)
-  #:use-module (gxd build config)
-  #:use-module ((gxd database) #:prefix database:)
-  #:use-module (gxd path-locks)
-  #:use-module (gxd store-files)
-  #:use-module (guix narinfo)
+  #:use-module ((gxd build config) #:select (build-store-directory build-use-substitutes?))
+  #:use-module ((gxd database) #:prefix database:
+                #:select (valid-path? make-output-info register-outputs!))
+  #:use-module ((gxd path-locks) #:select (call-with-destination-locks))
+  #:use-module ((gxd store-files) #:select (delete-path! canonicalize-metadata!))
+  #:use-module ((guix narinfo) #:select (valid-narinfo? narinfo-references narinfo-path
+                                         narinfo-size narinfo-hash-algorithm+value))
   #:use-module ((gcrypt hash) #:select (hash-algorithm sha256))
-  #:use-module (guix substitutes)
+  #:use-module ((guix substitutes) #:select (lookup-narinfos/diverse download-nar))
   #:use-module ((guix scripts substitute) #:select (substitute-urls))
   #:use-module ((guix build syscalls) #:select (mkdtemp!))
   #:use-module ((rnrs bytevectors) #:select (bytevector=?))
-  #:use-module ((srfi srfi-1) #:select (every filter delete-duplicates))
+  #:use-module ((srfi srfi-1) #:select (filter delete-duplicates))
   #:export (substitute-paths!))
 
 (define (lookup-closure db paths)
@@ -51,12 +56,15 @@
   "Verify INFOS privately, then publish and register them under destination locks."
   (define directory
     (mkdtemp! (string-append (build-store-directory config) "/.substitute.XXXXXX")))
+
   (define (staged info)
     (string-append directory "/" (basename (narinfo-path info))))
+
   (call-with-cleanup
    (lambda () (delete-path! directory))
    (lambda ()
      (define outputs (map (lambda (info) (download-verified! info (staged info))) infos))
+
      (for-each (lambda (info)
                  (delete-path! (narinfo-path info))
                  (rename-file (staged info) (narinfo-path info)))
