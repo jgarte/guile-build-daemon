@@ -32,8 +32,8 @@ Stop and reap the server on return or exception; preserve PROC's values."
                                 (run-server counted-handler 'http (list #:socket listener))))
                              (=> 'port (sockaddr:port (getsockname listener)))
                              (while #t
-                                    (<= 'request-count)
-                                    (=> 'request-count (with-mutex mutex count)))))))
+                               (<= 'request-count)
+                               (=> 'request-count (with-mutex mutex count)))))))
     (call-with-cleanup
      disconnect!
      (lambda ()

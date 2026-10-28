@@ -231,8 +231,8 @@ These errors end the request, not the client session; other exceptions propagate
       (force-output connection)
 
       (while (not (eof-object? (lookahead-u8 connection)))
-             (set! options
-                   (serve-request connection store-directory db options trusted? guix-program environment))))))
+        (set! options
+              (serve-request connection store-directory db options trusted? guix-program environment))))))
 
 (define* (run-server socket-path guix-program environment #:optional (use-chroot? #t))
   "Serve one client session at SOCKET-PATH; USE-CHROOT? selects build sandboxing."
