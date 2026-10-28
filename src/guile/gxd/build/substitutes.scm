@@ -18,11 +18,20 @@
   #:use-module ((guix scripts substitute) #:select (substitute-urls))
   #:use-module ((guix store deduplication) #:select (nar-sha256))
   #:use-module ((guix build syscalls) #:select (mkdtemp!))
+  #:use-module ((ice-9 exceptions) #:select (&error define-exception-type raise-exception))
   #:use-module ((rnrs bytevectors) #:select (bytevector=?))
   #:use-module ((srfi srfi-11) #:select (let-values))
   #:use-module ((srfi srfi-1) #:select (filter delete-duplicates every))
   #:use-module ((web uri) #:select (uri-scheme))
   #:export (substitute-paths!))
+
+(define-exception-type &substitute-hash-mismatch &error
+  make-substitute-hash-mismatch substitute-hash-mismatch?
+  (path substitute-hash-mismatch-path))
+
+(define-exception-type &unsafe-substitute-uri &error
+  make-unsafe-substitute-uri unsafe-substitute-uri?
+  (path unsafe-substitute-uri-path))
 
 (define (narinfo-reference-paths info)
   "Return INFO's references as full paths in its store directory."
@@ -53,7 +62,7 @@ Return the NAR SHA256 and size for registration."
   (let-values (((expected actual) (download-nar info destination #:fetch-timeout #f))
                ((algorithm _) (narinfo-hash-algorithm+value info)))
     (unless (bytevector=? expected actual)
-      (error "substitute hash mismatch" (narinfo-path info)))
+      (raise-exception (make-substitute-hash-mismatch (narinfo-path info))))
     (if (= algorithm (hash-algorithm sha256))
         (values actual (narinfo-size info))
         (nar-sha256 destination))))
@@ -67,7 +76,7 @@ Return the NAR SHA256 and size for registration."
 The caller holds its destination lock and excludes concurrent invalidation."
   ;; Archive URLs are not covered by the narinfo's signed content hash.
   (unless (narinfo-uris-safe? info)
-    (error "unsafe substitute archive URL" (narinfo-path info)))
+    (raise-exception (make-unsafe-substitute-uri (narinfo-path info))))
   (let* ((destination-path (narinfo-path info))
          (store-directory (build-store-directory config))
          (deriver (narinfo-deriver info))
