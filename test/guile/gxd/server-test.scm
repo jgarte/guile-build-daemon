@@ -15,7 +15,8 @@
   #:use-module ((gxd store-path) #:select (text-path))
   #:use-module ((gxd test-fixtures) #:select (paired-testbox-fixtures))
   #:use-module (gxd test-prelude)
-  #:use-module ((gxd testbox) #:select (paired-daemon-testboxes-fixture testbox-root))
+  #:use-module ((gxd testbox) #:select (paired-daemon-testboxes-fixture testbox-root
+                                        start-testbox-process! wait-testbox-process!))
   #:use-module ((gxd testbox snapshots) #:select (paired-snapshots-fixture))
   #:use-module ((gxd testbox database-observations) #:select (database-observations-fixture))
   #:use-module ((gxd testbox store-observations) #:select (store-observations-fixture))
@@ -70,6 +71,36 @@
                       (list (basename link) (stat:type (lstat link)) (readlink link)))))))
       (is (eq? 'symlink type))
       (is (equal? root-path target)))))
+
+(define-suite (server-indirect-root-failure-tests)
+  'metadata `((test/fixtures . ,(paired-testbox-fixtures 'rootless 'nixd 'gxd)))
+
+  (test "retry indirect root registration on the same connection after fixing permissions" (ctx)
+    (define step! (get ctx 'step!))
+    (define guile (canonicalize-path (require-program "guile")))
+    (define register-root '(add-indirect-root "/tmp/gxd-profile-root"))
+    (define (set-root-permissions! mode)
+      "Set the root registry parent to MODE in both subjects."
+      (for-each
+       (lambda (box)
+         (define process
+           (start-testbox-process! box 'daemon guile
+                                   (list "-c" (object->string `(chmod "/var/guix/gcroots" ,mode)))))
+
+         (unless (zero? (wait-testbox-process! process #:deadline (+ (current-time) 5)))
+           (error "could not set root registry permissions" mode)))
+       (list (get ctx 'testbox/left) (get ctx 'testbox/right))))
+
+    (set-root-permissions! #o555)
+    (is (equal? '((error/type . store-protocol-error)
+                  (error/message . "creating directory `/var/guix/gcroots/auto': Permission denied")
+                  (error/status . 1))
+                (step! register-root #:connection 'root))
+        "registration reports the denied creation of the root registry directory")
+
+    (set-root-permissions! #o755)
+    (is (step! register-root #:connection 'root #:terminal? #t)
+        "the same connection registers the root after permissions are restored")))
 
 (define-suite (server-builtin-tests)
   'metadata `((test/fixtures . ,(paired-testbox-fixtures 'rootless 'nixd 'gxd)))
