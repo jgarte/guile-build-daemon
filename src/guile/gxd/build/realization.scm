@@ -40,7 +40,7 @@
   #:use-module ((ice-9 format) #:select (format))
   #:use-module ((rnrs bytevectors) #:select (string->utf8))
   #:use-module ((system foreign) #:select (int pointer->procedure pointer->string))
-  #:use-module ((srfi srfi-1) #:select (every filter find))
+  #:use-module ((srfi srfi-1) #:select (every filter))
   #:use-module ((srfi srfi-11) #:select (let-values))
   #:export (realize-derivation! realize-path!
                                 &builder-exit-error builder-exit-error? builder-exit-error-derivation
@@ -209,10 +209,8 @@ Preserve failed sandbox outputs before reporting the builder's failure."
            (format #f "builder for `~a' ~a~%" drv-path (status-description status))))
     (raise-exception (make-builder-exit-error drv-path status fixed-output?)))
 
-  (define (prepare-output-info output-path)
-    (define output
-      (find (lambda (output) (string=? output-path (guix-drv:derivation-output-path output)))
-            (map cdr (guix-drv:derivation-outputs drv))))
+  (define (prepare-output-info output)
+    (define output-path (guix-drv:derivation-output-path output))
 
     (let-values (((references hash nar-size)
                   (if sandbox
@@ -223,7 +221,7 @@ Preserve failed sandbox outputs before reporting the builder's failure."
       (database:make-output-info output-path hash nar-size references)))
 
   (call-with-output-error-logging log!
-    (lambda () (map prepare-output-info output-paths))))
+    (lambda () (map prepare-output-info (map cdr (guix-drv:derivation-outputs drv))))))
 
 (define (build-and-register! db drv-path drv output-paths config log!)
   "Build DRV and register its outputs, owning temporary workspace and sandbox cleanup.
