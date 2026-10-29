@@ -16,6 +16,9 @@
                 #:select (derivation-file-name derivation->output-path))
   #:use-module ((guix store deduplication) #:select (nar-sha256))
   #:use-module ((guix base16) #:select (bytevector->base16-string))
+  #:use-module ((guix serialization)
+                #:select (substitutable-path substitutable-deriver substitutable-references
+                          substitutable-download-size substitutable-nar-size))
   #:use-module ((guix utils) #:select (call-with-temporary-directory))
   #:use-module ((rnrs bytevectors) #:select (u8-list->bytevector bytevector=?))
   #:use-module ((rnrs io ports) #:select (get-bytevector-all put-bytevector))
@@ -30,6 +33,49 @@
               (paired-daemon-testboxes-fixture 'rootless 'nixd 'gxd)
               paired-relay-observers-fixture direct-steps-fixture
               paired-snapshots-fixture database-observations-fixture)))
+
+  (test "query signed substitute metadata, omitting an unavailable path without registering the output" (ctx)
+    (define step! (get ctx 'step!))
+    (define observe-db-path! (get ctx 'observe-db-path!))
+    (define drv
+      (step! '(derivation "substitute-metadata" "/impossible-substitute-builder" ())
+             #:connection 'query))
+
+    (define drv-path (guix-drv:derivation-file-name drv))
+    (define output-path (guix-drv:derivation->output-path drv))
+    (define missing-path (string-append drv-path "-missing"))
+    (define (metadata info)
+      `((path . ,(substitutable-path info))
+        (deriver . ,(substitutable-deriver info))
+        (references . ,(substitutable-references info))
+        (download-size . ,(substitutable-download-size info))
+        (nar-size . ,(substitutable-nar-size info))))
+
+    (define-values (expected-metadata actual-metadata)
+      (call-with-temporary-directory
+       (lambda (directory)
+         (define source-path (string-append directory "/payload"))
+         (spit source-path "metadata payload")
+         (define expected-metadata
+           (let-values (((hash size) (nar-sha256 source-path)))
+             `(((path . ,output-path)
+                (deriver . ,drv-path)
+                (references)
+                (download-size . 0)
+                (nar-size . ,size)))))
+
+         (call-with-substitute-cache
+          drv source-path
+          (lambda (url)
+            (step! `(set-build-options #:use-substitutes? #t #:substitute-urls (,url))
+                   #:connection 'query)
+            (values expected-metadata
+                    (map metadata
+                         (step! `(query-substitutable-path-infos (,output-path ,missing-path))
+                                #:connection 'query #:terminal? #t))))))))
+
+    (is (equal? expected-metadata actual-metadata))
+    (is (not (observe-db-path! output-path))))
 
   (test "substitute an authenticated binary output without running its builder" (ctx)
     (define step! (get ctx 'step!))
