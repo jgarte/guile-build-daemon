@@ -40,7 +40,7 @@
   #:use-module ((ice-9 format) #:select (format))
   #:use-module ((rnrs bytevectors) #:select (string->utf8))
   #:use-module ((system foreign) #:select (int pointer->procedure pointer->string))
-  #:use-module ((srfi srfi-1) #:select (every filter))
+  #:use-module ((srfi srfi-1) #:select (every filter remove))
   #:use-module ((srfi srfi-11) #:select (let-values))
   #:export (realize-derivation! realize-path!
                                 &builder-exit-error builder-exit-error? builder-exit-error-derivation
@@ -192,6 +192,9 @@ The caller excludes concurrent invalidation."
   "Execute DRV, prepare its outputs, and return their metadata for registration.
 Preserve failed sandbox outputs before reporting the builder's failure."
   (define candidates (reference-candidates db drv-path drv))
+  (define output-paths
+    (filter (lambda (path) (not (database:valid-path? db path)))
+            (drv->output-paths drv)))
 
   (define status
     (if (download-builder? drv)
@@ -205,7 +208,7 @@ Preserve failed sandbox outputs before reporting the builder's failure."
 
   (unless (and exit-code (zero? exit-code))
     (when sandbox
-      (preserve-failed-outputs! (drv->output-paths drv) (sandbox-root sandbox) log!))
+      (preserve-failed-outputs! output-paths (sandbox-root sandbox) log!))
     (log! (string->utf8
            (format #f "builder for `~a' ~a~%" drv-path (status-description status))))
     (raise-exception (make-builder-exit-error drv-path status fixed-output?)))
@@ -221,15 +224,25 @@ Preserve failed sandbox outputs before reporting the builder's failure."
                       (prepare-output! drv-path output candidates))))
       (database:make-output-info output-path hash nar-size references)))
 
+  (define (registered-output? output)
+    (database:valid-path? db (guix-drv:derivation-output-path output)))
+
   (call-with-output-error-logging log!
-    (lambda () (map prepare-output-info (map cdr (guix-drv:derivation-outputs drv))))))
+    (lambda ()
+      (chain (guix-drv:derivation-outputs drv)
+        (map cdr _)
+        (remove registered-output? _)
+        (map prepare-output-info _)))))
 
 (define (build-and-register! db drv-path drv config log!)
   "Build DRV and register its outputs, owning temporary workspace and sandbox cleanup.
 The caller holds the output locks; CONFIG supplies execution settings."
   (define output-paths (drv->output-paths drv))
 
-  (for-each delete-path! output-paths)
+  (for-each
+   (lambda (path)
+     (unless (database:valid-path? db path) (delete-path! path)))
+   output-paths)
   (define build-directory (mkdtemp! (string-append (build-directory-parent config) "/build.XXXXXX")))
 
   (call-with-cleanup
@@ -268,7 +281,8 @@ unregistered output files; temporary build directories are removed."
 
           (cond
            ((= (length valid-output-paths) (length output-paths)) 'already-valid)
-           ((pair? valid-output-paths)
+           ((and (pair? valid-output-paths)
+                 (or (not (build-sandboxed? config)) (download-builder? drv)))
             ;; Non-chroot nixd redirects valid siblings and rewrites references.
             (todo! "partially valid output realization" drv-path))
            (else
