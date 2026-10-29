@@ -6,17 +6,16 @@
 (define-module (gxd build substitutes)
   #:use-module (gxd prelude)
   #:use-module ((gxd build config) #:select (build-store-directory build-options))
-  #:use-module ((gxd session) #:select (options-substitute-urls))
+  #:use-module ((gxd substitutes) #:select (lookup-substitutes))
   #:use-module ((gxd database) #:prefix database:
                 #:select (valid-path? make-output-info register-outputs!))
   #:use-module ((gxd path-locks) #:select (call-with-destination-lock))
   #:use-module ((gxd store-files) #:select (delete-path! rename-path!))
-  #:use-module ((guix narinfo) #:select (valid-narinfo? narinfo-references narinfo-path
+  #:use-module ((guix narinfo) #:select (narinfo-references narinfo-path
                                          narinfo-size narinfo-hash-algorithm+value narinfo-deriver
                                          narinfo-uris))
   #:use-module ((gcrypt hash) #:select (hash-algorithm sha256))
-  #:use-module ((guix substitutes) #:select (lookup-narinfos/diverse download-nar))
-  #:use-module ((guix scripts substitute) #:select (substitute-urls))
+  #:use-module ((guix substitutes) #:select (download-nar))
   #:use-module ((guix store deduplication) #:select (nar-sha256))
   #:use-module ((guix http-client) #:select (http-get-error? network-error?))
   #:use-module ((guix serialization) #:select (nar-error?))
@@ -27,7 +26,7 @@
   #:use-module ((rnrs bytevectors) #:select (bytevector=?))
   #:use-module ((srfi srfi-11) #:select (let-values))
   #:use-module ((srfi srfi-1) #:select (delete-duplicates every))
-  #:use-module ((web uri) #:select (uri-scheme string->uri))
+  #:use-module ((web uri) #:select (uri-scheme))
   #:export (substitute-path! &substitution-failure))
 
 (define-exception-type &substitute-hash-mismatch &error
@@ -44,20 +43,6 @@
   make-substitution-failure substitution-failure?
   (path substitution-failure-path)
   (cause substitution-failure-cause))
-
-(define (configured-substitute-urls config)
-  "Return CONFIG's substitute URLs, rejecting unsafe untrusted overrides."
-  (let-values (((text untrusted?) (options-substitute-urls (build-options config))))
-    (if text
-        (let ((urls (string-tokenize text)))
-          (when (and untrusted?
-                     (not (every (lambda (url)
-                                   (define uri (string->uri url))
-                                   (and uri (not (memq (uri-scheme uri) '(#f file)))))
-                                 urls)))
-            (error "unsafe or invalid substitute URLs" urls))
-          urls)
-        (substitute-urls))))
 
 (define (narinfo-reference-paths info)
   "Return INFO's references as full paths in its store directory."
@@ -133,7 +118,7 @@ Return 'satisfied, 'unavailable, or 'incomplete-closure.
 The caller excludes concurrent invalidation.  Errors propagate."
   (if (database:valid-path? db path)
       'satisfied
-      (match (lookup-narinfos/diverse (configured-substitute-urls config) (list path) valid-narinfo?)
+      (match (lookup-substitutes (build-options config) (list path))
         (() 'unavailable)
         ((info . _)
          (define (substitute-reference! reference)
