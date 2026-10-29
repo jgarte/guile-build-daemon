@@ -223,10 +223,10 @@ Preserve failed sandbox outputs before reporting the builder's failure."
   (call-with-output-error-logging log!
     (lambda () (map prepare-output-info (map cdr (guix-drv:derivation-outputs drv))))))
 
-(define (build-and-register! db drv-path drv output-paths config log!)
+(define (build-and-register! db drv-path drv config log!)
   "Build DRV and register its outputs, owning temporary workspace and sandbox cleanup.
 The caller holds the output locks; CONFIG supplies execution settings."
-  (define store-directory (build-store-directory config))
+  (define output-paths (drv->output-paths drv))
   (define candidates (reference-candidates db drv-path drv))
 
   (for-each delete-path! output-paths)
@@ -235,17 +235,18 @@ The caller holds the output locks; CONFIG supplies execution settings."
   (call-with-cleanup
    (lambda () (delete-path! build-directory))
    (lambda ()
-     (define (prepare! sandbox)
+     (define (build! sandbox)
        (build-and-prepare-outputs! drv-path drv build-directory
                                    output-paths candidates config log! sandbox))
 
      (define output-infos
        (if (and (build-sandboxed? config) (not (download-builder? drv)))
-           (call-with-build-sandbox drv-path store-directory (input-closure db drv-path drv)
-                                    30001 30000 prepare!)
-           (prepare! #f)))
+           (call-with-build-sandbox drv-path (build-store-directory config)
+                                    (input-closure db drv-path drv) 30001 30000
+                                    build!)
+           (build! #f)))
 
-     (database:register-outputs! db store-directory drv-path output-infos)
+     (database:register-outputs! db (build-store-directory config) drv-path output-infos)
      'built)))
 
 (define (realize-derivation! db drv-path drv config log!)
@@ -272,4 +273,4 @@ unregistered output files; temporary build directories are removed."
             ;; Non-chroot nixd redirects valid siblings and rewrites references.
             (todo! "partially valid output realization" drv-path))
            (else
-            (build-and-register! db drv-path drv output-paths config log!)))))))
+            (build-and-register! db drv-path drv config log!)))))))
