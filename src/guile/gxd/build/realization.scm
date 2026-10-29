@@ -188,9 +188,8 @@ The caller excludes concurrent invalidation."
 (define (download-builder? drv)
   (member (guix-drv:derivation-builder drv) '("builtin:download" "builtin:git-download")))
 
-(define (build-and-prepare-outputs! db drv-path drv build-directory
-                                    output-paths config log! sandbox)
-  "Execute DRV, prepare OUTPUT-PATHS, and return their metadata for registration.
+(define (build-and-prepare-outputs! db drv-path drv build-directory config log! sandbox)
+  "Execute DRV, prepare its outputs, and return their metadata for registration.
 Preserve failed sandbox outputs before reporting the builder's failure."
   (define candidates (reference-candidates db drv-path drv))
 
@@ -206,7 +205,7 @@ Preserve failed sandbox outputs before reporting the builder's failure."
 
   (unless (and exit-code (zero? exit-code))
     (when sandbox
-      (preserve-failed-outputs! output-paths (sandbox-root sandbox) log!))
+      (preserve-failed-outputs! (drv->output-paths drv) (sandbox-root sandbox) log!))
     (log! (string->utf8
            (format #f "builder for `~a' ~a~%" drv-path (status-description status))))
     (raise-exception (make-builder-exit-error drv-path status fixed-output?)))
@@ -237,8 +236,7 @@ The caller holds the output locks; CONFIG supplies execution settings."
    (lambda () (delete-path! build-directory))
    (lambda ()
      (define (build! sandbox)
-       (build-and-prepare-outputs! db drv-path drv build-directory
-                                   output-paths config log! sandbox))
+       (build-and-prepare-outputs! db drv-path drv build-directory config log! sandbox))
 
      (define output-infos
        (if (and (build-sandboxed? config) (not (download-builder? drv)))
