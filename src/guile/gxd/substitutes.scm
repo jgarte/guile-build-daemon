@@ -9,6 +9,9 @@
   #:use-module ((guix narinfo) #:select (valid-narinfo?))
   #:use-module ((guix substitutes) #:select (lookup-narinfos/diverse))
   #:use-module ((guix scripts substitute) #:select (substitute-urls))
+  #:use-module ((guix progress) #:select (progress-reporter))
+  #:use-module ((ice-9 format) #:select (format))
+  #:use-module ((rnrs bytevectors) #:select (string->utf8))
   #:use-module ((srfi srfi-1) #:select (every))
   #:use-module ((srfi srfi-11) #:select (let-values))
   #:use-module ((web uri) #:select (uri-scheme string->uri))
@@ -28,6 +31,16 @@
           urls)
         (substitute-urls))))
 
-(define (lookup-substitutes options paths)
-  "Query OPTIONS's caches for PATHS, returning authenticated narinfos for available paths."
-  (lookup-narinfos/diverse (configured-substitute-urls options) paths valid-narinfo?))
+(define (lookup-substitutes options paths log!)
+  "Query OPTIONS's caches for PATHS, returning authenticated narinfos for available paths.
+Deliver lookup progress as bytevectors to LOG!."
+  (define* (make-reporter total #:key url)
+    (progress-reporter
+     (start (lambda ()
+              (log! (string->utf8
+                     (format #f "looking for substitutes on '~a' (~a paths)...~%" url total)))))
+     (report (lambda _ #t))
+     (stop (lambda () #t))))
+
+  (lookup-narinfos/diverse (configured-substitute-urls options) paths valid-narinfo?
+                           #:make-progress-reporter make-reporter))

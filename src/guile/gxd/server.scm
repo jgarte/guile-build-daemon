@@ -129,7 +129,11 @@ Return the session options after the request."
        paths)
       (define infos
         (if (and (pair? paths) (options-use-substitutes? options))
-            (sort (lookup-substitutes options paths)
+            (sort (lookup-substitutes
+                   options paths
+                   (lambda (bytes)
+                     (protocol:write-log-bytes bytes connection)
+                     (force-output connection)))
                   (lambda (left right) (string<? (narinfo-path left) (narinfo-path right))))
             '()))
 

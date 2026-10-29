@@ -112,18 +112,18 @@ The caller holds its destination lock and excludes concurrent invalidation."
        (database:register-outputs! db store-directory deriver-path (list output))
        'substituted))))
 
-(define (substitute-path! db path config)
+(define (substitute-path! db path config log!)
   "Substitute PATH after its runtime references, retaining completed registrations.
 Return 'satisfied, 'unavailable, or 'incomplete-closure.
 The caller excludes concurrent invalidation.  Errors propagate."
   (if (database:valid-path? db path)
       'satisfied
-      (match (lookup-substitutes (build-options config) (list path))
+      (match (lookup-substitutes (build-options config) (list path) log!)
         (() 'unavailable)
         ((info . _)
          (define (substitute-reference! reference)
            (or (string=? reference path)
-               (eq? 'satisfied (substitute-path! db reference config))))
+               (eq? 'satisfied (substitute-path! db reference config log!))))
 
          (if (every substitute-reference! (narinfo-reference-paths info))
              (call-with-destination-lock path
