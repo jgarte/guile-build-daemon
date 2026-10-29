@@ -5,13 +5,13 @@
 
 (define-module (gxd build inputs)
   #:use-module (gxd prelude)
+  #:use-module ((gxd derivations) #:select (drv->output-paths))
   #:use-module ((gxd database)
                 #:prefix database:
                 #:select (derivation-outputs reference-closure))
   #:use-module ((guix derivations)
                 #:prefix guix-drv:
-                #:select (derivation-inputs derivation-sources derivation-outputs
-                          derivation-output-path derivation-input-derivation
+                #:select (derivation-inputs derivation-sources derivation-input-derivation
                           derivation-input-sub-derivations))
   #:use-module ((ice-9 exceptions)
                 #:select (&error define-exception-type raise-exception))
@@ -65,9 +65,6 @@ Include all own outputs and the DB reference closure of input sources and
 selected input outputs.  DRV-PATH names DRV for diagnostics; DRV is decoded
 with input derivation filenames, not resolved records.  Inputs are realized
 and the caller excludes concurrent invalidation."
-  (let ((own-output-paths
-         (map (match-lambda ((_ . output) (guix-drv:derivation-output-path output)))
-              (guix-drv:derivation-outputs drv))))
-    (chain (append own-output-paths (input-closure db drv-path drv))
-      (delete-duplicates _ string=?)
-      (sort _ string<?))))
+  (chain (append (drv->output-paths drv) (input-closure db drv-path drv))
+    (delete-duplicates _ string=?)
+    (sort _ string<?)))
