@@ -20,7 +20,7 @@
                           output-permission-error-output-path
                           flat-output-type-error? flat-output-type-error-output-path
                           output-hash-mismatch? output-hash-mismatch-output-path))
-  #:use-module ((gxd derivations) #:select (read-derivation fixed-output))
+  #:use-module ((gxd derivations) #:select (read-derivation fixed-output drv->output-paths))
   #:use-module ((gxd build sandbox) #:select (call-with-build-sandbox sandbox-root))
   #:use-module ((gxd database)
                 #:prefix database:
@@ -258,9 +258,7 @@ DRV has distinct output paths.  Input derivations in DRV are represented by
 filenames, not resolved derivation records.  The caller excludes concurrent GC;
 execution is same-owner.  Failed builds may leave
 unregistered output files; temporary build directories are removed."
-  (define outputs (guix-drv:derivation-outputs drv))
-  (define output-paths
-    (map (match-lambda ((_ . output) (guix-drv:derivation-output-path output))) outputs))
+  (define output-paths (drv->output-paths drv))
 
   (define (valid-output? path) (database:valid-path? db path))
 

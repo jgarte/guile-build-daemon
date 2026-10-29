@@ -26,9 +26,14 @@
   #:use-module ((rnrs bytevectors) #:select (bytevector-length))
   #:use-module ((srfi srfi-9 gnu) #:select (set-fields))
   #:use-module ((srfi srfi-13) #:select (string-drop-right))
-  #:export (read-derivation resolve-inputs! check-outputs fixed-output
+  #:export (read-derivation resolve-inputs! check-outputs fixed-output drv->output-paths
                             &derivation-output-error derivation-output-error?
                             derivation-output-error-message))
+
+(define (drv->output-paths drv)
+  "Return DRV's declared output paths in declaration order."
+  (map (match-lambda ((_ . output) (guix-drv:derivation-output-path output)))
+       (guix-drv:derivation-outputs drv)))
 
 (define-exception-type &derivation-output-error &error
   make-derivation-output-error derivation-output-error?
