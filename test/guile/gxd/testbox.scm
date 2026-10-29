@@ -189,6 +189,14 @@ Raise an error when a group names an unknown role."
     (mkdir-p log-directory)
     (chown log-directory (get daemon 'role/uid) (get daemon 'role/gid))))
 
+(define (prepare-substitute-acl! root)
+  "Install the public test cache ACL beneath disposable ROOT before launch."
+  (let ((directory (string-append root "/etc/guix")))
+    (mkdir-p directory)
+    (call-with-resource "substitutes/acl"
+                        (lambda (port) (spit (string-append directory "/acl") (slurp port))))
+    (chmod (string-append directory "/acl") #o644)))
+
 (define (testbox-init => <=)
   "Prepare the root, enter it, report readiness, then await exit."
   ;; As PID 1, this process adopts orphaned descendants.  Explicitly ignoring
@@ -209,6 +217,7 @@ Raise an error when a group names an unknown role."
         (mount-testbox-devpts! root)
         (install-testbox-dev-fd-links! root)
         (install-group-accounts! root manifest)
+        (prepare-substitute-acl! root)
         (prepare-build-log-directory! root manifest)
         (mount-testbox-sources! root manifest)
         (pivot-into! root))
