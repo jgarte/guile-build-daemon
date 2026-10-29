@@ -11,6 +11,7 @@
                           root-filesystem-error-operation root-filesystem-error-paths
                           root-filesystem-error-errno root-not-directory? root-not-directory-path))
   #:use-module ((gxd socket) #:select (peer-uid))
+  #:use-module ((gxd substitutes) #:select (lookup-substitutes))
   #:use-module ((gxd session) #:select (&option-error option-error-message
                                         initial-options update-options
                                         unix-peer-trusted? options-build-cores
@@ -43,11 +44,17 @@
   #:use-module ((gxd worker-protocol) #:select (read-integer read-string read-options read-text
                                                 read-string-list write-log-bytes
                                                 read-header-of-add-to-store-op
-                                                write-completion write-error write-log)
+                                                write-completion write-error write-log
+                                                write-substitutable-path-info)
                 #:prefix protocol:)
   #:use-module ((guix config) #:select (%state-directory %store-directory
                                         %store-database-directory))
   #:use-module ((guix build utils) #:select (mkdir-p))
+  #:use-module ((guix narinfo)
+                #:select (narinfo-path narinfo-deriver narinfo-references narinfo-size
+                          narinfo-best-uri))
+  #:use-module ((srfi srfi-1) #:select (delete-duplicates))
+  #:use-module ((srfi srfi-11) #:select (let-values))
   #:use-module ((guix remote-procedures) #:select (%protocol-version
                                                    %worker-magic-1
                                                    %worker-magic-2
@@ -89,12 +96,47 @@
                (('rename source target) (format #f "cannot rename `~a' to `~a'" source target)))))
         (string-append context ": " (strerror (root-filesystem-error-errno exception))))))
 
+(define (write-substitute-info info connection)
+  (define path (narinfo-path info))
+  (define directory (dirname path))
+  (define deriver (narinfo-deriver info))
+  (define references
+    (map (lambda (name) (string-append directory "/" name)) (narinfo-references info)))
+
+  (let-values (((uri compression size) (narinfo-best-uri info #:fast-decompression? #t)))
+    (protocol:write-substitutable-path-info
+     path connection
+     #:deriver (if deriver (string-append directory "/" deriver) "")
+     #:references (sort (delete-duplicates references) string<?)
+     #:download-size (or size 0)
+     #:nar-size (or (narinfo-size info) 0))))
+
 (define (serve-request connection store-directory db options trusted? guix-program environment)
   "Serve one request on CONNECTION using STORE-DIRECTORY, DB, OPTIONS and TRUSTED?.
 Return the session options after the request."
   (define operation (protocol:read-integer connection))
 
   (cond
+   ((= operation (remote-procedure-id query-substitutable-path-infos))
+    (let ((paths (sort (delete-duplicates (protocol:read-string-list connection)) string<?)))
+      (for-each
+       (lambda (path)
+         (unless (store-path? store-directory path)
+           (let ((message (format #f "path `~a' is not in the store" path)))
+             (protocol:write-error message 1 connection)
+             (force-output connection)
+             (error message))))
+       paths)
+      (define infos
+        (if (and (pair? paths) (options-use-substitutes? options))
+            (sort (lookup-substitutes options paths)
+                  (lambda (left right) (string<? (narinfo-path left) (narinfo-path right))))
+            '()))
+
+      (protocol:write-completion connection)
+      (write-value integer (length infos) connection)
+      (for-each (lambda (info) (write-substitute-info info connection)) infos)))
+
    ((= operation (remote-procedure-id add-indirect-root))
     (let ((path (protocol:read-string connection)))
       (with-exception-handler
