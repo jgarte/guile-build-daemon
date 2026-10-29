@@ -6,6 +6,7 @@
 (define-module (gxd build substitutes-test)
   #:use-module (gxd test-prelude)
   #:use-module ((gxd build config) #:select (build-config))
+  #:use-module ((gxd session) #:select (initial-options))
   #:use-module ((gxd build substitutes) #:select (substitute-path!))
   #:use-module ((guix narinfo) #:select (read-narinfo))
   #:use-module ((guix serialization) #:select (write-file))
@@ -54,4 +55,5 @@
          (is (eq? 'unavailable (substitute-path!
                                 db (string-append directory "/missing")
                                 (build-config #:use-substitutes? #t
+                                              #:options (initial-options #f #t)
                                               #:store-directory "/does-not-exist")))))))))
