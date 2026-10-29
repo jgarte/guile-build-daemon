@@ -16,7 +16,7 @@
   #:use-module ((system foreign) #:select (sizeof unsigned-int unsigned-long))
   #:export (unix-peer-trusted? initial-options update-options
                                options-build-cores options-use-chroot? options-use-substitutes?
-                               options-fallback? pack-options
+                               options-fallback? options-substitute-urls pack-options
                                &option-error option-error? option-error-message))
 
 (define-record-type <options>
@@ -165,6 +165,16 @@ Preserve setting text.  Reject newlines in names or values and = in names."
   "Return whether OPTIONS permits substitution."
   (define key "build-use-substitutes")
   (parse-option-boolean key (assoc-ref (options-settings options) key)))
+
+(define (options-substitute-urls options)
+  "Return OPTIONS's substitute URL text and whether it requires untrusted-URI checks.
+Prefer the untrusted setting.  Return #f and #f when neither setting is present;
+an empty string is an explicit override."
+  (define settings (options-settings options))
+  (define untrusted (assoc-ref settings "untrusted-substitute-urls"))
+  (if untrusted
+      (values untrusted #t)
+      (values (assoc-ref settings "substitute-urls") #f)))
 
 (define (options-fallback? options)
   "Return whether OPTIONS permits building after a substitution failure."
