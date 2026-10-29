@@ -101,7 +101,7 @@ Otherwise raise a substitution error identifying DRV-PATH."
     #:unwind? #t
     #:unwind-for-type &substitution-failure))
 
-(define (substitute-outputs! db drv-path drv output-names config)
+(define (substitute-outputs! db drv-path drv output-names config log!)
   "Substitute DRV's selected OUTPUT-NAMES when CONFIG and DRV permit it.
 Return 'substituted on success, 'incomplete-closure to realize inputs and retry,
 or #f to continue toward building."
@@ -112,7 +112,7 @@ or #f to continue toward building."
          (call-with-substitution-fallback drv-path (options-fallback? (build-options config))
            (lambda ()
              (define outcomes
-               (map (lambda (path) (substitute-path! db path config))
+               (map (lambda (path) (substitute-path! db path config log!))
                     (selected-output-paths db drv-path output-names)))
 
              (cond
@@ -137,7 +137,7 @@ The caller excludes concurrent invalidation."
   (if (requested-outputs-valid? db drv-path output-names)
       'already-valid
       (let ((drv (call-with-input-file drv-path read-derivation)))
-        (case (substitute-outputs! db drv-path drv output-names config)
+        (case (substitute-outputs! db drv-path drv output-names config log!)
           ((substituted) 'substituted)
           ((incomplete-closure)
            (realize-inputs! drv)

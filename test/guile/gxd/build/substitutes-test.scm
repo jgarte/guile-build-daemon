@@ -56,4 +56,5 @@
                                 db (string-append directory "/missing")
                                 (build-config #:use-substitutes? #t
                                               #:options (initial-options #f #t)
-                                              #:store-directory "/does-not-exist")))))))))
+                                              #:store-directory "/does-not-exist")
+                                (lambda (bytes) #t)))))))))
