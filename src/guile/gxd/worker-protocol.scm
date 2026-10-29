@@ -4,7 +4,7 @@
 ;; SPDX-FileCopyrightText: 2026 buttonspresser
 
 (define-module (gxd worker-protocol)
-  #:use-module ((guix serialization) #:select (integer long-long utf8-string bytevector
+  #:use-module ((guix serialization) #:select (integer long-long utf8-string string-list bytevector
                                                read-value write-value))
   #:use-module ((rnrs bytevectors)
                 #:select (bytevector-length bytevector-u8-ref utf8->string string->utf8))
@@ -13,7 +13,8 @@
   #:export (read-integer read-boolean read-bytevector read-string read-string-pairs read-options
                          read-text read-string-list
                          read-header-of-add-to-store-op
-                         write-completion write-error write-log write-log-bytes))
+                         write-completion write-error write-log write-log-bytes
+                         write-substitutable-path-info))
 
 (define STDERR_LAST #x616c7473)
 (define STDERR_ERROR #x63787470)
@@ -37,6 +38,16 @@
   (write-value integer STDERR_ERROR port)
   (write-value utf8-string message port)
   (write-value integer status port))
+
+(define* (write-substitutable-path-info path port
+                                        #:key deriver references download-size nar-size)
+  "Write PATH's substitute metadata to PORT.
+DERIVER is a store path or the empty string when unknown."
+  (write-value utf8-string path port)
+  (write-value utf8-string deriver port)
+  (write-value string-list references port)
+  (write-value long-long download-size port)
+  (write-value long-long nar-size port))
 
 (define (read-integer port)
   "Read a worker-protocol integer from PORT, rejecting values above 32 bits."
