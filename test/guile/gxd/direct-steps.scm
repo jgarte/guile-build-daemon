@@ -11,7 +11,7 @@
                           build-things built-in-builders close-connection open-connection
                           &store-protocol-error store-protocol-error-message
                           store-protocol-error-status
-                          set-build-options valid-path?))
+                          set-build-options valid-path? substitutable-path-info))
   #:use-module ((ice-9 exceptions) #:select (raise-exception with-exception-handler))
   #:use-module ((guix derivations)
                 #:prefix guix-drv:
@@ -37,6 +37,8 @@ Close both clients before returning or propagating an exception."
 (define (expression->procedure expression)
   (match expression
     (('built-in-builders) built-in-builders)
+    (('query-substitutable-path-infos paths)
+     (lambda (store) (substitutable-path-info store paths)))
     (('add-indirect-root (? string? path))
      (lambda (store) (add-indirect-root store path)))
     (('valid-path? (? string? path))
